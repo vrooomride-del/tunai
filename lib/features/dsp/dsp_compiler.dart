@@ -166,3 +166,62 @@ class DspCompiler {
     return txs;
   }
 }
+
+// ── T/S 기반 안전범위 자동 적용 ─────────────────────────────
+
+/// T/S 파라미터로부터 HPF + Gain 안전 설정 자동 생성
+class SafetyProfile {
+  final double hpfFreq;      // 권장 HPF 주파수 (Hz)
+  final double maxBassBoost; // 최대 저역 부스트 (dB)
+  final double gainOffset;   // 감도 기준 게인 오프셋 (dB)
+
+  const SafetyProfile({
+    required this.hpfFreq,
+    required this.maxBassBoost,
+    required this.gainOffset,
+  });
+}
+
+extension DspCompilerSafety on DspCompiler {
+  /// T/S → SafetyProfile 변환
+  static SafetyProfile safetyFromTs({
+    required double fs,
+    required double xmax,
+    required double sensitivity,
+  }) {
+    return SafetyProfile(
+      hpfFreq: fs * 0.85,
+      maxBassBoost: xmax >= 10 ? 6.0 : xmax >= 6 ? 4.0 : xmax >= 3 ? 2.0 : 0.0,
+      gainOffset: sensitivity - 85.0,
+    );
+  }
+
+  /// HPF Biquad 계수 계산 (2nd order Butterworth)
+  static BiquadCoefficients calculateHpf(double freq) {
+    final w0 = 2 * pi * freq / DspCompiler.sampleRate;
+    final q = 0.7071; // Butterworth Q
+    final alpha = sin(w0) / (2 * q);
+    final cosW = cos(w0);
+
+    final b0 = (1 + cosW) / 2;
+    final b1 = -(1 + cosW);
+    final b2 = (1 + cosW) / 2;
+    final a0 = 1 + alpha;
+    final a1 = -2 * cosW;
+    final a2 = 1 - alpha;
+
+    return BiquadCoefficients(
+      b0: b0 / a0,
+      b1: b1 / a0,
+      b2: b2 / a0,
+      a1: -(a1 / a0),
+      a2: -(a2 / a0),
+    );
+  }
+
+  /// PEQ gainDb를 Xmax 기반으로 클램핑
+  static double clampBassBoost(double gainDb, double freq, double maxBoostDb) {
+    if (freq < 200 && gainDb > maxBoostDb) return maxBoostDb;
+    return gainDb;
+  }
+}

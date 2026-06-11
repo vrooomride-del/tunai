@@ -10,6 +10,8 @@ import '../../core/api_service.dart';
 import '../../core/mic_calibration.dart';
 import '../../core/pink_noise_generator.dart';
 import '../../core/audio_analyzer.dart';
+import '../../core/speaker_profile.dart';
+import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety;
 import '../dsp/dsp_compiler.dart';
 
 enum MeasurementStep {
@@ -133,13 +135,27 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
       // 9. DSP 컴파일
       _update(MeasurementStep.compiling, 'DSP 패킷 컴파일 중...');
-      final packets = DspCompiler.compileAll(peaks);
+      // T/S 안전범위 적용
+      List<ResonancePeak> safePeaks = peaks;
+      if (speakerProfile != null) {
+        final safety = DspCompilerSafety.safetyFromTs(
+          fs: speakerProfile.fs,
+          xmax: speakerProfile.xmax,
+          sensitivity: speakerProfile.sensitivity,
+        );
+        safePeaks = peaks.map((p) => ResonancePeak(
+          frequency: p.frequency,
+          gain: DspCompilerSafety.clampBassBoost(p.gain, p.frequency, safety.maxBassBoost),
+          q: p.q,
+        )).toList();
+      }
+      final packets = DspCompiler.compileAll(safePeaks);
 
       state = state.copyWith(
         step: MeasurementStep.done,
         message: '측정 완료! ${peaks.length}개 공진 주파수 검출',
         scmsBins: scmsBins,
-        peaks: peaks,
+        peaks: safePeaks,
         packets: packets,
       );
     } catch (e) {
