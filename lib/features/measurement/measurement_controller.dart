@@ -1,3 +1,4 @@
+import '../../core/speaker_profile.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,7 +70,7 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   final _player = AudioPlayer();
   bool _recorderInitialized = false;
 
-  Future<void> startMeasurement() async {
+  Future<void> startMeasurement({SpeakerProfile? speakerProfile}) async {
     try {
       // 0. 마이크 권한 요청
       final micStatus = await Permission.microphone.request();

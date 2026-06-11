@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/speaker_profile.dart';
+import 'speaker_profile_selector.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../measurement/measurement_controller.dart';
 import '../../core/audio_analyzer.dart';
@@ -287,7 +289,7 @@ class _MeasureButton extends StatelessWidget {
             state.step == MeasurementStep.error) {
           ctrl.reset();
         } else {
-          ctrl.startMeasurement();
+          ctrl.startMeasurement(speakerProfile: _speakerProfile.activeProfile);
         }
       },
       child: Container(
