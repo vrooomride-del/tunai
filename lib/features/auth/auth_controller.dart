@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/api_service.dart';
 
 class AuthState {
@@ -101,6 +102,38 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
 
+
+  Future<bool> loginWithGoogle() async {
+    try {
+      await GoogleSignIn.instance.initialize();
+      final response = await GoogleSignIn.instance.authenticate();
+      if (response == null) return false;
+      final email = response.email;
+      final nickname = response.displayName ?? email.split('@')[0];
+      final googleId = response.id;
+      final res = await ApiService.loginWithSocial(
+        provider: 'google',
+        providerId: googleId,
+        email: email,
+        nickname: nickname,
+      );
+
+      if (res['status'] == 'ok') {
+        final data = res['data'];
+        await ApiService.saveToken(data['token']);
+        await ApiService.saveUser(data['id'], data['email'], data['nickname']);
+        state = state.copyWith(
+          isLoggedIn: true,
+          email: data['email'],
+          nickname: data['nickname'],
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
   Future<bool> loginWithKakao() async {
     try {
       const kakaoKey = 'b9ecf65d6b446e6f1e5b3b40f86425e6';

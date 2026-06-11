@@ -86,7 +86,33 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   Expanded(child: Divider(color: Colors.white12)),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              // 구글 로그인
+              GestureDetector(
+                onTap: () async {
+                  final ok = await ref.read(authProvider.notifier).loginWithGoogle();
+                  if (ok && mounted) Navigator.of(context).pop();
+                },
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.g_mobiledata, color: Colors.red, size: 28),
+                      SizedBox(width: 8),
+                      Text('Google로 로그인',
+                          style: TextStyle(color: Colors.black87,
+                              fontSize: 14, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               // 카카오 로그인
               GestureDetector(
                 onTap: () async {

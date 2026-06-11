@@ -12,7 +12,20 @@
           "package_name": "com.tickensound.tunai"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "120030145932-ltjcsete2na2vf00nv9eos1bfbe8m0m3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tickensound.tunai",
+            "certificate_hash": "eda368610f57f9b7e97aeadcae2b89393f8e6060"
+          }
+        },
+        {
+          "client_id": "120030145932-12m4f5r0mavt4934f4ptplu54h0m66lu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAdCbgB2EmhxANJ4TPcLvClbfqACtJ-o1g"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "120030145932-12m4f5r0mavt4934f4ptplu54h0m66lu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
