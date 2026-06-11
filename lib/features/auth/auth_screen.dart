@@ -87,6 +87,58 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ],
               ),
               const SizedBox(height: 12),
+              // 애플 로그인
+              GestureDetector(
+                onTap: () async {
+                  final ok = await ref.read(authProvider.notifier).loginWithApple();
+                  if (ok && mounted) Navigator.of(context).pop();
+                },
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.apple, color: Colors.white, size: 22),
+                      SizedBox(width: 8),
+                      Text('Apple로 로그인',
+                          style: TextStyle(color: Colors.white,
+                              fontSize: 14, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 애플 로그인
+              GestureDetector(
+                onTap: () async {
+                  final ok = await ref.read(authProvider.notifier).loginWithApple();
+                  if (ok && mounted) Navigator.of(context).pop();
+                },
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.apple, color: Colors.white, size: 22),
+                      SizedBox(width: 8),
+                      Text('Apple로 로그인',
+                          style: TextStyle(color: Colors.white,
+                              fontSize: 14, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               // 구글 로그인
               GestureDetector(
                 onTap: () async {

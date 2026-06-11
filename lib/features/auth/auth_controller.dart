@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../core/api_service.dart';
 
 class AuthState {
@@ -116,6 +117,45 @@ class AuthController extends StateNotifier<AuthState> {
         providerId: googleId,
         email: email,
         nickname: nickname,
+      );
+
+      if (res['status'] == 'ok') {
+        final data = res['data'];
+        await ApiService.saveToken(data['token']);
+        await ApiService.saveUser(data['id'], data['email'], data['nickname']);
+        state = state.copyWith(
+          isLoggedIn: true,
+          email: data['email'],
+          nickname: data['nickname'],
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> loginWithApple() async {
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final email = credential.email ?? 'apple_\${credential.userIdentifier}@apple.com';
+      final nickname = [
+        credential.givenName,
+        credential.familyName,
+      ].where((s) => s != null && s.isNotEmpty).join(' ');
+
+      final res = await ApiService.loginWithSocial(
+        provider: 'apple',
+        providerId: credential.userIdentifier ?? email,
+        email: email,
+        nickname: nickname.isNotEmpty ? nickname : email.split('@')[0],
       );
 
       if (res['status'] == 'ok') {
