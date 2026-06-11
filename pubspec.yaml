@@ -1,0 +1,55 @@
+name: tunai
+description: AI-based DSP speaker tuning platform
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  just_audio: ^0.9.36
+  fftea: ^1.5.0+1
+  flutter_blue_plus: ^1.31.15
+  permission_handler: ^11.3.0
+  path_provider: ^2.1.2
+  flutter_riverpod: ^2.5.1
+  fl_chart: ^0.68.0
+  firebase_core: ^2.27.0
+  firebase_analytics: ^10.8.0
+  firebase_crashlytics: ^3.4.8
+  dio: ^5.9.2
+  flutter_sound: ^9.2.13
+  shared_preferences: ^2.5.3
+  device_info_plus: ^12.4.0
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.6
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/audio/
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/icon.png"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#080808"
+  image: assets/images/icon.png
+  color_dark: "#080808"
+  image_dark: assets/images/icon.png
+  android_12:
+    color: "#080808"
+    image: assets/images/icon.png
+  fullscreen: true
