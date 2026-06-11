@@ -38,6 +38,28 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+    
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kakaob9ecf65d6b446e6f1e5b3b40f86425e6" android:host="oauth"/>
+            </intent-filter>
+        </activity>
+    
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true">
+            <intent-filter android:label="flutter_web_auth_2">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tunai" />
+            </intent-filter>
+        </activity>
     </application>
 
     <queries>

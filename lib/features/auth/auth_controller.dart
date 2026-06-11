@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import '../../core/api_service.dart';
 
 class AuthState {
@@ -99,6 +100,40 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+
+  Future<bool> loginWithKakao() async {
+    try {
+      const kakaoKey = 'b9ecf65d6b446e6f1e5b3b40f86425e6';
+      const redirectUri = 'tunai://kakao/oauth';
+      final authUrl = Uri.https('kauth.kakao.com', '/oauth/authorize', {
+        'client_id': kakaoKey,
+        'redirect_uri': redirectUri,
+        'response_type': 'code',
+        'scope': 'profile_nickname,account_email',
+      });
+      final result = await FlutterWebAuth2.authenticate(
+        url: authUrl.toString(),
+        callbackUrlScheme: 'tunai',
+      );
+      final code = Uri.parse(result).queryParameters['code'];
+      if (code == null) return false;
+      final res = await ApiService.kakaoCallback(code: code, redirectUri: redirectUri);
+      if (res['status'] == 'ok') {
+        final data = res['data'];
+        await ApiService.saveToken(data['token']);
+        await ApiService.saveUser(data['id'], data['email'], data['nickname']);
+        state = state.copyWith(
+          isLoggedIn: true,
+          email: data['email'],
+          nickname: data['nickname'],
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
   Future<void> logout() async {
     await ApiService.clearAuth();
     state = const AuthState();

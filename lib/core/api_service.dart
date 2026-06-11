@@ -190,4 +190,34 @@ class ApiService {
       return res.data;
     } catch (e) { return {'status': 'error', 'message': e.toString()}; }
   }
+  static Future<Map<String, dynamic>> kakaoCallback({
+    required String code,
+    required String redirectUri,
+  }) async {
+    try {
+      final res = await _dio.post('/auth/kakao-callback', data: {
+        'code': code,
+        'redirect_uri': redirectUri,
+      });
+      return res.data;
+    } catch (e) { return {'status': 'error', 'message': e.toString()}; }
+  }
+
+  static Future<Map<String, dynamic>> loginWithSocial({
+    required String provider,
+    required String providerId,
+    required String email,
+    required String nickname,
+  }) async {
+    try {
+      final res = await _dio.post('/auth/social', data: {
+        'provider': provider,
+        'provider_id': providerId,
+        'email': email,
+        'nickname': nickname,
+      });
+      return res.data;
+    } catch (e) { return {'status': 'error', 'message': e.toString()}; }
+  }
+
 }

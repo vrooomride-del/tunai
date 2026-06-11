@@ -75,6 +75,42 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 24),
+              Row(
+                children: const [
+                  Expanded(child: Divider(color: Colors.white12)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('또는', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                  ),
+                  Expanded(child: Divider(color: Colors.white12)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // 카카오 로그인
+              GestureDetector(
+                onTap: () async {
+                  final ok = await ref.read(authProvider.notifier).loginWithKakao();
+                  if (ok && mounted) Navigator.of(context).pop();
+                },
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE500),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.chat_bubble, color: Color(0xFF3A1D1D), size: 18),
+                      SizedBox(width: 8),
+                      Text('카카오 로그인',
+                          style: TextStyle(color: Color(0xFF3A1D1D),
+                              fontSize: 14, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
               GestureDetector(
                 onTap: () => setState(() => _isLogin = !_isLogin),
