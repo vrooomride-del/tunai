@@ -76,6 +76,10 @@ class _RootScreenState extends State<RootScreen> {
               label: 'TUNE',
             ),
             BottomNavigationBarItem(
+              icon: Icon(Icons.qr_code_scanner, size: 20),
+              label: 'DEVICE',
+            ),
+            BottomNavigationBarItem(
               icon: Icon(Icons.people_outline, size: 20),
               label: 'COMMUNITY',
             ),
