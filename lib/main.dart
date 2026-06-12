@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'features/home/home_screen.dart';
 import 'features/community/community_screen.dart';
 import 'features/history/history_screen.dart';
-import 'features/enclosure/enclosure_screen.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -52,7 +51,6 @@ class _RootScreenState extends State<RootScreen> {
     HomeScreen(),
     CommunityScreen(),
     HistoryScreen(),
-    EnclosureScreen(),
   ];
 
   @override
@@ -84,10 +82,6 @@ class _RootScreenState extends State<RootScreen> {
             BottomNavigationBarItem(
               icon: Icon(Icons.history, size: 20),
               label: 'HISTORY',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.speaker, size: 20),
-              label: 'ENCLOSURE',
             ),
           ],
         ),
