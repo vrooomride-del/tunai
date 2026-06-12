@@ -7,6 +7,8 @@ import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/api_service.dart';
+import '../../core/ai_tuning_service.dart';
+import '../../core/speaker_profile.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -38,6 +40,10 @@ class HomeScreen extends ConsumerWidget {
                     _StepSection(index: 3, label: 'APPLY DSP',
                         active: mState.step == MeasurementStep.done,
                         child: _DspPanel(mState: mState, bState: bState, ref: ref)),
+                    const SizedBox(height: 16),
+                    _StepSection(index: 4, label: 'AI TUNE',
+                        active: mState.step == MeasurementStep.done,
+                        child: _AiTunePanel(mState: mState, ref: ref)),
                   ],
                 ),
               ),
@@ -329,6 +335,78 @@ class _PeakTable extends StatelessWidget {
           SizedBox(width: 56, child: Text(p.q.toStringAsFixed(1), textAlign: TextAlign.right, style: const TextStyle(color: Colors.white38, fontSize: 13))),
         ]),
       )),
+    ]);
+  }
+}
+class _AiTunePanel extends StatefulWidget {
+  final MeasurementState mState;
+  final WidgetRef ref;
+  const _AiTunePanel({required this.mState, required this.ref});
+  @override
+  State<_AiTunePanel> createState() => _AiTunePanelState();
+}
+
+class _AiTunePanelState extends State<_AiTunePanel> {
+  bool _loading = false;
+  AiTuningResult? _result;
+  final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
+
+  Future<void> _suggest() async {
+    setState(() { _loading = true; _result = null; });
+    final result = await AiTuningService.suggest(
+      peaks: widget.mState.peaks,
+      userRequest: _ctrl.text,
+    );
+    setState(() { _loading = false; _result = result; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      TextField(
+        controller: _ctrl,
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: const InputDecoration(
+          labelText: 'AI에게 요청',
+          labelStyle: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1),
+          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+        ),
+      ),
+      const SizedBox(height: 12),
+      _OutlineButton(
+        label: _loading ? 'AI 분석 중...' : 'AI 튜닝 요청',
+        loading: _loading,
+        enabled: widget.mState.peaks.isNotEmpty,
+        onTap: widget.mState.peaks.isEmpty ? null : _suggest,
+      ),
+      if (_result != null && !_result!.isError) ...[
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(6)),
+          child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.6)),
+        ),
+        const SizedBox(height: 12),
+        ..._result!.bands.asMap().entries.map((e) {
+          final b = e.value;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10), decoration: const BoxDecoration(color: Colors.white38, shape: BoxShape.circle)),
+              Expanded(child: Text('${b['frequency']}Hz', style: const TextStyle(color: Colors.white, fontSize: 13))),
+              Text('${b['gainDb']}dB', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+              const SizedBox(width: 12),
+              Text('Q${b['q']}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+            ]),
+          );
+        }),
+      ],
+      if (_result != null && _result!.isError)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(_result!.explanation, style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
+        ),
     ]);
   }
 }
