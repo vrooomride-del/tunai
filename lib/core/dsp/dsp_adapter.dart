@@ -11,14 +11,25 @@ class BiquadCoeffs {
   });
 }
 
-enum CrossoverType { lpf, hpf }
-enum CrossoverSlope { lr2, lr4, bw2, bw4 }
+/// HP / LP 방향
+enum FilterSide { lpf, hpf }
+
+/// 크로스오버 기울기
+/// bypass: 비활성
+/// bw2/bw4: 2차/4차 Butterworth (12/24 dB/oct)
+/// lr2/lr4: 2차/4차 Linkwitz-Riley (12/24 dB/oct)
+/// lr8: 8차 Linkwitz-Riley (48 dB/oct)
+enum CrossoverSlope { bypass, bw2, bw4, lr2, lr4, lr8 }
 
 class CrossoverConfig {
-  final CrossoverType type;
+  final FilterSide side;
   final double freqHz;
   final CrossoverSlope slope;
-  const CrossoverConfig({required this.type, required this.freqHz, this.slope = CrossoverSlope.lr4});
+  const CrossoverConfig({
+    required this.side,
+    required this.freqHz,
+    this.slope = CrossoverSlope.lr4,
+  });
 }
 
 class DspState {
@@ -26,23 +37,11 @@ class DspState {
   const DspState({required this.raw});
 }
 
-/// DSP 칩별 통신 추상화 — 채널/밴드 단위 고수준 API
 abstract class DspAdapter {
-  /// PEQ 밴드 1개의 Biquad 계수를 DSP에 기록
   Future<void> writeBiquad(int channelIndex, int bandIndex, BiquadCoeffs coeffs);
-
-  /// 크로스오버 (LPF/HPF) 계수 기록
   Future<void> writeCrossover(int channelIndex, CrossoverConfig config);
-
-  /// 채널 딜레이 기록 (위상 정렬용)
   Future<void> writeDelay(int channelIndex, double delayMs);
-
-  /// 채널 게인/레벨 기록
   Future<void> writeGain(int channelIndex, double gainDb);
-
-  /// 서브소닉 HPF (Xmax 보호)
   Future<void> writeSubsonicFilter(int channelIndex, double freqHz);
-
-  /// 현재 적용된 설정 읽기 (옵션 — 미지원 칩은 빈 DspState 반환)
   Future<DspState> readCurrentState();
 }
