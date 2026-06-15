@@ -31,13 +31,14 @@ dependencies:
   sign_in_with_apple: ^7.0.1
   google_generative_ai: ^0.4.7
   mobile_scanner: ^7.2.0
+  http: ^1.2.0
+  flutter_native_splash: ^2.4.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
   flutter_launcher_icons: ^0.14.4
-  flutter_native_splash: ^2.4.6
 
 flutter:
   uses-material-design: true

@@ -207,6 +207,8 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${preset['title']} DSP 적용 중...')));
     final success = await ref.read(bleProvider.notifier).sendPackets(packets);
+    if (!context.mounted) return;
+    // ignore: use_build_context_synchronously
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success
           ? '✓ ${preset['title']} 적용 완료'
@@ -311,6 +313,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
                           content: contentCtrl.text.trim(),
                           category: category,
                         );
+                        if (!context.mounted) return;
                         if (res['status'] == 'ok') {
                           _loadPosts();
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -371,6 +374,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
                 description: descCtrl.text.trim(),
                 fps: [], roomTag: roomCtrl.text.trim(),
               );
+              if (!context.mounted) return;
               if (res['status'] == 'ok') {
                 _loadPresets();
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -459,7 +463,7 @@ class _SortBtn extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border.all(color: selected ? Colors.white : Colors.white24, width: 0.5),
         borderRadius: BorderRadius.circular(20),
-        color: selected ? Colors.white.withOpacity(0.05) : Colors.transparent,
+        color: selected ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
       ),
       child: Text(label,
           style: TextStyle(
@@ -705,12 +709,12 @@ class _PostRow extends StatelessWidget {
                     Text(post['nickname'] ?? '',
                         style: const TextStyle(color: Colors.white38, fontSize: 10)),
                     const SizedBox(width: 8),
-                    Icon(Icons.favorite_border, color: Colors.white24, size: 10),
+                    const Icon(Icons.favorite_border, color: Colors.white24, size: 10),
                     const SizedBox(width: 2),
                     Text('${post['likes'] ?? 0}',
                         style: const TextStyle(color: Colors.white24, fontSize: 10)),
                     const SizedBox(width: 8),
-                    Icon(Icons.chat_bubble_outline, color: Colors.white24, size: 10),
+                    const Icon(Icons.chat_bubble_outline, color: Colors.white24, size: 10),
                     const SizedBox(width: 2),
                     Text('${post['comment_count'] ?? 0}',
                         style: const TextStyle(color: Colors.white24, fontSize: 10)),

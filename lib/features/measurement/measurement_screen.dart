@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/speaker_profile.dart';
-import 'speaker_profile_selector.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../measurement/measurement_controller.dart';
 import '../../core/audio_analyzer.dart';
@@ -124,11 +122,6 @@ class _SpectrumChart extends StatelessWidget {
         .map((b) => FlSpot(b.frequency, b.magnitude.clamp(-60.0, 20.0)))
         .toList();
 
-    // 피크 위치 표시
-    final peakSpots = peaks
-        .map((p) => FlSpot(p.frequency, p.gain.abs() + 5))
-        .toList();
-
     return Container(
       height: 180,
       padding: const EdgeInsets.all(12),
@@ -197,7 +190,7 @@ class _SpectrumChart extends StatelessWidget {
                 extraLinesData: ExtraLinesData(
                   verticalLines: peaks.map((p) => VerticalLine(
                     x: p.frequency,
-                    color: Colors.redAccent.withOpacity(0.6),
+                    color: Colors.redAccent.withValues(alpha: 0.6),
                     strokeWidth: 1,
                     dashArray: [4, 4],
                     label: VerticalLineLabel(
@@ -289,7 +282,7 @@ class _MeasureButton extends StatelessWidget {
             state.step == MeasurementStep.error) {
           ctrl.reset();
         } else {
-          ctrl.startMeasurement(speakerProfile: _speakerProfile.activeProfile);
+          ctrl.startMeasurement();
         }
       },
       child: Container(

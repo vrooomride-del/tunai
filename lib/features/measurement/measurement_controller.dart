@@ -1,4 +1,3 @@
-import '../../core/speaker_profile.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,13 +5,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../core/api_service.dart';
 import '../../core/mic_calibration.dart';
 import '../../core/pink_noise_generator.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/speaker_profile.dart';
-import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety;
-import '../dsp/dsp_compiler.dart';
+import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety, RegisterPacket;
 
 enum MeasurementStep {
   idle,

@@ -32,7 +32,7 @@ class AudioAnalyzer {
   }
 
   static List<FrequencyBin> performFFT(Float64List samples) {
-    final paddedSize = fftSize;
+    const paddedSize = fftSize;
     final input = Float64List(paddedSize);
     final copyLen = min(samples.length, paddedSize);
 
@@ -45,7 +45,7 @@ class AudioAnalyzer {
     final freq = fft.realFft(input);
 
     final bins = <FrequencyBin>[];
-    final nyquist = paddedSize ~/ 2;
+    const nyquist = paddedSize ~/ 2;
 
     for (int i = 1; i < nyquist; i++) {
       final re = freq[i].x;

@@ -27,9 +27,9 @@ class PinkNoiseGenerator {
 
   /// 16-bit PCM WAV 바이트 생성
   Uint8List generateWav() {
-    final totalSamples = sampleRate * durationSeconds;
-    final dataSize = totalSamples * 2; // 16bit = 2bytes per sample
-    final fileSize = 44 + dataSize;
+    const totalSamples = sampleRate * durationSeconds;
+    const dataSize = totalSamples * 2; // 16bit = 2bytes per sample
+    const fileSize = 44 + dataSize;
 
     final buf = ByteData(fileSize);
 

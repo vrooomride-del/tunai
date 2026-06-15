@@ -88,7 +88,6 @@ class DeviceProfile {
         );
       } else if (Platform.isIOS) {
         final ios = await info.iosInfo;
-        final model = ios.utsname.machine; // e.g. iPhone14,2
         final name = ios.name; // e.g. iPhone 13 Pro
         return DeviceProfile(
           modelName: name,

@@ -138,6 +138,13 @@ class BleController extends StateNotifier<BleState> {
     }
   }
 
+  /// DspAdapter가 사용하는 raw BLE 프레임 단일 전송
+  Future<void> sendRawFrame(Uint8List frame) async {
+    if (_dspWriteChar == null) throw Exception('연결된 기기가 없습니다.');
+    await _dspWriteChar!.write(frame, withoutResponse: false);
+    await Future.delayed(const Duration(milliseconds: 50));
+  }
+
   /// DSP 패킷 전송 - 27바이트 BLE 프레임
   Future<bool> sendPackets(List<RegisterPacket> packets) async {
     if (_dspWriteChar == null) {

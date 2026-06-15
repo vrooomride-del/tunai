@@ -6,9 +6,11 @@ import '../ble/ble_controller.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../../core/audio_analyzer.dart';
-import '../../core/api_service.dart';
 import '../../core/ai_tuning_service.dart';
-import '../../core/speaker_profile.dart';
+import '../../core/profiles/system_profile.dart';
+
+// 선택된 시스템 프로파일 전역 상태
+final systemProfileProvider = StateProvider<SystemProfile>((ref) => kTunaiOneSystemProfile);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -30,18 +32,21 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _StepSection(index: 1, label: 'CONNECT', active: true,
+                    _StepSection(index: 1, label: 'SELECT SPEAKER', active: true,
+                        child: _SpeakerSelectPanel(ref: ref)),
+                    const SizedBox(height: 16),
+                    _StepSection(index: 2, label: 'CONNECT', active: true,
                         child: _BlePanel(bState: bState, ref: ref)),
                     const SizedBox(height: 16),
-                    _StepSection(index: 2, label: 'MEASURE',
+                    _StepSection(index: 3, label: 'MEASURE',
                         active: bState.connection == BleConnectionState.connected || mState.step != MeasurementStep.idle,
                         child: _MeasurePanel(mState: mState, ref: ref)),
                     const SizedBox(height: 16),
-                    _StepSection(index: 3, label: 'APPLY DSP',
+                    _StepSection(index: 4, label: 'APPLY DSP',
                         active: mState.step == MeasurementStep.done,
                         child: _DspPanel(mState: mState, bState: bState, ref: ref)),
                     const SizedBox(height: 16),
-                    _StepSection(index: 4, label: 'AI TUNE',
+                    _StepSection(index: 5, label: 'AI TUNE',
                         active: mState.step == MeasurementStep.done,
                         child: _AiTunePanel(mState: mState, ref: ref)),
                   ],
@@ -121,6 +126,66 @@ class _StepSection extends StatelessWidget {
   }
 }
 
+class _SpeakerSelectPanel extends StatelessWidget {
+  final WidgetRef ref;
+  const _SpeakerSelectPanel({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = ref.watch(systemProfileProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...kAllSystemProfiles.map((profile) {
+          final isSelected = profile.id == selected.id;
+          return GestureDetector(
+            onTap: () => ref.read(systemProfileProvider.notifier).state = profile,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: isSelected ? Colors.white : Colors.white12),
+                borderRadius: BorderRadius.circular(6),
+                color: isSelected ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
+              ),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(profile.displayName,
+                      style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 1.5)),
+                  const SizedBox(height: 2),
+                  Text(profile.description,
+                      style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                ])),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white12),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(profile.chipLabel,
+                      style: const TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                ),
+                if (isSelected) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.check, color: Colors.white, size: 14),
+                ],
+              ]),
+            ),
+          );
+        }),
+        const SizedBox(height: 4),
+        Consumer(builder: (_, r, __) {
+          final p = r.watch(systemProfileProvider);
+          return Text(
+            '${p.channelCount}ch · 크로스오버 ${p.crossoverPoints}개',
+            style: const TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1),
+          );
+        }),
+      ],
+    );
+  }
+}
+
 class _BlePanel extends StatelessWidget {
   final BleState bState; final WidgetRef ref;
   const _BlePanel({required this.bState, required this.ref});
@@ -180,83 +245,17 @@ class _DspPanel extends StatelessWidget {
     final isConnected = bState.connection == BleConnectionState.connected;
     final isSending = bState.isSending;
     final hasDsp = mState.packets.isNotEmpty;
-    final hint = !hasDsp ? '측정 후 DSP 필터가 생성됩니다.' : !isConnected ? '스피커를 연결하면 DSP를 적용할 수 있습니다.' : '${mState.packets.length}개 노치 필터 → ADAU1701 Safeload';
+    final profile = ref.watch(systemProfileProvider);
+    final chipHint = profile.isAdau1452 ? '${profile.chipLabel} — SigmaStudio 주소맵 미확정' : '${mState.packets.length}개 노치 필터 → ${profile.chipLabel} Safeload';
+    final hint = !hasDsp ? '측정 후 DSP 필터가 생성됩니다.' : !isConnected ? '스피커를 연결하면 DSP를 적용할 수 있습니다.' : chipHint;
+    final canApply = hasDsp && isConnected && !isSending && !profile.isAdau1452;
     return Row(children: [
       Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
       const SizedBox(width: 16),
-      _OutlineButton(label: isSending ? 'SENDING...' : 'APPLY', loading: isSending, enabled: hasDsp && isConnected && !isSending,
-          onTap: hasDsp && isConnected && !isSending ? () => ref.read(bleProvider.notifier).sendPackets(mState.packets) : null),
+      _OutlineButton(label: isSending ? 'SENDING...' : 'APPLY', loading: isSending, enabled: canApply,
+          onTap: canApply ? () => ref.read(bleProvider.notifier).sendPackets(mState.packets) : null),
     ]);
   }
-}
-
-void _showShareDialog(BuildContext context, MeasurementState mState) {
-  final titleCtrl = TextEditingController();
-  final roomCtrl = TextEditingController();
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      backgroundColor: const Color(0xFF111111),
-      title: const Text('프리셋 공유', style: TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 2)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('측정된 DSP 필터를 커뮤니티에 공유합니다.',
-              style: TextStyle(color: Colors.white38, fontSize: 12)),
-          const SizedBox(height: 16),
-          TextField(
-            controller: titleCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'TITLE',
-              labelStyle: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 2),
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: roomCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'ROOM TAG (예: 6평 거실)',
-              labelStyle: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 2),
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('취소', style: TextStyle(color: Colors.white38)),
-        ),
-        TextButton(
-          onPressed: () async {
-            Navigator.pop(context);
-            final fps = mState.peaks.map((p) => {
-              'f': p.frequency, 'g': p.gain, 'q': p.q
-            }).toList();
-            final res = await ApiService.uploadPreset(
-              title: titleCtrl.text.trim().isEmpty ? '내 공간 튜닝' : titleCtrl.text.trim(),
-              description: '${mState.peaks.length}개 공진 주파수 보정',
-              fps: fps,
-              roomTag: roomCtrl.text.trim(),
-            );
-            if (res['status'] == 'ok') {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('프리셋이 공유됐습니다! 커뮤니티에서 확인하세요.')));
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('로그인 후 공유할 수 있습니다.')));
-            }
-          },
-          child: const Text('공유', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    ),
-  );
 }
 
 class _OutlineButton extends StatelessWidget {
@@ -303,9 +302,9 @@ class _SpectrumChart extends StatelessWidget {
           ),
           borderData: FlBorderData(show: false),
           minX: 20, maxX: 500, minY: -60, maxY: 20,
-          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.white60, barWidth: 1.2, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.white.withOpacity(0.04)))],
-          extraLinesData: ExtraLinesData(verticalLines: peaks.map((p) => VerticalLine(x: p.frequency, color: Colors.redAccent.withOpacity(0.5), strokeWidth: 1, dashArray: [3, 4],
-            label: VerticalLineLabel(show: true, labelResolver: (l) => '${p.frequency.toStringAsFixed(0)}', style: const TextStyle(color: Colors.redAccent, fontSize: 8)))).toList()),
+          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.white60, barWidth: 1.2, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.white.withValues(alpha: 0.04)))],
+          extraLinesData: ExtraLinesData(verticalLines: peaks.map((p) => VerticalLine(x: p.frequency, color: Colors.redAccent.withValues(alpha: 0.5), strokeWidth: 1, dashArray: [3, 4],
+            label: VerticalLineLabel(show: true, labelResolver: (l) => p.frequency.toStringAsFixed(0), style: const TextStyle(color: Colors.redAccent, fontSize: 8)))).toList()),
         )),
         const Positioned(top: 0, left: 0, child: Text('Scms  20–500 Hz', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1))),
       ]),

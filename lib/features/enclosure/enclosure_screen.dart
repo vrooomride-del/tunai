@@ -71,7 +71,7 @@ class _EnclosureScreenState extends ConsumerState<EnclosureScreen> {
                     decoration: BoxDecoration(
                       border: Border.all(color: _type == t ? Colors.white : Colors.white24),
                       borderRadius: BorderRadius.circular(4),
-                      color: _type == t ? Colors.white.withOpacity(0.05) : Colors.transparent,
+                      color: _type == t ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
                     ),
                     child: Text(t.toUpperCase(),
                         style: TextStyle(

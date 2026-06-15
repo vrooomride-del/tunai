@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'features/home/home_screen.dart';
 import 'features/community/community_screen.dart';
 import 'features/history/history_screen.dart';
+import 'features/device/device_screen.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -32,8 +33,54 @@ class TunaiApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const RootScreen(),
+      home: const _OnboardingGate(),
     );
+  }
+}
+
+
+class _OnboardingGate extends StatefulWidget {
+  const _OnboardingGate();
+  @override
+  State<_OnboardingGate> createState() => _OnboardingGateState();
+}
+
+class _OnboardingGateState extends State<_OnboardingGate> {
+  bool? _registered;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _registered = prefs.getString('registered_device') != null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_registered == null) return const Scaffold(backgroundColor: Color(0xFF0A0A0A));
+    if (!_registered!) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Column(children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 48, 24, 24),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('TUNAI', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w200, letterSpacing: 8)),
+                SizedBox(height: 8),
+                Text('스피커를 등록하고 시작하세요', style: TextStyle(color: Colors.white38, fontSize: 13)),
+              ]),
+            ),
+            Expanded(child: DeviceScreen(onRegistered: () => setState(() => _registered = true))),
+          ]),
+        ),
+      );
+    }
+    return const RootScreen();
   }
 }
 
@@ -49,6 +96,7 @@ class _RootScreenState extends State<RootScreen> {
 
   final _screens = const [
     HomeScreen(),
+    DeviceScreen(),
     CommunityScreen(),
     HistoryScreen(),
   ];

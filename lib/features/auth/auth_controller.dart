@@ -108,7 +108,6 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       await GoogleSignIn.instance.initialize();
       final response = await GoogleSignIn.instance.authenticate();
-      if (response == null) return false;
       final email = response.email;
       final nickname = response.displayName ?? email.split('@')[0];
       final googleId = response.id;

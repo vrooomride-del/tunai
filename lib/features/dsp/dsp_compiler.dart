@@ -199,7 +199,7 @@ extension DspCompilerSafety on DspCompiler {
   /// HPF Biquad 계수 계산 (2nd order Butterworth)
   static BiquadCoefficients calculateHpf(double freq) {
     final w0 = 2 * pi * freq / DspCompiler.sampleRate;
-    final q = 0.7071; // Butterworth Q
+    const q = 0.7071; // Butterworth Q
     final alpha = sin(w0) / (2 * q);
     final cosW = cos(w0);
 

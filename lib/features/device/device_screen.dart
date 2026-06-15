@@ -25,7 +25,8 @@ class DeviceNotifier extends StateNotifier<TunaiDevice?> {
 }
 
 class DeviceScreen extends ConsumerStatefulWidget {
-  const DeviceScreen({super.key});
+  final VoidCallback? onRegistered;
+  const DeviceScreen({super.key, this.onRegistered});
   @override
   ConsumerState<DeviceScreen> createState() => _DeviceScreenState();
 }
@@ -62,6 +63,7 @@ class _DeviceScreenState extends ConsumerState<DeviceScreen> {
     if (_scanned == null) return;
     setState(() { _loading = true; _status = '등록 중...'; });
     await ref.read(deviceProvider.notifier).setDevice(_scanned!);
+    widget.onRegistered?.call();
     setState(() { _loading = false; _scanned = null; _status = '등록 완료!'; });
   }
 
@@ -178,7 +180,7 @@ class _DeviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(8), color: Colors.white.withOpacity(0.03)),
+    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(8), color: Colors.white.withValues(alpha: 0.03)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Icon(Icons.speaker, color: Colors.white54, size: 18),
