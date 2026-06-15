@@ -246,9 +246,9 @@ class _DspPanel extends StatelessWidget {
     final isSending = bState.isSending;
     final hasDsp = mState.packets.isNotEmpty;
     final profile = ref.watch(systemProfileProvider);
-    final chipHint = profile.isAdau1452 ? '${profile.chipLabel} — SigmaStudio 주소맵 미확정' : '${mState.packets.length}개 노치 필터 → ${profile.chipLabel} Safeload';
+    final chipHint = profile.isAdau1466 ? '${profile.chipLabel} — SigmaStudio 주소맵 미확정' : '${mState.packets.length}개 노치 필터 → ${profile.chipLabel} Safeload';
     final hint = !hasDsp ? '측정 후 DSP 필터가 생성됩니다.' : !isConnected ? '스피커를 연결하면 DSP를 적용할 수 있습니다.' : chipHint;
-    final canApply = hasDsp && isConnected && !isSending && !profile.isAdau1452;
+    final canApply = hasDsp && isConnected && !isSending && !profile.isAdau1466;
     return Row(children: [
       Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
       const SizedBox(width: 16),

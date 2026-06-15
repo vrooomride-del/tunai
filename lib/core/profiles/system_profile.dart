@@ -1,11 +1,11 @@
 import '../dsp/dsp_adapter.dart';
 import '../dsp/adau1701_adapter.dart';
-import '../dsp/adau1452_adapter.dart';
+import '../dsp/adau1466_adapter.dart';
 
 enum SystemProfileId {
   tunaiOne,       // 경로 1: JAB4(ADAU1701) 2웨이
-  isobarik,       // 경로 2: 파란보드(ADAU1452) 3웨이 Linn Isobarik
-  tunaiReference, // 경로 3: 파란보드(ADAU1452) 동축 2웨이
+  isobarik,       // 경로 2: 파란보드(ADAU1466) 3웨이 Linn Isobarik
+  tunaiReference, // 경로 3: 파란보드(ADAU1466) 동축 2웨이
 }
 
 enum ChannelType { woofer, mid, tweeter, fullRange, subwoofer }
@@ -37,7 +37,7 @@ class SystemProfile {
   });
 
   int get channelCount => channels.length;
-  bool get isAdau1452 => id == SystemProfileId.isobarik || id == SystemProfileId.tunaiReference;
+  bool get isAdau1466 => id == SystemProfileId.isobarik || id == SystemProfileId.tunaiReference;
 }
 
 // ── 사전 정의 프로파일 ─────────────────────────────────────────
@@ -58,9 +58,9 @@ final kTunaiOneSystemProfile = SystemProfile(
 final kIsobarikSystemProfile = SystemProfile(
   id: SystemProfileId.isobarik,
   displayName: 'Isobarik 거실',
-  description: 'Linn Isobarik 3웨이 · 파란보드(ADAU1452/1466)',
-  chipLabel: 'ADAU1452/1466',
-  adapterFactory: (write) => Adau1452Adapter(writeRaw: write),
+  description: 'Linn Isobarik 3웨이 · 파란보드(ADAU1466 + CS42448)',
+  chipLabel: 'ADAU1466',
+  adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
   channels: const [
     ChannelConfig(name: 'Woofer',  type: ChannelType.woofer,  freqRange: (20,  280)),
     ChannelConfig(name: 'Mid',     type: ChannelType.mid,     freqRange: (280,  2500)),
@@ -72,9 +72,9 @@ final kIsobarikSystemProfile = SystemProfile(
 final kTunaiReferenceSystemProfile = SystemProfile(
   id: SystemProfileId.tunaiReference,
   displayName: 'TUNAI REFERENCE',
-  description: '5.25" 동축 2웨이 · 파란보드(ADAU1452/1466) + TPA3255 + QCC5125',
-  chipLabel: 'ADAU1452/1466',
-  adapterFactory: (write) => Adau1452Adapter(writeRaw: write),
+  description: '5.25" 동축 2웨이 · 파란보드(ADAU1466 + CS42448) + TPA3255 + QCC5125',
+  chipLabel: 'ADAU1466',
+  adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
   channels: const [
     ChannelConfig(name: 'Coaxial Woofer',  type: ChannelType.woofer,  freqRange: (40,  2000)),
     ChannelConfig(name: 'Coaxial Tweeter', type: ChannelType.tweeter, freqRange: (2000, 20000)),
