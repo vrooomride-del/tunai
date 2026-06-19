@@ -1,6 +1,6 @@
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:fftea/fftea.dart';
+import 'package:flutter/foundation.dart';
 import 'mic_calibration.dart';
 
 class FrequencyBin {
@@ -102,29 +102,45 @@ class AudioAnalyzer {
     final targetBins = scmsBins
         .where((b) => b.frequency >= 20 && b.frequency <= 500)
         .toList();
+    debugPrint('[PEAK] scmsBins total: ${scmsBins.length}, 20-500Hz bins: ${targetBins.length}');
     if (targetBins.isEmpty) return [];
 
     final avg = targetBins.map((b) => b.magnitude).reduce((a, b) => a + b)
         / targetBins.length;
-    final peaks = <ResonancePeak>[];
-    final threshold = avg + 3.0;
+    // 65536포인트 FFT → 0.67Hz/bin 해상도: ±30bin = ±20Hz 윈도우로 로컬 최대 검색
+    const halfWin = 30;
+    final threshold = avg + 1.5;
+    debugPrint('[PEAK] avg=${avg.toStringAsFixed(1)}dB, threshold=${threshold.toStringAsFixed(1)}dB, halfWin=$halfWin');
 
-    for (int i = 1; i < targetBins.length - 1; i++) {
-      final prev = targetBins[i - 1].magnitude;
+    final peaks = <ResonancePeak>[];
+    int i = halfWin;
+    while (i < targetBins.length - halfWin) {
       final curr = targetBins[i].magnitude;
-      final next = targetBins[i + 1].magnitude;
-      if (curr > prev && curr > next && curr > threshold) {
+      if (curr <= threshold) { i++; continue; }
+
+      // 윈도우 내 최대값인지 확인
+      bool isLocalMax = true;
+      for (int j = i - halfWin; j <= i + halfWin; j++) {
+        if (j != i && targetBins[j].magnitude >= curr) { isLocalMax = false; break; }
+      }
+      if (isLocalMax) {
         final gainToReduce = -(curr - avg).clamp(1.0, 24.0);
         peaks.add(ResonancePeak(
           frequency: targetBins[i].frequency,
           gain: gainToReduce,
           q: 4.0,
         ));
+        i += halfWin; // 같은 피크 중복 방지
+      } else {
+        i++;
       }
     }
 
+    debugPrint('[PEAK] raw peaks found: ${peaks.length}');
     peaks.sort((a, b) => a.gain.compareTo(b.gain));
-    return peaks.take(4).toList();
+    final result = peaks.take(4).toList();
+    for (final p in result) { debugPrint('[PEAK] → $p'); }
+    return result;
   }
 }
 

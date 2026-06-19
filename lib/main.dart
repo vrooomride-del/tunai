@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +11,7 @@ import 'features/device/device_screen.dart';
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   await SharedPreferences.getInstance();
   FlutterNativeSplash.remove();
   runApp(const ProviderScope(child: TunaiApp()));

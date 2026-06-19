@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -230,6 +231,13 @@ class _MeasurePanel extends StatelessWidget {
           onTap: isRunning ? null : step == MeasurementStep.done || step == MeasurementStep.error ? ctrl.reset : ctrl.startMeasurement,
         ),
       ]),
+      if (kDebugMode) ...[
+        const SizedBox(height: 12),
+        _OutlineButton(
+          label: '🛠 더미 데이터 주입',
+          onTap: () => ctrl.injectDummyData(),
+        ),
+      ],
       if (mState.scmsBins.isNotEmpty) ...[const SizedBox(height: 20), _SpectrumChart(bins: mState.scmsBins, peaks: mState.peaks)],
       if (mState.peaks.isNotEmpty) ...[const SizedBox(height: 16), _PeakTable(peaks: mState.peaks)],
     ]);

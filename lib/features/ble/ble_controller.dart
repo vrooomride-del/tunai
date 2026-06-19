@@ -1,15 +1,15 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../dsp/dsp_compiler.dart';
 
-// TUNAI BLE 서비스/캐릭터리스틱 UUID
-// ESP32 펌웨어와 반드시 일치해야 함
+// ICP5(WONDOM) BLE GATT UUID — GATT 덤프로 확인된 실제 값
 class TunaiUUID {
-  static const String service       = '12345678-1234-1234-1234-123456789ABC';
-  static const String dspWrite      = '12345678-1234-1234-1234-123456789ABD'; // Write
-  static const String statusNotify  = '12345678-1234-1234-1234-123456789ABE'; // Notify
+  static const String service      = 'fff0';
+  static const String dspWrite     = 'fff2'; // WRITE|WRITE_NO_RSP
+  static const String statusNotify = 'fff1'; // READ|NOTIFY
 }
 
 enum BleConnectionState { disconnected, scanning, connecting, connected, error }
@@ -50,35 +50,65 @@ class BleController extends StateNotifier<BleState> {
   BluetoothDevice? _device;
   BluetoothCharacteristic? _dspWriteChar;
 
-  /// 스캔 → TUNAI 기기 자동 연결
+  // ICP5(WONDOM) BLE 광고 이름 후보 — Miumax에서 보이는 실제 이름으로 업데이트 필요
+  static const List<String> _targetNames = ['ICP5', 'icp5', 'TUNAI', 'tunai', 'BT_AUDIO', 'WONDOM'];
+
+  /// Android 12+ BLE 런타임 권한 요청
+  Future<bool> _requestBlePermissions() async {
+    final statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+    ].request();
+    return statuses.values.every((s) => s.isGranted);
+  }
+
+  /// 스캔 → TUNAI/ICP5 기기 자동 연결
   Future<void> scanAndConnect() async {
     state = state.copyWith(
       connection: BleConnectionState.scanning,
       message: 'TUNAI 스피커 검색 중...',
     );
 
-    try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 10),
-        withServices: [Guid(TunaiUUID.service)],
-      );
-
-      await for (final results in FlutterBluePlus.scanResults) {
-        for (final r in results) {
-          if (r.device.advName.contains('TUNAI') ||
-              r.device.advName.contains('tunai')) {
-            await FlutterBluePlus.stopScan();
-            await _connectToDevice(r.device);
-            return;
-          }
-        }
-      }
-
-      // 10초 내 미발견
+    final granted = await _requestBlePermissions();
+    if (!granted) {
       state = state.copyWith(
         connection: BleConnectionState.error,
-        message: 'TUNAI 스피커를 찾을 수 없습니다.',
+        message: 'Bluetooth 권한이 필요합니다.\n설정 > 앱 > TUNAI > 권한에서 허용하세요.',
       );
+      return;
+    }
+
+    try {
+      // withServices 필터 제거: ICP5는 커스텀 ESP32 서비스 UUID를 advertise하지 않음
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 10),
+      );
+
+      // scanResults는 BehaviorSubject라 스캔이 끝나도 닫히지 않으므로
+      // isScanning이 false가 되면 직접 break 해야 함
+      BluetoothDevice? found;
+      await for (final results in FlutterBluePlus.scanResults) {
+        for (final r in results) {
+          final name = r.device.advName;
+          if (_targetNames.any((n) => name.contains(n))) {
+            found = r.device;
+            break;
+          }
+        }
+        if (found != null) break;
+        if (!FlutterBluePlus.isScanningNow) break;
+      }
+
+      await FlutterBluePlus.stopScan();
+
+      if (found != null) {
+        await _connectToDevice(found);
+      } else {
+        state = state.copyWith(
+          connection: BleConnectionState.error,
+          message: 'TUNAI/ICP5 스피커를 찾을 수 없습니다.\nMiumax에서 보이는 BLE 이름을 확인하세요.',
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         connection: BleConnectionState.error,
@@ -98,12 +128,33 @@ class BleController extends StateNotifier<BleState> {
       await device.connect(timeout: const Duration(seconds: 10));
       _device = device;
 
-      // 서비스 검색
+      // 서비스 검색 + 디버그 덤프
       final services = await device.discoverServices();
+
+      // ── DEBUG: ICP5 실제 GATT 구조 출력 ──────────────────────────────
+      debugPrint('══════════════════════════════════════════');
+      debugPrint('GATT dump for ${device.advName} (${device.remoteId})');
       for (final s in services) {
-        if (s.uuid == Guid(TunaiUUID.service)) {
+        debugPrint('  SERVICE: ${s.uuid}');
+        for (final c in s.characteristics) {
+          final props = [
+            if (c.properties.read) 'READ',
+            if (c.properties.write) 'WRITE',
+            if (c.properties.writeWithoutResponse) 'WRITE_NO_RSP',
+            if (c.properties.notify) 'NOTIFY',
+            if (c.properties.indicate) 'INDICATE',
+          ].join('|');
+          debugPrint('    CHAR: ${c.uuid}  [$props]');
+        }
+      }
+      debugPrint('══════════════════════════════════════════');
+      // ─────────────────────────────────────────────────────────────────
+
+      for (final s in services) {
+        // 16비트 short UUID는 128비트로 확장되므로 str 포함 여부로 비교
+        if (s.uuid.str128.contains(TunaiUUID.service)) {
           for (final c in s.characteristics) {
-            if (c.uuid == Guid(TunaiUUID.dspWrite)) {
+            if (c.uuid.str128.contains(TunaiUUID.dspWrite)) {
               _dspWriteChar = c;
             }
           }
@@ -111,7 +162,15 @@ class BleController extends StateNotifier<BleState> {
       }
 
       if (_dspWriteChar == null) {
-        throw Exception('DSP Write 캐릭터리스틱을 찾을 수 없습니다.');
+        // 찾지 못한 경우: 실제 UUID를 에러 메시지에 포함
+        final summary = services.map((s) =>
+          '${s.uuid}: [${s.characteristics.map((c) => c.uuid).join(', ')}]'
+        ).join('\n');
+        throw Exception(
+          'DSP Write 캐릭터리스틱을 찾을 수 없습니다.\n'
+          '기대: service=${TunaiUUID.service}\n'
+          '실제 서비스:\n$summary',
+        );
       }
 
       state = state.copyWith(
@@ -131,6 +190,7 @@ class BleController extends StateNotifier<BleState> {
         }
       });
     } catch (e) {
+      debugPrint('BLE _connectToDevice ERROR: $e');
       state = state.copyWith(
         connection: BleConnectionState.error,
         message: '연결 실패: $e',
@@ -157,11 +217,13 @@ class BleController extends StateNotifier<BleState> {
     try {
       for (int i = 0; i < packets.length; i++) {
         final frame = DspCompiler.buildBleFrame(packets[i]);
+        debugPrint('[BLE] 패킷 ${i+1}/${packets.length} — ${frame.length}바이트: ${frame.map((b) => b.toRadixString(16).padLeft(2,'0')).join(' ')}');
 
         await _dspWriteChar!.write(
           frame,
           withoutResponse: false, // ACK 대기
         );
+        debugPrint('[BLE] 패킷 ${i+1} 전송 완료 (ACK OK)');
 
         state = state.copyWith(
           message: 'DSP 패킷 전송 중... (${i + 1}/${packets.length})',

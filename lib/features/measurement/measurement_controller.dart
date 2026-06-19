@@ -1,11 +1,11 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../core/mic_calibration.dart';
 import '../../core/pink_noise_generator.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/speaker_profile.dart';
@@ -119,16 +119,14 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       final pcmBytes = await File(recordPath).readAsBytes();
       final rawPcm = Uint8List.sublistView(pcmBytes, 44);
       final samples = AudioAnalyzer.pcmToFloat(rawPcm);
+      debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
       final scapBins = AudioAnalyzer.performFFT(samples);
 
-      // 7. 기기 감지 + CCV → Scms
-      final deviceProfile = await DeviceProfile.detect();
-      final ccv = AudioAnalyzer.calculateCCV(scapBins, deviceProfile: deviceProfile);
-      final scmsBins = AudioAnalyzer.applyCCV(scapBins, ccv);
-
-      // 8. 피크 검출
+      // 7. 피크 검출 — raw FFT 스펙트럼에서 직접 검출
+      // (CCV는 동일 신호에 적용 시 완전 평탄화되어 피크가 사라지는 문제 있음)
       _update(MeasurementStep.detectingPeaks, '공진 주파수 검출 중...');
-      final peaks = AudioAnalyzer.detectPeaks(scmsBins);
+      final peaks = AudioAnalyzer.detectPeaks(scapBins);
+      final scmsBins = scapBins; // 스펙트럼 차트용
 
       // 9. DSP 컴파일
       _update(MeasurementStep.compiling, 'DSP 패킷 컴파일 중...');
@@ -177,6 +175,31 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   Future<String> _recordingPath() async {
     final dir = await getTemporaryDirectory();
     return '${dir.path}/scap_recording.wav';
+  }
+
+  /// 디버그 전용: 실물 스피커 없이 파이프라인 검증용 더미 데이터 주입
+  void injectDummyData() {
+    assert(kDebugMode, 'injectDummyData는 디버그 빌드 전용입니다');
+    const dummyPeaks = [
+      ResonancePeak(frequency: 82.0,   gain: -6.5, q: 4.0),  // 저역 공진 (포트 공진 모사)
+      ResonancePeak(frequency: 248.0,  gain: -4.2, q: 3.5),  // 중저역 딥
+      ResonancePeak(frequency: 1180.0, gain: -3.8, q: 5.0),  // 중역 피크
+    ];
+    final packets = DspCompiler.compileAll(dummyPeaks);
+    debugPrint('[DUMMY] peaks=${dummyPeaks.length}, packets=${packets.length}');
+    for (final p in dummyPeaks) { debugPrint('[DUMMY] $p'); }
+    state = state.copyWith(
+      step: MeasurementStep.done,
+      message: '[DEBUG] 더미 데이터 주입 완료 — ${dummyPeaks.length}개 공진',
+      peaks: dummyPeaks,
+      packets: packets,
+    );
+  }
+
+  double _rms(Float64List s) {
+    if (s.isEmpty) return 0;
+    final sum = s.fold<double>(0, (acc, v) => acc + v * v);
+    return sqrt(sum / s.length);
   }
 
   void reset() => state = const MeasurementState();
