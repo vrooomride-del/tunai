@@ -123,27 +123,32 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
       final scapBins = AudioAnalyzer.performFFT(samples);
 
-      // 7. 기종별 마이크 보정 적용 (CCV와 독립 — CCV는 우회 중)
+      // 7. 1단계: 기종별 마이크 보정 (MicCalibrationDb — 고정 테이블, dB 덧셈)
       _update(MeasurementStep.detectingPeaks, '공진 주파수 검출 중...');
       final deviceProfile = await DeviceProfile.detect();
       debugPrint('[MIC] 기기: ${deviceProfile.modelName} (보정: ${deviceProfile.hasCalibration})');
-      List<FrequencyBin> correctedBins;
+      List<FrequencyBin> micCorrectedBins;
       if (deviceProfile.hasCalibration) {
-        correctedBins = scapBins.map((bin) {
+        micCorrectedBins = scapBins.map((bin) {
           final correction = MicCalibrationDb.interpolateCorrection(
               deviceProfile.calibration!, bin.frequency);
           return FrequencyBin(
               frequency: bin.frequency, magnitude: bin.magnitude + correction);
         }).toList();
-        debugPrint('[MIC] 마이크 보정 적용: ${deviceProfile.modelName}');
+        debugPrint('[MIC] 기종 보정 적용: ${deviceProfile.modelName}');
       } else {
-        correctedBins = scapBins;
+        micCorrectedBins = scapBins;
       }
 
-      // 8. 피크 검출 — 보정된 스펙트럼 사용
-      // (CCV는 동일 신호에 적용 시 완전 평탄화되어 피크가 사라지는 문제 있음)
-      final peaks = AudioAnalyzer.detectPeaks(correctedBins);
-      final scmsBins = correctedBins; // 스펙트럼 차트용
+      // 8. 2단계: CCV 적용 (핑크노이즈 이론 형태 vs 실측 잔차 보정, dB 덧셈)
+      //    입력: MicCalibrationDb 보정 완료된 스펙트럼
+      //    de-mean 적용으로 "동일 신호 자기 비교" 시 보정값 = 0 → 피크 유지
+      final ccv = AudioAnalyzer.calculateCCV(micCorrectedBins);
+      debugPrint('[CCV] 보정 bin 수: ${ccv.length}');
+      final scmsBins = AudioAnalyzer.applyCCV(micCorrectedBins, ccv);
+
+      // 9. 피크 검출
+      final peaks = AudioAnalyzer.detectPeaks(scmsBins);
 
       // 9. DSP 컴파일
       _update(MeasurementStep.compiling, 'DSP 패킷 컴파일 중...');
@@ -194,13 +199,21 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     return '${dir.path}/scap_recording.wav';
   }
 
-  /// 디버그 전용: 실물 스피커 없이 파이프라인 검증용 더미 데이터 주입
+  /// 디버그 전용: CCV 재설계 검증 + 파이프라인 더미 데이터 주입
+  ///
+  /// CCV 전/후 비교 시나리오:
+  ///   시나리오A — 인위적 피크 포함 스펙트럼: CCV 적용 후 피크가 유지되는지 확인
+  ///   시나리오B — 완전 평탄 스펙트럼: CCV 적용 후 보정값이 0에 가까운지 확인
+  ///     (예전 버그: 동일 신호 비교 시 피크 소멸 → de-mean 후 재발 불가)
   void injectDummyData() {
     assert(kDebugMode, 'injectDummyData는 디버그 빌드 전용입니다');
+
+    if (kDebugMode) _verifyCcv();
+
     const dummyPeaks = [
-      ResonancePeak(frequency: 82.0,   gain: -6.5, q: 4.0),  // 저역 공진 (포트 공진 모사)
-      ResonancePeak(frequency: 248.0,  gain: -4.2, q: 3.5),  // 중저역 딥
-      ResonancePeak(frequency: 1180.0, gain: -3.8, q: 5.0),  // 중역 피크
+      ResonancePeak(frequency: 82.0,   gain: -6.5, q: 4.0),
+      ResonancePeak(frequency: 248.0,  gain: -4.2, q: 3.5),
+      ResonancePeak(frequency: 1180.0, gain: -3.8, q: 5.0),
     ];
     final packets = DspCompiler.compileAll(dummyPeaks);
     debugPrint('[DUMMY] peaks=${dummyPeaks.length}, packets=${packets.length}');
@@ -211,6 +224,41 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       peaks: dummyPeaks,
       packets: packets,
     );
+  }
+
+  /// CCV 재설계 검증 로그 (디버그 전용)
+  void _verifyCcv() {
+    // ── 시나리오 A: 이상적 핑크노이즈 스펙트럼 (피크 없음) ──────────────
+    // srefDb와 동일한 형태 → de-mean 후 CCV = 0 → applyCCV 후 변화 없어야 함
+    final flatBins = <FrequencyBin>[];
+    for (var freq = 20.0; freq <= 2000; freq *= 1.05) {
+      flatBins.add(FrequencyBin(
+          frequency: freq, magnitude: AudioAnalyzer.srefDb(freq)));
+    }
+    final ccvFlat = AudioAnalyzer.calculateCCV(flatBins);
+    final maxCorrFlat = ccvFlat.values.isEmpty
+        ? 0.0 : ccvFlat.values.map((v) => v.abs()).reduce(max);
+    debugPrint('[CCV-VERIFY] 시나리오A(평탄) 최대 보정값: '
+        '${maxCorrFlat.toStringAsFixed(3)}dB → 0에 가까워야 함');
+
+    // ── 시나리오 B: 82Hz에 +8dB 인위적 피크 포함 ────────────────────────
+    final peakBins = flatBins.map((b) {
+      final bump = (b.frequency > 60 && b.frequency < 100) ? 8.0 : 0.0;
+      return FrequencyBin(frequency: b.frequency, magnitude: b.magnitude + bump);
+    }).toList();
+    final ccvPeak = AudioAnalyzer.calculateCCV(peakBins);
+    final applied = AudioAnalyzer.applyCCV(peakBins, ccvPeak);
+    final peakBefore = peakBins
+        .where((b) => b.frequency > 60 && b.frequency < 100)
+        .map((b) => b.magnitude).reduce(max);
+    final peakAfter = applied
+        .where((b) => b.frequency > 60 && b.frequency < 100)
+        .map((b) => b.magnitude).reduce(max);
+    debugPrint('[CCV-VERIFY] 시나리오B(피크) 82Hz 전: '
+        '${peakBefore.toStringAsFixed(1)}dB → 후: ${peakAfter.toStringAsFixed(1)}dB '
+        '(감소여부: ${peakAfter < peakBefore})');
+    debugPrint('[CCV-VERIFY] ─ 예전 버그라면 시나리오A 보정값 ≫ 0 이거나 '
+        '시나리오B 피크가 소멸됐을 것');
   }
 
   double _rms(Float64List s) {

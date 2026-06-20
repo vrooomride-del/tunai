@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'package:fftea/fftea.dart';
 import 'package:flutter/foundation.dart';
-import 'mic_calibration.dart';
 
 class FrequencyBin {
   final double frequency;
@@ -15,11 +14,11 @@ class AudioAnalyzer {
   static const int sampleRate = 44100;
   static const int fftSize = 65536;
 
-  static double srefMagnitude(int binIndex) {
-    if (binIndex == 0) return 0;
-    final freq = binIndex * sampleRate / fftSize;
-    if (freq < 20 || freq > 20000) return 0;
-    return 1.0 / sqrt(freq);
+  /// 핑크노이즈 이론 스펙트럼 dB값 (1/f 파워 → -10*log10(f) + 오프셋)
+  /// 오프셋은 de-mean 시 소거되므로 임의 기준(1kHz = 0dB) 사용
+  static double srefDb(double freq) {
+    if (freq <= 0) return 0;
+    return -10 * log(freq / 1000) / ln10; // 1kHz 기준 0dB
   }
 
   static Float64List pcmToFloat(Uint8List pcmBytes) {
@@ -62,39 +61,52 @@ class AudioAnalyzer {
     return bins;
   }
 
-  static CCV calculateCCV(List<FrequencyBin> scapBins,
-      {DeviceProfile? deviceProfile}) {
-    final ccv = <int, double>{};
-    for (int i = 0; i < scapBins.length; i++) {
-      final bin = scapBins[i];
-      final freq = bin.frequency;
-      final binIndex = (freq * fftSize / sampleRate).round();
-      final srefMag = srefMagnitude(binIndex);
-      if (srefMag <= 0) continue;
-      final scapLinear = pow(10, bin.magnitude / 20).toDouble();
-      if (scapLinear <= 0) continue;
+  /// CCV 계산 — dB 도메인, 20Hz~2kHz 대역 평균 de-mean (안 2)
+  ///
+  /// 원리:
+  ///   srefDb(f) = 핑크노이즈 이론 스펙트럼 형태 (dB)
+  ///   scapDb(f) = MicCalibrationDb 보정 후 실측 스펙트럼 (dB)
+  ///   raw_ccv[f] = srefDb(f) - scapDb(f)
+  ///
+  /// de-mean: 20Hz~2kHz 관심 대역의 raw_ccv 평균을 빼서
+  ///   전체 레벨 오프셋을 제거하고 "형태 편차"만 남김.
+  ///   → 동일 신호를 비교하면 raw_ccv가 상수가 되어 de-mean 후 0이 됨
+  ///     (피크가 사라지는 예전 버그 재발 불가)
+  ///
+  /// [scapBins]: MicCalibrationDb 기종 보정이 이미 적용된 스펙트럼
+  static CCV calculateCCV(List<FrequencyBin> scapBins) {
+    // 관심 대역 필터
+    final band = scapBins
+        .where((b) => b.frequency >= 20 && b.frequency <= 2000)
+        .toList();
+    if (band.isEmpty) return {};
 
-      // 기종별 마이크 보정 적용
-      double deviceCorrection = 0.0;
-      if (deviceProfile != null && deviceProfile.hasCalibration) {
-        deviceCorrection = MicCalibrationDb.interpolateCorrection(
-            deviceProfile.calibration!, freq);
-      }
-      final correctionLinear = pow(10, deviceCorrection / 20).toDouble();
-      ccv[binIndex] = (srefMag / scapLinear) * correctionLinear;
+    // raw CCV (dB 차이) 계산
+    final rawCcv = <double, double>{}; // freq → raw dB correction
+    for (final bin in band) {
+      rawCcv[bin.frequency] = srefDb(bin.frequency) - bin.magnitude;
+    }
+
+    // de-mean: 관심 대역 평균 제거
+    final mean = rawCcv.values.reduce((a, b) => a + b) / rawCcv.length;
+    debugPrint('[CCV] 관심 대역 raw_ccv 평균: ${mean.toStringAsFixed(2)}dB (제거됨)');
+
+    // binIndex 기반 Map으로 변환
+    final ccv = <int, double>{};
+    for (final entry in rawCcv.entries) {
+      final binIndex = (entry.key * fftSize / sampleRate).round();
+      ccv[binIndex] = entry.value - mean; // de-meaned dB 보정값
     }
     return ccv;
   }
 
+  /// CCV 적용 — dB 덧셈
   static List<FrequencyBin> applyCCV(List<FrequencyBin> scapBins, CCV ccv) {
     return scapBins.map((bin) {
-      final freq = bin.frequency;
-      final binIndex = (freq * fftSize / sampleRate).round();
-      final correction = ccv[binIndex] ?? 1.0;
-      final scapLinear = pow(10, bin.magnitude / 20).toDouble();
-      final scmsLinear = scapLinear * correction;
-      final scmsDb = scmsLinear > 0 ? 20 * log(scmsLinear) / ln10 : -120.0;
-      return FrequencyBin(frequency: freq, magnitude: scmsDb);
+      final binIndex = (bin.frequency * fftSize / sampleRate).round();
+      final correction = ccv[binIndex] ?? 0.0; // 없으면 보정 없음 (0dB)
+      return FrequencyBin(
+          frequency: bin.frequency, magnitude: bin.magnitude + correction);
     }).toList();
   }
 
