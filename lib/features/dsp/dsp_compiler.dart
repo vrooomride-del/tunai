@@ -34,6 +34,11 @@ class DspCompiler {
   static const int safeloadData0 = 0x0810;
   static const int safeloadAddr0 = 0x0815;
 
+  // PRAM 레이아웃 (TUNAI 펌웨어 SigmaStudio 프로그램 기준)
+  // HPF biquad: 0x000B (5 words), PEQ 시작: 0x0010
+  static const int hpfPramAddr = 0x000B;
+  static const int peqStartPramAddr = 0x0010;
+
   // BLE 프레임 상수
   static const int bleHeader = 0xAA;
   static const int bleFooter = 0x55;
@@ -96,9 +101,19 @@ class DspCompiler {
     return RegisterPacket(pramTargetAddr: pramAddr, coeffBytes: bytes);
   }
 
+  /// HPF → RegisterPacket (hpfPramAddr 고정)
+  static RegisterPacket compileHpf(double freq) {
+    final coeff = DspCompilerSafety.calculateHpf(freq);
+    final bytes = <int>[];
+    for (final c in [coeff.b0, coeff.b1, coeff.b2, coeff.a1, coeff.a2]) {
+      bytes.addAll(toBytes4(toFixed523(c)));
+    }
+    return RegisterPacket(pramTargetAddr: hpfPramAddr, coeffBytes: bytes);
+  }
+
   /// 복수 피크 → 복수 패킷
   static List<RegisterPacket> compileAll(
-      List<ResonancePeak> peaks, {int startPramAddr = 0x0010}) {
+      List<ResonancePeak> peaks, {int startPramAddr = peqStartPramAddr}) {
     final packets = <RegisterPacket>[];
     int addr = startPramAddr;
     for (final peak in peaks) {

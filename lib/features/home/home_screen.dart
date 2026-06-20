@@ -9,9 +9,18 @@ import '../auth/auth_screen.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/ai_tuning_service.dart';
 import '../../core/profiles/system_profile.dart';
+import '../../core/speaker_profile.dart';
+import '../dsp/dsp_compiler.dart';
 
 // 선택된 시스템 프로파일 전역 상태
 final systemProfileProvider = StateProvider<SystemProfile>((ref) => kTunaiOneSystemProfile);
+
+// 선택된 스피커 T/S 프로파일 (HPF SafetyProfile 적용용)
+// TUNAI One 선택 시 기본 프로파일 자동 세팅, 그 외 null
+final speakerProfileProvider = StateProvider<SpeakerProfile?>((ref) {
+  final sys = ref.watch(systemProfileProvider);
+  return sys.id == SystemProfileId.tunaiOne ? kTunaiOneProfile : null;
+});
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -228,7 +237,9 @@ class _MeasurePanel extends StatelessWidget {
         _OutlineButton(
           label: isRunning ? '측정 중...' : step == MeasurementStep.done ? 'RE-MEASURE' : 'MEASURE',
           loading: isRunning,
-          onTap: isRunning ? null : step == MeasurementStep.done || step == MeasurementStep.error ? ctrl.reset : ctrl.startMeasurement,
+          onTap: isRunning ? null : step == MeasurementStep.done || step == MeasurementStep.error
+            ? ctrl.reset
+            : () => ctrl.startMeasurement(speakerProfile: ref.read(speakerProfileProvider)),
         ),
       ]),
       if (kDebugMode) ...[
@@ -261,7 +272,15 @@ class _DspPanel extends StatelessWidget {
       Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
       const SizedBox(width: 16),
       _OutlineButton(label: isSending ? 'SENDING...' : 'APPLY', loading: isSending, enabled: canApply,
-          onTap: canApply ? () => ref.read(bleProvider.notifier).sendPackets(mState.packets) : null),
+          onTap: canApply ? () {
+            final sp = ref.read(speakerProfileProvider);
+            final packets = [
+              if (sp != null) DspCompiler.compileHpf(sp.recommendedHpfFreq),
+              ...mState.packets,
+            ];
+            debugPrint('[DSP] APPLY: HPF=${sp != null ? '${sp.recommendedHpfFreq.toStringAsFixed(0)}Hz' : 'none'}, PEQ=${mState.packets.length}개');
+            ref.read(bleProvider.notifier).sendPackets(packets);
+          } : null),
     ]);
   }
 }
@@ -355,6 +374,7 @@ class _AiTunePanel extends StatefulWidget {
 
 class _AiTunePanelState extends State<_AiTunePanel> {
   bool _loading = false;
+  bool _applying = false;
   AiTuningResult? _result;
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
 
@@ -367,8 +387,46 @@ class _AiTunePanelState extends State<_AiTunePanel> {
     setState(() { _loading = false; _result = result; });
   }
 
+  Future<void> _applyBand(Map<String, dynamic> band, int idx) async {
+    if (band['enabled'] == false) return;
+    final peak = ResonancePeak(
+      frequency: (band['frequency'] as num).toDouble(),
+      gain: (band['gainDb'] as num).toDouble(),
+      q: (band['q'] as num).toDouble(),
+    );
+    final packet = DspCompiler.compilePeak(peak, DspCompiler.peqStartPramAddr + idx * 5);
+    await widget.ref.read(bleProvider.notifier).sendPackets([packet]);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Band ${idx + 1} 전송 완료'),
+      duration: const Duration(seconds: 1),
+    ));
+  }
+
+  Future<void> _applyAll() async {
+    if (_result == null || _result!.isError) return;
+    final isConnected = widget.ref.read(bleProvider).connection == BleConnectionState.connected;
+    if (!isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('스피커를 먼저 연결하세요')));
+      return;
+    }
+    setState(() => _applying = true);
+    final enabledBands = _result!.bands.where((b) => b['enabled'] != false).toList();
+    final peaks = enabledBands.map((b) => ResonancePeak(
+      frequency: (b['frequency'] as num).toDouble(),
+      gain: (b['gainDb'] as num).toDouble(),
+      q: (b['q'] as num).toDouble(),
+    )).toList();
+    final packets = DspCompiler.compileAll(peaks);
+    await widget.ref.read(bleProvider.notifier).sendPackets(packets);
+    setState(() => _applying = false);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('AI 추천 ${peaks.length}개 밴드 DSP 적용 완료'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isConnected = widget.ref.watch(bleProvider).connection == BleConnectionState.connected;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         controller: _ctrl,
@@ -396,18 +454,43 @@ class _AiTunePanelState extends State<_AiTunePanel> {
         ),
         const SizedBox(height: 12),
         ..._result!.bands.asMap().entries.map((e) {
+          final idx = e.key;
           final b = e.value;
+          final active = b['enabled'] != false;
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(children: [
-              Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10), decoration: const BoxDecoration(color: Colors.white38, shape: BoxShape.circle)),
-              Expanded(child: Text('${b['frequency']}Hz', style: const TextStyle(color: Colors.white, fontSize: 13))),
-              Text('${b['gainDb']}dB', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+              Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(color: active ? Colors.white38 : Colors.white12, shape: BoxShape.circle)),
+              Expanded(child: Text('${b['frequency']}Hz', style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 13))),
+              Text('${b['gainDb']}dB', style: TextStyle(color: active ? Colors.white60 : Colors.white24, fontSize: 12)),
               const SizedBox(width: 12),
               Text('Q${b['q']}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              const SizedBox(width: 12),
+              if (active && isConnected)
+                GestureDetector(
+                  onTap: () => _applyBand(b, idx),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(3)),
+                    child: const Text('APPLY', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+                  ),
+                ),
             ]),
           );
         }),
+        const SizedBox(height: 12),
+        _OutlineButton(
+          label: _applying ? 'SENDING...' : 'APPLY ALL',
+          loading: _applying,
+          enabled: isConnected && !_applying,
+          onTap: isConnected ? _applyAll : null,
+        ),
+        if (!isConnected)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('스피커 연결 후 적용 가능합니다', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+          ),
       ],
       if (_result != null && _result!.isError)
         Padding(
