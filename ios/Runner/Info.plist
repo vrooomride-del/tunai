@@ -56,6 +56,11 @@
 		<!-- 위치 (BLE 스캔) -->
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>BLE 스캔을 위해 위치 권한이 필요합니다.</string>
+		<!-- 파일 접근 (FRD 임포트) -->
+		<key>UIFileSharingEnabled</key>
+		<true/>
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
 		<key>UIStatusBarHidden</key>
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>

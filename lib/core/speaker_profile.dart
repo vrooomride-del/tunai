@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'profiles/system_profile.dart';
+import 'frd_parser.dart';
 
 /// 선택된 스피커 T/S 프로파일 전역 상태 (core에 선언 — circular import 방지)
 final speakerProfileProvider = StateProvider<SpeakerProfile?>((ref) {
@@ -20,20 +21,31 @@ class SpeakerProfile {
   final double? portLength;
   final double? portDiameter;
 
+  /// FRD 데이터 (임포트 시 첨부, 없으면 null)
+  final List<FrdPoint>? wooferFrd;
+  final List<FrdPoint>? tweeterFrd;
+
   const SpeakerProfile({
     required this.id, required this.name, required this.description,
     required this.fs, required this.qts, required this.vas,
     required this.xmax, required this.sensitivity,
     this.enclosureVolume, this.portLength, this.portDiameter,
+    this.wooferFrd, this.tweeterFrd,
   });
 
   double get recommendedHpfFreq => fs * 0.85;
 
-  /// T/S 기반 크로스오버 주파수 추정 (멀티웨이 전용)
-  /// Qts < 0.4: 밀폐 특성 → Fs × 20 (중고역 크로스오버 유리)
-  /// Qts 0.4~0.7: 표준 → Fs × 28 (일반적 2웨이 크로스오버)
-  /// Qts > 0.7: 고Qts → Fs × 35 (저역 연장 제한, 낮은 크로스 불가)
+  /// FRD 데이터가 있으면 -6dB 기하평균, 없으면 T/S Qts 배수 폴백
+  bool get hasFrd => wooferFrd != null && wooferFrd!.isNotEmpty;
+
+  /// "FRD 기반" vs "T/S 추정" 표시용
+  String get crossoverBasis => hasFrd ? 'FRD 기반' : 'T/S 추정';
+
   double get recommendedCrossoverFreq {
+    if (hasFrd) {
+      return FrdParser.recommendCrossover(wooferFrd!, tweeterFrd: tweeterFrd);
+    }
+    // T/S 폴백: Qts 기반 Fs 배수
     if (qts < 0.4) return (fs * 20).clamp(800, 4000);
     if (qts < 0.7) return (fs * 28).clamp(1000, 5000);
     return (fs * 35).clamp(1500, 6000);
@@ -96,4 +108,23 @@ class SpeakerProfileState {
     selectedProfile: selectedProfile ?? this.selectedProfile,
     customProfile: customProfile ?? this.customProfile,
   );
+
+  /// FRD 데이터를 현재 activeProfile에 첨부한 새 상태 반환
+  SpeakerProfileState withFrd({
+    required List<FrdPoint> wooferFrd,
+    List<FrdPoint>? tweeterFrd,
+  }) {
+    final base = activeProfile;
+    if (base == null) return this;
+    final updated = SpeakerProfile(
+      id: base.id, name: base.name, description: base.description,
+      fs: base.fs, qts: base.qts, vas: base.vas,
+      xmax: base.xmax, sensitivity: base.sensitivity,
+      enclosureVolume: base.enclosureVolume,
+      portLength: base.portLength, portDiameter: base.portDiameter,
+      wooferFrd: wooferFrd, tweeterFrd: tweeterFrd,
+    );
+    if (mode == SpeakerProfileMode.builtin) return copyWith(selectedProfile: updated);
+    return copyWith(customProfile: updated);
+  }
 }
