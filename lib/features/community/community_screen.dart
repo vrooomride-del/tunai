@@ -7,6 +7,7 @@ import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../ble/ble_controller.dart';
 import '../dsp/dsp_compiler.dart';
+import '../measurement/measurement_controller.dart';
 import '../../core/audio_analyzer.dart';
 
 class CommunityScreen extends ConsumerStatefulWidget {
@@ -389,10 +390,14 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
+              final mPeaks = ref.read(measurementProvider).peaks;
+              final fps = mPeaks.map((p) => {
+                'frequency': p.frequency, 'gain': p.gain, 'q': p.q,
+              }).toList();
               final res = await ApiService.uploadPreset(
                 title: titleCtrl.text.trim(),
                 description: descCtrl.text.trim(),
-                fps: [], roomTag: roomCtrl.text.trim(),
+                fps: fps, roomTag: roomCtrl.text.trim(),
                 enclosureHash: _myHash(),
               );
               if (!context.mounted) return;
