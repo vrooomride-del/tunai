@@ -590,6 +590,56 @@ class _CrossoverCard extends ConsumerStatefulWidget {
 class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
   bool _sending = false;
 
+  Future<void> _applySensitivityMatch() async {
+    final sys = ref.read(systemProfileProvider);
+    final ble = ref.read(bleProvider.notifier);
+    final profile = widget.profile;
+
+    // 감도 계산: FRD 우선, 없으면 T/S fallback
+    final wooferSens = profile.wooferFrd != null && profile.wooferFrd!.isNotEmpty
+        ? FrdParser.calculateSensitivity(profile.wooferFrd!)
+        : profile.sensitivity;
+    final tweeterSens = profile.tweeterFrd != null && profile.tweeterFrd!.isNotEmpty
+        ? FrdParser.calculateSensitivity(profile.tweeterFrd!)
+        : null;
+
+    if (tweeterSens == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('트위터 FRD 데이터가 필요합니다'),
+          duration: Duration(seconds: 2),
+        ));
+      }
+      return;
+    }
+
+    final minSens = wooferSens < tweeterSens ? wooferSens : tweeterSens;
+    final adapter = sys.adapterFactory((frame) => ble.sendRawFrame(frame));
+
+    setState(() => _sending = true);
+    for (int i = 0; i < sys.channels.length; i++) {
+      final ch = sys.channels[i];
+      final double sens;
+      if (ch.type == ChannelType.woofer) {
+        sens = wooferSens;
+      } else if (ch.type == ChannelType.tweeter) {
+        sens = tweeterSens;
+      } else {
+        continue;
+      }
+      final cut = (minSens - sens).clamp(-40.0, 0.0);
+      await adapter.writeGain(i, cut);
+    }
+    setState(() => _sending = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('감도 매칭 완료 — 기준 ${minSens.toStringAsFixed(1)} dB'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
   Future<void> _applyCrossover() async {
     setState(() => _sending = true);
     final freq = widget.profile.recommendedCrossoverFreq;
@@ -655,6 +705,20 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
         const SizedBox(height: 4),
         Text('$label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz',
             style: const TextStyle(color: Colors.white24, fontSize: 10)),
+        if (widget.profile.tweeterFrd != null && widget.profile.tweeterFrd!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            const Text('감도 매칭',
+                style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1)),
+            const Spacer(),
+            _OutlineButton(
+              label: _sending ? '전송 중...' : '감도 매칭 적용',
+              loading: _sending,
+              enabled: isConn && !_sending,
+              onTap: isConn && !_sending ? _applySensitivityMatch : null,
+            ),
+          ]),
+        ],
         if (!isConn)
           const Padding(
             padding: EdgeInsets.only(top: 6),

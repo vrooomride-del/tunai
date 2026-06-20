@@ -25,9 +25,10 @@ class Adau1701Adapter implements DspAdapter {
   static const int _xoTweeterBase = _basePramTweeter + _peqBands * 5;
   static const int _xoSlotsPerSide = 4; // LR48 최대 4 biquad
 
-  // TODO: SigmaStudio export 확인 필요
-  static const int _gainWoofer  = 0x0000; // ← TODO
-  static const int _gainTweeter = 0x0000; // ← TODO
+  // SigmaStudio IC Memory Map 확인 (2026-06-20)
+  // Vol(ch0 Woofer) = addr 7, Vol_2(ch1 Tweeter) = addr 6
+  static const int _gainWoofer  = 7;
+  static const int _gainTweeter = 6;
   static const int _delayWoofer  = 0x0000; // ← TODO
   static const int _delayTweeter = 0x0000; // ← TODO
 
