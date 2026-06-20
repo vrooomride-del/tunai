@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/pink_noise_generator.dart';
 import '../../core/audio_analyzer.dart';
+import '../../core/mic_calibration.dart';
 import '../../core/speaker_profile.dart';
 import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety, RegisterPacket;
 
@@ -122,11 +123,27 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
       final scapBins = AudioAnalyzer.performFFT(samples);
 
-      // 7. 피크 검출 — raw FFT 스펙트럼에서 직접 검출
-      // (CCV는 동일 신호에 적용 시 완전 평탄화되어 피크가 사라지는 문제 있음)
+      // 7. 기종별 마이크 보정 적용 (CCV와 독립 — CCV는 우회 중)
       _update(MeasurementStep.detectingPeaks, '공진 주파수 검출 중...');
-      final peaks = AudioAnalyzer.detectPeaks(scapBins);
-      final scmsBins = scapBins; // 스펙트럼 차트용
+      final deviceProfile = await DeviceProfile.detect();
+      debugPrint('[MIC] 기기: ${deviceProfile.modelName} (보정: ${deviceProfile.hasCalibration})');
+      List<FrequencyBin> correctedBins;
+      if (deviceProfile.hasCalibration) {
+        correctedBins = scapBins.map((bin) {
+          final correction = MicCalibrationDb.interpolateCorrection(
+              deviceProfile.calibration!, bin.frequency);
+          return FrequencyBin(
+              frequency: bin.frequency, magnitude: bin.magnitude + correction);
+        }).toList();
+        debugPrint('[MIC] 마이크 보정 적용: ${deviceProfile.modelName}');
+      } else {
+        correctedBins = scapBins;
+      }
+
+      // 8. 피크 검출 — 보정된 스펙트럼 사용
+      // (CCV는 동일 신호에 적용 시 완전 평탄화되어 피크가 사라지는 문제 있음)
+      final peaks = AudioAnalyzer.detectPeaks(correctedBins);
+      final scmsBins = correctedBins; // 스펙트럼 차트용
 
       // 9. DSP 컴파일
       _update(MeasurementStep.compiling, 'DSP 패킷 컴파일 중...');
