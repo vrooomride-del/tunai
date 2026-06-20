@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/speaker_profile.dart';
+import '../../core/frd_parser.dart';
 
 class SpeakerProfileSelector extends StatefulWidget {
   final void Function(SpeakerProfileState) onSelected;
@@ -21,6 +23,13 @@ class _SpeakerProfileSelectorState extends State<SpeakerProfileSelector> {
   final _portLCtrl = TextEditingController();
   final _portDCtrl = TextEditingController();
 
+  // FRD 임포트 상태
+  List<FrdPoint>? _wooferFrd;
+  List<FrdPoint>? _tweeterFrd;
+  String? _wooferFrdName;
+  String? _tweeterFrdName;
+  String? _frdError;
+
   @override
   void dispose() {
     for (final c in [_fsCtrl,_qtsCtrl,_vasCtrl,_xmaxCtrl,_sensCtrl,_volCtrl,_portLCtrl,_portDCtrl]) { c.dispose(); }
@@ -29,7 +38,18 @@ class _SpeakerProfileSelectorState extends State<SpeakerProfileSelector> {
 
   SpeakerProfileState _buildState() {
     if (_mode == SpeakerProfileMode.builtin) {
-      return SpeakerProfileState(mode: _mode, selectedProfile: _selectedBuiltin);
+      final profile = SpeakerProfile(
+        id: _selectedBuiltin.id, name: _selectedBuiltin.name,
+        description: _selectedBuiltin.description,
+        fs: _selectedBuiltin.fs, qts: _selectedBuiltin.qts,
+        vas: _selectedBuiltin.vas, xmax: _selectedBuiltin.xmax,
+        sensitivity: _selectedBuiltin.sensitivity,
+        enclosureVolume: _selectedBuiltin.enclosureVolume,
+        portLength: _selectedBuiltin.portLength,
+        portDiameter: _selectedBuiltin.portDiameter,
+        wooferFrd: _wooferFrd, tweeterFrd: _tweeterFrd,
+      );
+      return SpeakerProfileState(mode: _mode, selectedProfile: profile);
     }
     if (_mode == SpeakerProfileMode.custom) {
       final custom = SpeakerProfile(
@@ -42,10 +62,35 @@ class _SpeakerProfileSelectorState extends State<SpeakerProfileSelector> {
         enclosureVolume: double.tryParse(_volCtrl.text),
         portLength: double.tryParse(_portLCtrl.text),
         portDiameter: double.tryParse(_portDCtrl.text),
+        wooferFrd: _wooferFrd, tweeterFrd: _tweeterFrd,
       );
       return SpeakerProfileState(mode: _mode, customProfile: custom);
     }
     return const SpeakerProfileState(mode: SpeakerProfileMode.skip);
+  }
+
+  Future<void> _pickFrd({required bool isTweeter}) async {
+    setState(() => _frdError = null);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['frd', 'txt'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) { setState(() => _frdError = '파일을 읽을 수 없습니다.'); return; }
+      final content = String.fromCharCodes(bytes);
+      final points = FrdParser.parseFrd(content);
+      if (points.isEmpty) { setState(() => _frdError = '지원하지 않는 형식입니다. FRD 파일인지 확인하세요.'); return; }
+      setState(() {
+        if (isTweeter) { _tweeterFrd = points; _tweeterFrdName = file.name; }
+        else { _wooferFrd = points; _wooferFrdName = file.name; }
+      });
+    } catch (e) {
+      setState(() => _frdError = '파일 읽기 오류: $e');
+    }
   }
 
   @override
@@ -96,6 +141,34 @@ class _SpeakerProfileSelectorState extends State<SpeakerProfileSelector> {
           if (_mode == SpeakerProfileMode.builtin) ...[
             const SizedBox(height: 16),
             _ProfileInfo(profile: _selectedBuiltin),
+          ],
+          // FRD 임포트 섹션 (skip 모드 제외)
+          if (_mode != SpeakerProfileMode.skip) ...[
+            const SizedBox(height: 20),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 12),
+            const Text('FRD 파일 (선택)', style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 2)),
+            const SizedBox(height: 4),
+            const Text('FRD 파일이 있으면 T/S 추정보다 정밀한 크로스오버 추천이 가능합니다.',
+                style: TextStyle(color: Colors.white24, fontSize: 10)),
+            const SizedBox(height: 12),
+            _FrdPickRow(
+              label: '우퍼 FRD',
+              fileName: _wooferFrdName,
+              onTap: () => _pickFrd(isTweeter: false),
+              onClear: _wooferFrd == null ? null : () => setState(() { _wooferFrd = null; _wooferFrdName = null; }),
+            ),
+            const SizedBox(height: 8),
+            _FrdPickRow(
+              label: '트위터 FRD',
+              fileName: _tweeterFrdName,
+              onTap: () => _pickFrd(isTweeter: true),
+              onClear: _tweeterFrd == null ? null : () => setState(() { _tweeterFrd = null; _tweeterFrdName = null; }),
+            ),
+            if (_frdError != null) ...[
+              const SizedBox(height: 8),
+              Text(_frdError!, style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
+            ],
           ],
           const SizedBox(height: 24),
           ElevatedButton(
@@ -199,4 +272,41 @@ class _InfoRow extends StatelessWidget {
       Text(value, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500)),
     ]),
   );
+}
+
+class _FrdPickRow extends StatelessWidget {
+  final String label;
+  final String? fileName;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _FrdPickRow({required this.label, required this.onTap, this.fileName, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFile = fileName != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: hasFile ? Colors.white38 : Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(children: [
+          Icon(hasFile ? Icons.check_circle_outline : Icons.upload_file_outlined,
+              color: hasFile ? Colors.white54 : Colors.white24, size: 16),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(color: hasFile ? Colors.white54 : Colors.white24, fontSize: 10, letterSpacing: 1)),
+            if (hasFile) Text(fileName!, style: const TextStyle(color: Colors.white38, fontSize: 9), overflow: TextOverflow.ellipsis),
+          ])),
+          if (hasFile && onClear != null)
+            GestureDetector(
+              onTap: onClear,
+              child: const Icon(Icons.close, color: Colors.white24, size: 14),
+            ),
+        ]),
+      ),
+    );
+  }
 }

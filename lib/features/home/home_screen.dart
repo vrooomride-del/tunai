@@ -11,7 +11,9 @@ import '../../core/ai_tuning_service.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../core/speaker_profile.dart';
 import '../dsp/dsp_compiler.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/dsp/dsp_adapter.dart';
+import '../../core/frd_parser.dart';
 
 // systemProfileProvider, speakerProfileProvider는 core에서 import됨
 // (community_screen 등 다른 feature에서 순환 없이 접근 가능)
@@ -36,8 +38,8 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _StepSection(index: 1, label: 'SELECT SPEAKER', active: true,
-                        child: _SpeakerSelectPanel(ref: ref)),
+                    const _StepSection(index: 1, label: 'SELECT SPEAKER', active: true,
+                        child: _SpeakerSelectPanel()),
                     Consumer(builder: (_, r, __) {
                       final sys = r.watch(systemProfileProvider);
                       final sp  = r.watch(speakerProfileProvider);
@@ -140,13 +142,59 @@ class _StepSection extends StatelessWidget {
   }
 }
 
-class _SpeakerSelectPanel extends StatelessWidget {
-  final WidgetRef ref;
-  const _SpeakerSelectPanel({required this.ref});
+class _SpeakerSelectPanel extends ConsumerStatefulWidget {
+  const _SpeakerSelectPanel();
+  @override
+  ConsumerState<_SpeakerSelectPanel> createState() => _SpeakerSelectPanelState();
+}
+
+class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
+  String? _wooferFrdName;
+  String? _tweeterFrdName;
+  String? _frdError;
+
+  Future<void> _pickFrd({required bool isTweeter}) async {
+    setState(() => _frdError = null);
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['frd', 'txt'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) { setState(() => _frdError = '파일을 읽을 수 없습니다.'); return; }
+      final content = String.fromCharCodes(bytes);
+      final points = FrdParser.parseFrd(content);
+      if (points.isEmpty) { setState(() => _frdError = '지원하지 않는 형식입니다. FRD 파일인지 확인하세요.'); return; }
+
+      final current = ref.read(speakerProfileProvider);
+      if (current == null) { setState(() => _frdError = '스피커 프로파일을 먼저 선택하세요.'); return; }
+
+      final updated = SpeakerProfile(
+        id: current.id, name: current.name, description: current.description,
+        fs: current.fs, qts: current.qts, vas: current.vas,
+        xmax: current.xmax, sensitivity: current.sensitivity,
+        enclosureVolume: current.enclosureVolume,
+        portLength: current.portLength, portDiameter: current.portDiameter,
+        wooferFrd: isTweeter ? current.wooferFrd : points,
+        tweeterFrd: isTweeter ? points : current.tweeterFrd,
+      );
+      ref.read(speakerProfileProvider.notifier).state = updated;
+      setState(() {
+        if (isTweeter) { _tweeterFrdName = file.name; }
+        else { _wooferFrdName = file.name; }
+      });
+    } catch (e) {
+      setState(() => _frdError = '파일 읽기 오류: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final selected = ref.watch(systemProfileProvider);
+    final sp = ref.watch(speakerProfileProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -188,14 +236,86 @@ class _SpeakerSelectPanel extends StatelessWidget {
           );
         }),
         const SizedBox(height: 4),
-        Consumer(builder: (_, r, __) {
-          final p = r.watch(systemProfileProvider);
-          return Text(
-            '${p.channelCount}ch · 크로스오버 ${p.crossoverPoints}개',
-            style: const TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1),
-          );
-        }),
+        Text('${selected.channelCount}ch · 크로스오버 ${selected.crossoverPoints}개',
+            style: const TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+
+        // FRD 임포트 (프로파일 선택된 경우만)
+        if (sp != null && selected.crossoverPoints >= 1) ...[
+          const SizedBox(height: 14),
+          const Divider(color: Colors.white12),
+          const SizedBox(height: 10),
+          const Text('FRD 파일 (선택)', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2)),
+          const SizedBox(height: 8),
+          _FrdRow(
+            label: '우퍼',
+            fileName: _wooferFrdName,
+            onTap: () => _pickFrd(isTweeter: false),
+            onClear: _wooferFrdName == null ? null : () {
+              ref.read(speakerProfileProvider.notifier).state = SpeakerProfile(
+                id: sp.id, name: sp.name, description: sp.description,
+                fs: sp.fs, qts: sp.qts, vas: sp.vas, xmax: sp.xmax, sensitivity: sp.sensitivity,
+                enclosureVolume: sp.enclosureVolume, portLength: sp.portLength, portDiameter: sp.portDiameter,
+                tweeterFrd: sp.tweeterFrd,
+              );
+              setState(() => _wooferFrdName = null);
+            },
+          ),
+          const SizedBox(height: 6),
+          _FrdRow(
+            label: '트위터',
+            fileName: _tweeterFrdName,
+            onTap: () => _pickFrd(isTweeter: true),
+            onClear: _tweeterFrdName == null ? null : () {
+              ref.read(speakerProfileProvider.notifier).state = SpeakerProfile(
+                id: sp.id, name: sp.name, description: sp.description,
+                fs: sp.fs, qts: sp.qts, vas: sp.vas, xmax: sp.xmax, sensitivity: sp.sensitivity,
+                enclosureVolume: sp.enclosureVolume, portLength: sp.portLength, portDiameter: sp.portDiameter,
+                wooferFrd: sp.wooferFrd,
+              );
+              setState(() => _tweeterFrdName = null);
+            },
+          ),
+          if (_frdError != null) ...[
+            const SizedBox(height: 6),
+            Text(_frdError!, style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
+          ],
+        ],
       ],
+    );
+  }
+}
+
+class _FrdRow extends StatelessWidget {
+  final String label;
+  final String? fileName;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _FrdRow({required this.label, required this.onTap, this.fileName, this.onClear});
+  @override
+  Widget build(BuildContext context) {
+    final hasFile = fileName != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: hasFile ? Colors.white24 : Colors.white10),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(children: [
+          Icon(hasFile ? Icons.check_circle_outline : Icons.upload_file_outlined,
+              color: hasFile ? Colors.white38 : Colors.white12, size: 14),
+          const SizedBox(width: 8),
+          Expanded(child: Text(
+            hasFile ? fileName! : '$label FRD 불러오기',
+            style: TextStyle(color: hasFile ? Colors.white38 : Colors.white24, fontSize: 10),
+            overflow: TextOverflow.ellipsis,
+          )),
+          if (hasFile && onClear != null)
+            GestureDetector(onTap: onClear,
+                child: const Icon(Icons.close, color: Colors.white24, size: 12)),
+        ]),
+      ),
     );
   }
 }
@@ -388,8 +508,10 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
   Widget build(BuildContext context) {
     final freq   = widget.profile.recommendedCrossoverFreq;
     final isConn = widget.bState.connection == BleConnectionState.connected;
-    final label  = widget.profile.qts < 0.4 ? 'Fs × 20' :
-                   widget.profile.qts < 0.7 ? 'Fs × 28' : 'Fs × 35';
+    final basis  = widget.profile.crossoverBasis;
+    final label  = widget.profile.hasFrd ? basis :
+                   (widget.profile.qts < 0.4 ? '$basis · Fs × 20' :
+                    widget.profile.qts < 0.7 ? '$basis · Fs × 28' : '$basis · Fs × 35');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -416,7 +538,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
           ),
         ]),
         const SizedBox(height: 4),
-        Text('T/S 기반 추정  ·  $label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz',
+        Text('$label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz',
             style: const TextStyle(color: Colors.white24, fontSize: 10)),
         if (!isConn)
           const Padding(
