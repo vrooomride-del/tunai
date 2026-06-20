@@ -82,6 +82,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
     final auth = ref.watch(authProvider);
     final ble = ref.watch(bleProvider);
     final connected = ble.connection == BleConnectionState.connected;
+    final hasMeasurement = ref.watch(measurementProvider).peaks.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -110,9 +111,11 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
                     ),
                   if (auth.isLoggedIn)
                     GestureDetector(
-                      onTap: () => _showUploadDialog(context),
-                      child: const Text('SHARE',
-                          style: TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 2)),
+                      onTap: hasMeasurement ? () => _showUploadDialog(context) : null,
+                      child: Text('SHARE',
+                          style: TextStyle(
+                            color: hasMeasurement ? Colors.white54 : Colors.white24,
+                            fontSize: 10, letterSpacing: 2)),
                     )
                   else
                     GestureDetector(
