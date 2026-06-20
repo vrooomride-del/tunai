@@ -1,3 +1,12 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'profiles/system_profile.dart';
+
+/// 선택된 스피커 T/S 프로파일 전역 상태 (core에 선언 — circular import 방지)
+final speakerProfileProvider = StateProvider<SpeakerProfile?>((ref) {
+  final sys = ref.watch(systemProfileProvider);
+  return sys.id == SystemProfileId.tunaiOne ? kTunaiOneProfile : null;
+});
+
 class SpeakerProfile {
   final String id;
   final String name;

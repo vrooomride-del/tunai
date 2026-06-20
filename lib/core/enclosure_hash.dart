@@ -1,43 +1,69 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
-/// 인클로저 물리 파라미터
-class EnclosureParams {
-  final double portDiameterMm;    // 포트 직경 (mm)
-  final double portDepthMm;       // 포트 깊이 (mm)
-  final double internalVolumeLit; // 내부 용적 (리터)
-  final String type;              // 'ported' | 'sealed' | 'passive'
-  final String driverSize;        // '4inch' | '5inch' | '6.5inch' 등
+/// 인클로저 스펙 기반 고유 해시 생성 (SonicCore 특허 청구항8)
+///
+/// 허용오차 버킷 적용 후 SHA-256:
+///   체적  ±0.25L   → 0.5L 버킷
+///   포트  ±2.5mm   → 5mm  버킷
+///   Fs    ±5Hz     → 10Hz 버킷
+///   Vas   ±0.25L   → 0.5L 버킷
+///
+/// 결과 해시 앞 12자(48bit) 사용 — 실용적으로 충돌 확률 무시 가능.
+class EnclosureHash {
+  static const double _volBucket  = 0.5;   // 리터
+  static const double _portBucket = 5.0;   // mm
+  static const double _fsBucket   = 10.0;  // Hz
+  static const double _vasBucket  = 0.5;   // 리터
 
-  const EnclosureParams({
-    required this.portDiameterMm,
-    required this.portDepthMm,
-    required this.internalVolumeLit,
-    required this.type,
-    required this.driverSize,
-  });
+  static double _bucket(double value, double step) =>
+      (value / step).round() * step;
 
-  /// SHA-256 해시 생성 — 동일 인클로저 = 동일 해시
-  String get hash {
-    // 소수점 1자리로 반올림 (미세 측정 오차 흡수)
-    final normalized = {
-      'port_d': (portDiameterMm * 10).round() / 10,
-      'port_l': (portDepthMm * 10).round() / 10,
-      'vol': (internalVolumeLit * 10).round() / 10,
-      'type': type,
-      'driver': driverSize,
-    };
-    final jsonStr = jsonEncode(normalized);
-    final bytes = utf8.encode(jsonStr);
-    return sha256.convert(bytes).toString();
+  /// 해시 생성
+  ///
+  /// [volumeL]      내부 체적 (L), 필수
+  /// [portLengthMm] 포트 길이 (mm) — null = sealed
+  /// [portDiamMm]   포트 직경 (mm) — null = sealed
+  /// [fsHz]         우퍼 Fs (Hz) — optional
+  /// [vasL]         우퍼 Vas (L) — optional
+  static String generate({
+    required double volumeL,
+    double? portLengthMm,
+    double? portDiamMm,
+    double? fsHz,
+    double? vasL,
+  }) {
+    final vol = _bucket(volumeL,  _volBucket).toStringAsFixed(1);
+    final pl  = portLengthMm != null
+        ? _bucket(portLengthMm, _portBucket).toStringAsFixed(0) : 'S';
+    final pd  = portDiamMm  != null
+        ? _bucket(portDiamMm,  _portBucket).toStringAsFixed(0) : 'S';
+    final fs  = fsHz != null
+        ? _bucket(fsHz,  _fsBucket).toStringAsFixed(0) : '';
+    final vas = vasL != null
+        ? _bucket(vasL,  _vasBucket).toStringAsFixed(1) : '';
+
+    final canonical = 'v=$vol|pl=$pl|pd=$pd|fs=$fs|vas=$vas';
+    final digest = sha256.convert(utf8.encode(canonical));
+    return digest.toString().substring(0, 12);
   }
 
-  Map<String, dynamic> toJson() => {
-    'port_diameter_mm': portDiameterMm,
-    'port_depth_mm': portDepthMm,
-    'internal_volume_lit': internalVolumeLit,
-    'type': type,
-    'driver_size': driverSize,
-    'hash': hash,
-  };
+  /// SpeakerProfile 필드로부터 해시 생성
+  /// 체적이 null이면 null 반환 (해시 불가)
+  static String? fromProfile({
+    required double? volumeL,
+    double? portLengthMm,
+    double? portDiamMm,
+    double? fsHz,
+    double? vasL,
+  }) {
+    if (volumeL == null) return null;
+    return generate(
+      volumeL: volumeL,
+      portLengthMm: portLengthMm,
+      portDiamMm: portDiamMm,
+      fsHz: fsHz,
+      vasL: vasL,
+    );
+  }
 }

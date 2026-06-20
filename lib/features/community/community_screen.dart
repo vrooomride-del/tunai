@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_service.dart';
+import '../../core/enclosure_hash.dart';
+import '../../core/speaker_profile.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../ble/ble_controller.dart';
@@ -20,7 +22,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
   List<dynamic> _posts = [];
   bool _loadingPresets = true;
   bool _loadingPosts = true;
-  String _presetSort = 'trending'; // trending | latest
+  String _presetSort = 'trending'; // trending | latest | match
   String _postCategory = 'all';
 
   @override
@@ -34,11 +36,31 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
   @override
   void dispose() { _tabController.dispose(); super.dispose(); }
 
+  /// 현재 스피커 프로파일로부터 인클로저 해시 계산
+  String? _myHash() {
+    final profile = ref.read(speakerProfileProvider);
+    if (profile == null) return null;
+    return EnclosureHash.fromProfile(
+      volumeL:      profile.enclosureVolume,
+      portLengthMm: profile.portLength,
+      portDiamMm:   profile.portDiameter,
+      fsHz:         profile.fs,
+      vasL:         profile.vas,
+    );
+  }
+
   Future<void> _loadPresets() async {
     setState(() => _loadingPresets = true);
-    final res = _presetSort == 'trending'
-        ? await ApiService.getTrending()
-        : await ApiService.getPresets();
+    final Future<Map<String, dynamic>> request;
+    if (_presetSort == 'trending') {
+      request = ApiService.getTrending();
+    } else if (_presetSort == 'match') {
+      final hash = _myHash();
+      request = ApiService.getPresets(hash: hash);
+    } else {
+      request = ApiService.getPresets();
+    }
+    final res = await request;
     if (res['status'] == 'ok') {
       setState(() { _presets = res['data'] ?? []; _loadingPresets = false; });
     } else {
@@ -373,6 +395,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
                 title: titleCtrl.text.trim(),
                 description: descCtrl.text.trim(),
                 fps: [], roomTag: roomCtrl.text.trim(),
+                enclosureHash: _myHash(),
               );
               if (!context.mounted) return;
               if (res['status'] == 'ok') {
@@ -418,6 +441,8 @@ class _PresetsTab extends StatelessWidget {
               _SortBtn('인기순', sort == 'trending', () => onSortChanged('trending')),
               const SizedBox(width: 8),
               _SortBtn('최신순', sort == 'latest', () => onSortChanged('latest')),
+              const SizedBox(width: 8),
+              _SortBtn('내 스피커', sort == 'match', () => onSortChanged('match')),
             ],
           ),
         ),

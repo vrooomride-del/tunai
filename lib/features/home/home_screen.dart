@@ -12,15 +12,8 @@ import '../../core/profiles/system_profile.dart';
 import '../../core/speaker_profile.dart';
 import '../dsp/dsp_compiler.dart';
 
-// 선택된 시스템 프로파일 전역 상태
-final systemProfileProvider = StateProvider<SystemProfile>((ref) => kTunaiOneSystemProfile);
-
-// 선택된 스피커 T/S 프로파일 (HPF SafetyProfile 적용용)
-// TUNAI One 선택 시 기본 프로파일 자동 세팅, 그 외 null
-final speakerProfileProvider = StateProvider<SpeakerProfile?>((ref) {
-  final sys = ref.watch(systemProfileProvider);
-  return sys.id == SystemProfileId.tunaiOne ? kTunaiOneProfile : null;
-});
+// systemProfileProvider, speakerProfileProvider는 core에서 import됨
+// (community_screen 등 다른 feature에서 순환 없이 접근 가능)
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});

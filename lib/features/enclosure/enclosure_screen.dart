@@ -11,7 +11,6 @@ class EnclosureScreen extends ConsumerStatefulWidget {
 
 class _EnclosureScreenState extends ConsumerState<EnclosureScreen> {
   String _type = 'ported';
-  String _driverSize = '6.5inch';
   double _portDiameter = 50.0;
   double _portDepth = 80.0;
   double _volume = 15.0;
@@ -20,19 +19,16 @@ class _EnclosureScreenState extends ConsumerState<EnclosureScreen> {
   String? _currentHash;
 
   final _types = ['ported', 'sealed', 'passive'];
-  final _drivers = ['3inch', '4inch', '5inch', '6.5inch', '8inch', '10inch', '12inch'];
 
-  EnclosureParams get _params => EnclosureParams(
-    portDiameterMm: _portDiameter,
-    portDepthMm: _portDepth,
-    internalVolumeLit: _volume,
-    type: _type,
-    driverSize: _driverSize,
+  String _buildHash() => EnclosureHash.generate(
+    volumeL:      _volume,
+    portLengthMm: _type == 'ported' ? _portDepth    : null,
+    portDiamMm:   _type == 'ported' ? _portDiameter : null,
   );
 
   Future<void> _search() async {
     setState(() { _loading = true; _matchedPresets = []; });
-    final hash = _params.hash;
+    final hash = _buildHash();
     setState(() => _currentHash = hash);
     final res = await ApiService.getPresets(hash: hash);
     setState(() {
@@ -80,35 +76,6 @@ class _EnclosureScreenState extends ConsumerState<EnclosureScreen> {
                         )),
                   ),
                 )).toList(),
-              ),
-              const SizedBox(height: 24),
-
-              // 드라이버 사이즈
-              _label('DRIVER SIZE'),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 36,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: _drivers.map((d) => GestureDetector(
-                    onTap: () => setState(() => _driverSize = d),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: _driverSize == d ? Colors.white : Colors.white24),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Center(
-                        child: Text(d,
-                            style: TextStyle(
-                              color: _driverSize == d ? Colors.white : Colors.white38,
-                              fontSize: 10, letterSpacing: 1,
-                            )),
-                      ),
-                    ),
-                  )).toList(),
-                ),
               ),
               const SizedBox(height: 24),
 
