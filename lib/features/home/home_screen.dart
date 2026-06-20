@@ -351,7 +351,10 @@ class _MeasurePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl = ref.read(measurementProvider.notifier);
     final step = mState.step;
-    final isRunning = step != MeasurementStep.idle && step != MeasurementStep.done && step != MeasurementStep.error;
+    final isRunning = step != MeasurementStep.idle
+        && step != MeasurementStep.done && step != MeasurementStep.error;
+    final isConverging = step == MeasurementStep.converging;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(child: Text(
@@ -359,13 +362,81 @@ class _MeasurePanel extends StatelessWidget {
           style: TextStyle(color: mState.error != null ? Colors.redAccent : Colors.white38, fontSize: 13, height: 1.5))),
         const SizedBox(width: 16),
         _OutlineButton(
-          label: isRunning ? '측정 중...' : step == MeasurementStep.done ? 'RE-MEASURE' : 'MEASURE',
+          label: isRunning ? (isConverging ? '수렴 중...' : '측정 중...') :
+                 step == MeasurementStep.done ? 'RE-MEASURE' : 'MEASURE',
           loading: isRunning,
           onTap: isRunning ? null : step == MeasurementStep.done || step == MeasurementStep.error
             ? ctrl.reset
             : () => ctrl.startMeasurement(speakerProfile: ref.read(speakerProfileProvider)),
         ),
       ]),
+
+      // Closed Loop 진행 상황
+      if (isConverging && mState.iteration > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Expanded(child: LinearProgressIndicator(
+              value: mState.iteration / 3,
+              backgroundColor: Colors.white12,
+              color: Colors.white38,
+              minHeight: 2,
+            )),
+            const SizedBox(width: 12),
+            Text('${mState.iteration}/3',
+                style: const TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1)),
+            if (mState.residualErrorDb != null) ...[
+              const SizedBox(width: 8),
+              Text('잔류 ${mState.residualErrorDb!.toStringAsFixed(1)}dB',
+                  style: const TextStyle(color: Colors.white24, fontSize: 10)),
+            ],
+          ]),
+        ),
+
+      // 수렴 결과 배지
+      if (step == MeasurementStep.done && mState.iteration > 0) ...[
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: mState.hasConverged ? Colors.white24 : Colors.white12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(children: [
+            Icon(mState.hasConverged ? Icons.check_circle_outline : Icons.info_outline,
+                color: mState.hasConverged ? Colors.white54 : Colors.white24, size: 14),
+            const SizedBox(width: 8),
+            Text(
+              mState.hasConverged
+                  ? '수렴 완료 (${mState.iteration}회'
+                    '${mState.residualErrorDb != null ? ', 잔류 ${mState.residualErrorDb!.toStringAsFixed(1)}dB' : ''})'
+                  : '${mState.iteration}회 반복 완료 — 수동 미세 조정 가능',
+              style: TextStyle(
+                  color: mState.hasConverged ? Colors.white54 : Colors.white24,
+                  fontSize: 10),
+            ),
+          ]),
+        ),
+      ],
+
+      // Closed Loop 시작 버튼 (측정 전 + BLE 연결 시)
+      if (step == MeasurementStep.idle) ...[
+        const SizedBox(height: 10),
+        Consumer(builder: (_, r, __) {
+          final isConn = r.watch(bleProvider).connection == BleConnectionState.connected;
+          return _OutlineButton(
+            label: 'AUTO TUNE (반복수렴)',
+            enabled: isConn,
+            onTap: isConn
+                ? () => ctrl.startClosedLoop(
+                    speakerProfile: r.read(speakerProfileProvider))
+                : null,
+          );
+        }),
+        const SizedBox(height: 4),
+        const Text('DSP 적용 후 자동 재측정, 최대 3회 반복',
+            style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+      ],
       if (kDebugMode) ...[
         const SizedBox(height: 12),
         _OutlineButton(

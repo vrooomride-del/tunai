@@ -10,6 +10,7 @@ import '../../core/pink_noise_generator.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/mic_calibration.dart';
 import '../../core/speaker_profile.dart';
+import '../ble/ble_controller.dart' show bleProvider;
 import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety, RegisterPacket;
 
 enum MeasurementStep {
@@ -20,6 +21,7 @@ enum MeasurementStep {
   analyzing,
   detectingPeaks,
   compiling,
+  converging,  // DSP 적용 후 재측정 대기 (Closed Loop)
   done,
   error,
 }
@@ -31,6 +33,10 @@ class MeasurementState {
   final List<ResonancePeak> peaks;
   final List<RegisterPacket> packets;
   final String? error;
+  // Closed Loop 상태
+  final int iteration;           // 현재 반복 회차 (1-based, 0=미진행)
+  final bool hasConverged;       // 수렴 성공 여부
+  final double? residualErrorDb; // 마지막 잔류 오차 (dB)
 
   const MeasurementState({
     this.step = MeasurementStep.idle,
@@ -39,6 +45,9 @@ class MeasurementState {
     this.peaks = const [],
     this.packets = const [],
     this.error,
+    this.iteration = 0,
+    this.hasConverged = false,
+    this.residualErrorDb,
   });
 
   MeasurementState copyWith({
@@ -48,6 +57,9 @@ class MeasurementState {
     List<ResonancePeak>? peaks,
     List<RegisterPacket>? packets,
     String? error,
+    int? iteration,
+    bool? hasConverged,
+    double? residualErrorDb,
   }) => MeasurementState(
     step: step ?? this.step,
     message: message ?? this.message,
@@ -55,132 +67,272 @@ class MeasurementState {
     peaks: peaks ?? this.peaks,
     packets: packets ?? this.packets,
     error: error ?? this.error,
+    iteration: iteration ?? this.iteration,
+    hasConverged: hasConverged ?? this.hasConverged,
+    residualErrorDb: residualErrorDb ?? this.residualErrorDb,
   );
 }
 
 final measurementProvider =
     StateNotifierProvider<MeasurementController, MeasurementState>(
-  (ref) => MeasurementController(),
+  (ref) => MeasurementController(ref),
 );
 
 class MeasurementController extends StateNotifier<MeasurementState> {
-  MeasurementController() : super(const MeasurementState());
+  final Ref _ref;
+  MeasurementController(this._ref) : super(const MeasurementState());
 
   final _recorder = FlutterSoundRecorder();
   final _player = AudioPlayer();
   bool _recorderInitialized = false;
+  bool _isCancelled = false;
 
+  static const int _maxIterations = 3;
+  static const double _convergenceThresholdDb = 1.5;
+
+  // ── public API ────────────────────────────────────────────────────────────
+
+  /// Open-loop 단일 측정 (기존 동작 유지)
   Future<void> startMeasurement({SpeakerProfile? speakerProfile}) async {
+    _isCancelled = false;
+    state = const MeasurementState();
     try {
-      // 0. 마이크 권한 요청
-      final micStatus = await Permission.microphone.request();
-      if (!micStatus.isGranted) {
-        state = state.copyWith(
-          step: MeasurementStep.error,
-          error: '마이크 권한이 필요합니다. 설정에서 허용해주세요.',
-        );
-        return;
-      }
-
-      // 1. 핑크노이즈 WAV 생성
-      _update(MeasurementStep.generatingNoise, '핑크 노이즈 생성 중...');
-      final wavBytes = PinkNoiseGenerator().generateWav();
-      final wavFile = await _saveWav(wavBytes);
-
-      // 2. 녹음기 초기화
-      if (!_recorderInitialized) {
-        await _recorder.openRecorder();
-        _recorderInitialized = true;
-      }
-
-      // 3. 녹음 시작
-      _update(MeasurementStep.recording, '공간 측정 중... (10초)');
-      final recordPath = await _recordingPath();
-      await _recorder.startRecorder(
-        toFile: recordPath,
-        codec: Codec.pcm16WAV,
-        sampleRate: AudioAnalyzer.sampleRate,
-        numChannels: 1,
-      );
-
-      // 4. Sref 재생
-      _update(MeasurementStep.playing, 'Sref 재생 중...');
-      await _player.setFilePath(wavFile.path);
-      await _player.play();
-
-      // 10초 대기
-      await Future.delayed(const Duration(seconds: 10));
-
-      // 5. 녹음 중지
-      await _recorder.stopRecorder();
-      await _player.stop();
-
-      // 6. FFT 분석
-      _update(MeasurementStep.analyzing, 'FFT 분석 중...');
-      final pcmBytes = await File(recordPath).readAsBytes();
-      final rawPcm = Uint8List.sublistView(pcmBytes, 44);
-      final samples = AudioAnalyzer.pcmToFloat(rawPcm);
-      debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
-      final scapBins = AudioAnalyzer.performFFT(samples);
-
-      // 7. 1단계: 기종별 마이크 보정 (MicCalibrationDb — 고정 테이블, dB 덧셈)
-      _update(MeasurementStep.detectingPeaks, '공진 주파수 검출 중...');
-      final deviceProfile = await DeviceProfile.detect();
-      debugPrint('[MIC] 기기: ${deviceProfile.modelName} (보정: ${deviceProfile.hasCalibration})');
-      List<FrequencyBin> micCorrectedBins;
-      if (deviceProfile.hasCalibration) {
-        micCorrectedBins = scapBins.map((bin) {
-          final correction = MicCalibrationDb.interpolateCorrection(
-              deviceProfile.calibration!, bin.frequency);
-          return FrequencyBin(
-              frequency: bin.frequency, magnitude: bin.magnitude + correction);
-        }).toList();
-        debugPrint('[MIC] 기종 보정 적용: ${deviceProfile.modelName}');
-      } else {
-        micCorrectedBins = scapBins;
-      }
-
-      // 8. 2단계: CCV 적용 (핑크노이즈 이론 형태 vs 실측 잔차 보정, dB 덧셈)
-      //    입력: MicCalibrationDb 보정 완료된 스펙트럼
-      //    de-mean 적용으로 "동일 신호 자기 비교" 시 보정값 = 0 → 피크 유지
-      final ccv = AudioAnalyzer.calculateCCV(micCorrectedBins);
-      debugPrint('[CCV] 보정 bin 수: ${ccv.length}');
-      final scmsBins = AudioAnalyzer.applyCCV(micCorrectedBins, ccv);
-
-      // 9. 피크 검출
-      final peaks = AudioAnalyzer.detectPeaks(scmsBins);
-
-      // 9. DSP 컴파일
-      _update(MeasurementStep.compiling, 'DSP 패킷 컴파일 중...');
-      // T/S 안전범위 적용
-      List<ResonancePeak> safePeaks = peaks;
-      if (speakerProfile != null) {
-        final safety = DspCompilerSafety.safetyFromTs(
-          fs: speakerProfile.fs,
-          xmax: speakerProfile.xmax,
-          sensitivity: speakerProfile.sensitivity,
-        );
-        safePeaks = peaks.map((p) => ResonancePeak(
-          frequency: p.frequency,
-          gain: DspCompilerSafety.clampBassBoost(p.gain, p.frequency, safety.maxBassBoost),
-          q: p.q,
-        )).toList();
-      }
+      if (!await _requestMicPermission()) return;
+      final wavFile = await _prepareWav();
+      final (scmsBins, safePeaks) = await _measureOnce(
+          wavFile: wavFile, speakerProfile: speakerProfile, label: '');
+      if (_isCancelled) return;
       final packets = DspCompiler.compileAll(safePeaks);
-
       state = state.copyWith(
         step: MeasurementStep.done,
-        message: '측정 완료! ${peaks.length}개 공진 주파수 검출',
+        message: '측정 완료! ${safePeaks.length}개 공진 주파수 검출',
         scmsBins: scmsBins,
         peaks: safePeaks,
         packets: packets,
+        iteration: 1,
       );
     } catch (e) {
+      state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+    }
+  }
+
+  /// Closed Loop 반복수렴 측정 (특허 청구항1)
+  ///
+  /// apply → re-measure → converge → retry
+  /// 최대 3회, 수렴 기준 1.5dB (JND)
+  Future<void> startClosedLoop({SpeakerProfile? speakerProfile}) async {
+    _isCancelled = false;
+    state = const MeasurementState();
+    try {
+      if (!await _requestMicPermission()) return;
+      final wavFile = await _prepareWav();
+
+      List<ResonancePeak> lastPeaks = [];
+      double? lastResidual;
+
+      for (int iter = 0; iter < _maxIterations; iter++) {
+        if (_isCancelled) return;
+
+        final iterLabel = '${iter + 1}/$_maxIterations차';
+        _update(MeasurementStep.converging, '$iterLabel 보정 — 측정 중...');
+
+        final (scmsBins, safePeaks) = await _measureOnce(
+            wavFile: wavFile, speakerProfile: speakerProfile, label: iterLabel);
+        if (_isCancelled) return;
+
+        // 누적 gain 경고 (설계 문서 제약 #3)
+        final totalGain = safePeaks.fold(0.0, (s, p) => s + p.gain.abs());
+        if (totalGain > 24.0) {
+          debugPrint('[LOOP] 경고: 누적 gain ${totalGain.toStringAsFixed(1)}dB > 24dB');
+        }
+
+        // DSP 컴파일 + BLE 전송
+        _update(MeasurementStep.compiling, '$iterLabel 보정 — DSP 적용 중...');
+        final packets = DspCompiler.compileAll(safePeaks);
+        await _ref.read(bleProvider.notifier).sendPackets(packets);
+
+        // 수렴 확인 (2차 반복부터)
+        if (iter > 0) {
+          final residual = _calcResidual(safePeaks, lastPeaks);
+          lastResidual = residual;
+          debugPrint('[LOOP] $iterLabel 잔류오차: ${residual.toStringAsFixed(2)}dB (기준: $_convergenceThresholdDb dB)');
+
+          if (residual < _convergenceThresholdDb) {
+            state = state.copyWith(
+              step: MeasurementStep.done,
+              message: '수렴 완료 ($iterLabel, 잔류 오차 ${residual.toStringAsFixed(1)}dB)',
+              scmsBins: scmsBins,
+              peaks: safePeaks,
+              packets: packets,
+              iteration: iter + 1,
+              hasConverged: true,
+              residualErrorDb: residual,
+            );
+            debugPrint('[LOOP] ✅ 수렴 성공');
+            return;
+          }
+        }
+
+        // 미수렴 — DSP 안정화 대기 후 다음 회차 (ADAU1701 Safeload 처리)
+        state = state.copyWith(
+          scmsBins: scmsBins, peaks: safePeaks, packets: packets,
+          iteration: iter + 1, residualErrorDb: lastResidual,
+        );
+        lastPeaks = safePeaks;
+
+        if (iter < _maxIterations - 1) {
+          _update(MeasurementStep.converging,
+              '$iterLabel 완료 — DSP 안정화 대기 (200ms)...');
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+      }
+
+      // 최대 반복 초과 — 마지막 결과 확정 (에러 아님)
+      debugPrint('[LOOP] ⚠ 최대 반복 도달 ($_maxIterations회), 마지막 결과 적용');
+      state = state.copyWith(
+        step: MeasurementStep.done,
+        message: '최대 반복 도달 ($_maxIterations회) — 마지막 결과 적용.'
+            '${lastResidual != null ? ' 잔류 오차: ${lastResidual.toStringAsFixed(1)}dB' : ''}'
+            ' 추가 수동 조정이 필요할 수 있습니다.',
+        hasConverged: false,
+        residualErrorDb: lastResidual,
+      );
+    } catch (e) {
+      state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+    }
+  }
+
+  /// 루프 도중 취소
+  void cancelLoop() {
+    _isCancelled = true;
+    state = state.copyWith(
+      step: MeasurementStep.idle,
+      message: '측정 취소됨',
+    );
+  }
+
+  // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+  /// 마이크 권한 요청 — 거부 시 error state 설정하고 false 반환
+  Future<bool> _requestMicPermission() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
       state = state.copyWith(
         step: MeasurementStep.error,
-        error: e.toString(),
+        error: '마이크 권한이 필요합니다. 설정에서 허용해주세요.',
       );
+      return false;
     }
+    return true;
+  }
+
+  /// 핑크노이즈 WAV 준비 (한 번 생성 후 루프에서 재사용)
+  Future<File> _prepareWav() async {
+    _update(MeasurementStep.generatingNoise, '핑크 노이즈 생성 중...');
+    final wavBytes = PinkNoiseGenerator().generateWav();
+    return _saveWav(wavBytes);
+  }
+
+  /// 단일 측정 사이클: 녹음 → FFT → MicCal → CCV → 피크검출 → SafetyProfile
+  /// 반환: (scmsBins, safePeaks)
+  Future<(List<FrequencyBin>, List<ResonancePeak>)> _measureOnce({
+    required File wavFile,
+    required SpeakerProfile? speakerProfile,
+    required String label,
+  }) async {
+    final prefix = label.isEmpty ? '' : '$label — ';
+
+    // 녹음기 초기화
+    if (!_recorderInitialized) {
+      await _recorder.openRecorder();
+      _recorderInitialized = true;
+    }
+
+    // 녹음 시작
+    // ignore: unnecessary_brace_in_string_interps
+    _update(MeasurementStep.recording, '${prefix}공간 측정 중... (10초)');
+    final recordPath = await _recordingPath();
+    await _recorder.startRecorder(
+      toFile: recordPath,
+      codec: Codec.pcm16WAV,
+      sampleRate: AudioAnalyzer.sampleRate,
+      numChannels: 1,
+    );
+
+    // 핑크노이즈 재생
+    _update(MeasurementStep.playing, '${prefix}Sref 재생 중...');
+    await _player.setFilePath(wavFile.path);
+    await _player.play();
+    await Future.delayed(const Duration(seconds: 10));
+
+    await _recorder.stopRecorder();
+    await _player.stop();
+
+    // FFT 분석
+    _update(MeasurementStep.analyzing, '${prefix}FFT 분석 중...');
+    final pcmBytes = await File(recordPath).readAsBytes();
+    final rawPcm = Uint8List.sublistView(pcmBytes, 44);
+    final samples = AudioAnalyzer.pcmToFloat(rawPcm);
+    debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
+    final scapBins = AudioAnalyzer.performFFT(samples);
+
+    // MicCalibrationDb (1단계)
+    // ignore: unnecessary_brace_in_string_interps
+    _update(MeasurementStep.detectingPeaks, '${prefix}공진 주파수 검출 중...');
+    final deviceProfile = await DeviceProfile.detect();
+    List<FrequencyBin> micCorrectedBins;
+    if (deviceProfile.hasCalibration) {
+      micCorrectedBins = scapBins.map((bin) {
+        final correction = MicCalibrationDb.interpolateCorrection(
+            deviceProfile.calibration!, bin.frequency);
+        return FrequencyBin(
+            frequency: bin.frequency, magnitude: bin.magnitude + correction);
+      }).toList();
+    } else {
+      micCorrectedBins = scapBins;
+    }
+
+    // CCV (2단계)
+    final ccv = AudioAnalyzer.calculateCCV(micCorrectedBins);
+    final scmsBins = AudioAnalyzer.applyCCV(micCorrectedBins, ccv);
+
+    // 피크 검출
+    final peaks = AudioAnalyzer.detectPeaks(scmsBins);
+
+    // T/S 안전범위 적용
+    List<ResonancePeak> safePeaks = peaks;
+    if (speakerProfile != null) {
+      final safety = DspCompilerSafety.safetyFromTs(
+        fs: speakerProfile.fs,
+        xmax: speakerProfile.xmax,
+        sensitivity: speakerProfile.sensitivity,
+      );
+      safePeaks = peaks.map((p) => ResonancePeak(
+        frequency: p.frequency,
+        gain: DspCompilerSafety.clampBassBoost(p.gain, p.frequency, safety.maxBassBoost),
+        q: p.q,
+      )).toList();
+    }
+
+    return (scmsBins, safePeaks);
+  }
+
+  /// 수렴 잔류 오차 계산 — 이전 피크 주파수 ±10% 범위에서 현재 최대 |gain| (dB)
+  double _calcResidual(
+    List<ResonancePeak> current,
+    List<ResonancePeak> previous,
+  ) {
+    if (previous.isEmpty) return double.infinity;
+    double maxResidual = 0.0;
+    for (final prev in previous) {
+      final near = current.where(
+        (p) => (p.frequency - prev.frequency).abs() / prev.frequency < 0.10,
+      );
+      if (near.isEmpty) continue;
+      final localMax = near.map((p) => p.gain.abs()).reduce(max);
+      if (localMax > maxResidual) maxResidual = localMax;
+    }
+    return maxResidual;
   }
 
   void _update(MeasurementStep step, String message) {
