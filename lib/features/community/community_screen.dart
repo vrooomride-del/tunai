@@ -44,8 +44,6 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
       volumeL:      profile.enclosureVolume,
       portLengthMm: profile.portLength,
       portDiamMm:   profile.portDiameter,
-      fsHz:         profile.fs,
-      vasL:         profile.vas,
     );
   }
 
