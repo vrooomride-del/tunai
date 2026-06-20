@@ -396,10 +396,12 @@ class _AiTunePanelState extends State<_AiTunePanel> {
     );
     final packet = DspCompiler.compilePeak(peak, DspCompiler.peqStartPramAddr + idx * 5);
     await widget.ref.read(bleProvider.notifier).sendPackets([packet]);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Band ${idx + 1} 전송 완료'),
-      duration: const Duration(seconds: 1),
-    ));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Band ${idx + 1} 전송 완료'),
+        duration: const Duration(seconds: 1),
+      ));
+    }
   }
 
   Future<void> _applyAll() async {
@@ -419,9 +421,11 @@ class _AiTunePanelState extends State<_AiTunePanel> {
     final packets = DspCompiler.compileAll(peaks);
     await widget.ref.read(bleProvider.notifier).sendPackets(packets);
     setState(() => _applying = false);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('AI 추천 ${peaks.length}개 밴드 DSP 적용 완료'),
-    ));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('AI 추천 ${peaks.length}개 밴드 DSP 적용 완료'),
+      ));
+    }
   }
 
   @override
