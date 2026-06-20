@@ -4,6 +4,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../dsp/dsp_compiler.dart';
+import '../../core/profiles/system_profile.dart';
 
 // ICP5(WONDOM) BLE GATT UUID — GATT 덤프로 확인된 실제 값
 class TunaiUUID {
@@ -14,17 +15,26 @@ class TunaiUUID {
 
 enum BleConnectionState { disconnected, scanning, connecting, connected, error }
 
+/// 연결 후 보드 자동탐지 결과
+enum DetectedBoard {
+  icp5Adau1701, // ICP5 + fff0 서비스 확인 → ADAU1701(JAB4)
+  adau1466,     // 파란보드 패턴 → ADAU1466 (아직 미지원)
+  unknown,      // 식별 불가 → 수동 선택 유지
+}
+
 class BleState {
   final BleConnectionState connection;
   final String? deviceName;
   final String message;
   final bool isSending;
+  final DetectedBoard? detectedBoard;
 
   const BleState({
     this.connection = BleConnectionState.disconnected,
     this.deviceName,
     this.message = '',
     this.isSending = false,
+    this.detectedBoard,
   });
 
   BleState copyWith({
@@ -32,26 +42,32 @@ class BleState {
     String? deviceName,
     String? message,
     bool? isSending,
+    DetectedBoard? detectedBoard,
   }) => BleState(
     connection: connection ?? this.connection,
     deviceName: deviceName ?? this.deviceName,
     message: message ?? this.message,
     isSending: isSending ?? this.isSending,
+    detectedBoard: detectedBoard ?? this.detectedBoard,
   );
 }
 
 final bleProvider = StateNotifierProvider<BleController, BleState>(
-  (ref) => BleController(),
+  (ref) => BleController(ref),
 );
 
 class BleController extends StateNotifier<BleState> {
-  BleController() : super(const BleState());
+  final Ref _ref;
+  BleController(this._ref) : super(const BleState());
 
   BluetoothDevice? _device;
   BluetoothCharacteristic? _dspWriteChar;
 
   // ICP5(WONDOM) BLE 광고 이름 후보 — Miumax에서 보이는 실제 이름으로 업데이트 필요
   static const List<String> _targetNames = ['ICP5', 'icp5', 'TUNAI', 'tunai', 'BT_AUDIO', 'WONDOM'];
+
+  // 파란보드(ADAU1466) advName 패턴 — QCC5125 Bluetooth 이름
+  static const List<String> _adau1466Names = ['REFERENCE', 'TUNAI-REF', 'QCC5125', 'CS42448'];
 
   /// Android 12+ BLE 런타임 권한 요청
   Future<bool> _requestBlePermissions() async {
@@ -173,9 +189,28 @@ class BleController extends StateNotifier<BleState> {
         );
       }
 
+      // ── 보드 자동탐지 ────────────────────────────────────────────────────
+      final board = _detectBoard(device.advName, services);
+      debugPrint('[BOARD] 탐지 결과: $board (advName=${device.advName})');
+
+      String connMsg;
+      switch (board) {
+        case DetectedBoard.icp5Adau1701:
+          // ADAU1701 확정 → systemProfile 자동 선택
+          _ref.read(systemProfileProvider.notifier).state = kTunaiOneSystemProfile;
+          connMsg = '연결됨: ${device.advName} · ADAU1701 자동 선택됨';
+        case DetectedBoard.adau1466:
+          // ADAU1466 탐지 — 아직 미지원, 프로파일은 건드리지 않음
+          connMsg = '연결됨: ${device.advName} · ADAU1466 (지원 준비 중)';
+        case DetectedBoard.unknown:
+          connMsg = '연결됨: ${device.advName} · 보드 미식별 — 수동 선택 필요';
+      }
+      // ──────────────────────────────────────────────────────────────────────
+
       state = state.copyWith(
         connection: BleConnectionState.connected,
-        message: '연결됨: ${device.advName}',
+        message: connMsg,
+        detectedBoard: board,
       );
 
       // 연결 해제 감지
@@ -247,10 +282,35 @@ class BleController extends StateNotifier<BleState> {
     }
   }
 
+  /// advName + GATT 서비스 UUID로 보드 종류를 추정
+  ///
+  /// ICP5(WONDOM) 탑재 JAB4: advName에 ICP5/WONDOM/TUNAI 포함 + fff0 서비스 존재
+  /// 파란보드(ADAU1466): advName에 REFERENCE/QCC5125 등 포함
+  /// 그 외: unknown → 수동 선택 유지
+  DetectedBoard _detectBoard(String advName, List<BluetoothService> services) {
+    final name = advName.toUpperCase();
+    final hasFff0 = services.any((s) => s.uuid.str128.contains(TunaiUUID.service));
+
+    // ICP5 패턴: 이름 매칭 AND fff0 서비스 존재 (둘 다 확인)
+    final isIcp5Name = _targetNames.any((n) => name.contains(n.toUpperCase()));
+    if (isIcp5Name && hasFff0) return DetectedBoard.icp5Adau1701;
+
+    // fff0 없이 이름만 맞는 경우도 ADAU1701로 추정 (ICP5 펌웨어에 따라 UUID 다를 수 있음)
+    if (isIcp5Name) return DetectedBoard.icp5Adau1701;
+
+    // 파란보드 패턴
+    if (_adau1466Names.any((n) => name.contains(n.toUpperCase()))) {
+      return DetectedBoard.adau1466;
+    }
+
+    return DetectedBoard.unknown;
+  }
+
   Future<void> disconnect() async {
     await _device?.disconnect();
     _device = null;
     _dspWriteChar = null;
+    state = state.copyWith(detectedBoard: null);
   }
 
   @override

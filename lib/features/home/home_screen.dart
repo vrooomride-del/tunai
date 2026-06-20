@@ -328,17 +328,61 @@ class _BlePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final isScanning = bState.connection == BleConnectionState.scanning || bState.connection == BleConnectionState.connecting;
     final isConnected = bState.connection == BleConnectionState.connected;
-    return Row(children: [
-      Expanded(child: Text(bState.message.isEmpty ? 'TUNAI 스피커를 검색합니다.' : bState.message,
-          style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
-      const SizedBox(width: 16),
-      _OutlineButton(
-        label: isConnected ? 'DISCONNECT' : isScanning ? 'SCANNING...' : 'SCAN',
-        loading: isScanning,
-        onTap: isScanning ? null : isConnected
-            ? () => ref.read(bleProvider.notifier).disconnect()
-            : () => ref.read(bleProvider.notifier).scanAndConnect(),
-      ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: Text(bState.message.isEmpty ? 'TUNAI 스피커를 검색합니다.' : bState.message,
+            style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
+        const SizedBox(width: 16),
+        _OutlineButton(
+          label: isConnected ? 'DISCONNECT' : isScanning ? 'SCANNING...' : 'SCAN',
+          loading: isScanning,
+          onTap: isScanning ? null : isConnected
+              ? () => ref.read(bleProvider.notifier).disconnect()
+              : () => ref.read(bleProvider.notifier).scanAndConnect(),
+        ),
+      ]),
+
+      // ADAU1466 탐지 배너 — 보드 도착 전까지 "지원 준비 중" 안내
+      if (bState.detectedBoard == DetectedBoard.adau1466) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+            borderRadius: BorderRadius.circular(4),
+            color: Colors.amber.withValues(alpha: 0.05),
+          ),
+          child: const Row(children: [
+            Icon(Icons.info_outline, color: Colors.amber, size: 14),
+            SizedBox(width: 8),
+            Expanded(child: Text(
+              'ADAU1466 보드가 탐지됐습니다. 이 보드는 현재 지원 준비 중입니다.\n'
+              'DSP 기능은 ADAU1701(JAB4) 보드에서 사용 가능합니다.',
+              style: TextStyle(color: Colors.amber, fontSize: 10, height: 1.5),
+            )),
+          ]),
+        ),
+      ],
+
+      // 미식별 보드 배너
+      if (isConnected && bState.detectedBoard == DetectedBoard.unknown) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Row(children: [
+            Icon(Icons.help_outline, color: Colors.white38, size: 14),
+            SizedBox(width: 8),
+            Expanded(child: Text(
+              '보드를 자동으로 식별하지 못했습니다. 설정에서 보드 종류를 직접 선택해 주세요.',
+              style: TextStyle(color: Colors.white38, fontSize: 10, height: 1.5),
+            )),
+          ]),
+        ),
+      ],
     ]);
   }
 }
