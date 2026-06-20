@@ -11,6 +11,7 @@ import '../../core/ai_tuning_service.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../core/speaker_profile.dart';
 import '../dsp/dsp_compiler.dart';
+import '../../core/dsp/dsp_adapter.dart';
 
 // systemProfileProvider, speakerProfileProvider는 core에서 import됨
 // (community_screen 등 다른 feature에서 순환 없이 접근 가능)
@@ -37,6 +38,16 @@ class HomeScreen extends ConsumerWidget {
                   children: [
                     _StepSection(index: 1, label: 'SELECT SPEAKER', active: true,
                         child: _SpeakerSelectPanel(ref: ref)),
+                    Consumer(builder: (_, r, __) {
+                      final sys = r.watch(systemProfileProvider);
+                      final sp  = r.watch(speakerProfileProvider);
+                      // 멀티웨이 + 스피커 프로파일이 있을 때만 크로스오버 카드 표시
+                      if (sys.crossoverPoints < 1 || sp == null) return const SizedBox.shrink();
+                      return Column(children: [
+                        const SizedBox(height: 16),
+                        _CrossoverCard(profile: sp, bState: r.watch(bleProvider)),
+                      ]);
+                    }),
                     const SizedBox(height: 16),
                     _StepSection(index: 2, label: 'CONNECT', active: true,
                         child: _BlePanel(bState: bState, ref: ref)),
@@ -327,6 +338,92 @@ class _SpectrumChart extends StatelessWidget {
             label: VerticalLineLabel(show: true, labelResolver: (l) => p.frequency.toStringAsFixed(0), style: const TextStyle(color: Colors.redAccent, fontSize: 8)))).toList()),
         )),
         const Positioned(top: 0, left: 0, child: Text('Scms  20–500 Hz', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1))),
+      ]),
+    );
+  }
+}
+
+/// 크로스오버 추천 카드 — 멀티웨이(crossoverPoints≥1) + SpeakerProfile 있을 때만 표시
+class _CrossoverCard extends ConsumerStatefulWidget {
+  final SpeakerProfile profile;
+  final BleState bState;
+  const _CrossoverCard({required this.profile, required this.bState});
+  @override
+  ConsumerState<_CrossoverCard> createState() => _CrossoverCardState();
+}
+
+class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
+  bool _sending = false;
+
+  Future<void> _applyCrossover() async {
+    setState(() => _sending = true);
+    final freq = widget.profile.recommendedCrossoverFreq;
+    final sys  = ref.read(systemProfileProvider);
+    final ble  = ref.read(bleProvider.notifier);
+
+    // 채널 순서: woofer→ LPF, tweeter→ HPF (mid BPF는 이번 버전 생략)
+    final adapter = sys.adapterFactory(
+      (frame) => ble.sendRawFrame(frame),
+    );
+    for (int i = 0; i < sys.channels.length; i++) {
+      final ch = sys.channels[i];
+      CrossoverConfig? cfg;
+      if (ch.type == ChannelType.woofer) {
+        cfg = CrossoverConfig(side: FilterSide.lpf, freqHz: freq, slope: CrossoverSlope.lr4);
+      } else if (ch.type == ChannelType.tweeter) {
+        cfg = CrossoverConfig(side: FilterSide.hpf, freqHz: freq, slope: CrossoverSlope.lr4);
+      }
+      if (cfg != null) await adapter.writeCrossover(i, cfg);
+    }
+    setState(() => _sending = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('크로스오버 적용됨'),
+        duration: Duration(seconds: 2),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final freq   = widget.profile.recommendedCrossoverFreq;
+    final isConn = widget.bState.connection == BleConnectionState.connected;
+    final label  = widget.profile.qts < 0.4 ? 'Fs × 20' :
+                   widget.profile.qts < 0.7 ? 'Fs × 28' : 'Fs × 35';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white24),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.03),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('권장 크로스오버', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Text('${freq.toStringAsFixed(0)} Hz',
+              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w200, letterSpacing: 2)),
+          const SizedBox(width: 12),
+          const Text('LR4',
+              style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
+          const Spacer(),
+          _OutlineButton(
+            label: _sending ? '전송 중...' : 'DSP에 적용',
+            loading: _sending,
+            enabled: isConn && !_sending,
+            onTap: isConn && !_sending ? _applyCrossover : null,
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('T/S 기반 추정  ·  $label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz',
+            style: const TextStyle(color: Colors.white24, fontSize: 10)),
+        if (!isConn)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('스피커 연결 후 적용 가능합니다',
+                style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+          ),
       ]),
     );
   }

@@ -28,6 +28,16 @@ class SpeakerProfile {
   });
 
   double get recommendedHpfFreq => fs * 0.85;
+
+  /// T/S 기반 크로스오버 주파수 추정 (멀티웨이 전용)
+  /// Qts < 0.4: 밀폐 특성 → Fs × 20 (중고역 크로스오버 유리)
+  /// Qts 0.4~0.7: 표준 → Fs × 28 (일반적 2웨이 크로스오버)
+  /// Qts > 0.7: 고Qts → Fs × 35 (저역 연장 제한, 낮은 크로스 불가)
+  double get recommendedCrossoverFreq {
+    if (qts < 0.4) return (fs * 20).clamp(800, 4000);
+    if (qts < 0.7) return (fs * 28).clamp(1000, 5000);
+    return (fs * 35).clamp(1500, 6000);
+  }
   double get maxBassBoostDb {
     if (xmax >= 10) return 6.0;
     if (xmax >= 6) return 4.0;
