@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../core/dsp/dsp_adapter.dart';
 import '../../core/frd_parser.dart';
 import '../../core/channel_link_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 // systemProfileProvider, speakerProfileProvider는 core에서 import됨
 // (community_screen 등 다른 feature에서 순환 없이 접근 가능)
@@ -26,6 +27,14 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mState = ref.watch(measurementProvider);
     final bState = ref.watch(bleProvider);
+
+    // Bluetooth OFF 감지 → 안내 다이얼로그
+    ref.listen<BleState>(bleProvider, (prev, next) {
+      if (next.connection == BleConnectionState.bluetoothOff &&
+          prev?.connection != BleConnectionState.bluetoothOff) {
+        _showBluetoothOffDialog(context);
+      }
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -75,6 +84,37 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+Future<void> _showBluetoothOffDialog(BuildContext context) async {
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      title: const Text(
+        '블루투스가 꺼져 있습니다',
+        style: TextStyle(color: Colors.white, fontSize: 15),
+      ),
+      content: const Text(
+        '블루투스가 꺼져 있습니다. 설정에서 켜주세요.',
+        style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('닫기', style: TextStyle(color: Colors.white38)),
+        ),
+        TextButton(
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await openAppSettings();
+          },
+          child: const Text('설정 열기', style: TextStyle(color: Colors.white70)),
+        ),
+      ],
+    ),
+  );
 }
 
 class _TopBar extends StatelessWidget {

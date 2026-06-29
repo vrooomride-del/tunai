@@ -13,7 +13,7 @@ class TunaiUUID {
   static const String statusNotify = 'fff1'; // READ|NOTIFY
 }
 
-enum BleConnectionState { disconnected, scanning, connecting, connected, error }
+enum BleConnectionState { disconnected, scanning, connecting, connected, error, bluetoothOff }
 
 /// 연결 후 보드 자동탐지 결과
 enum DetectedBoard {
@@ -84,6 +84,17 @@ class BleController extends StateNotifier<BleState> {
       connection: BleConnectionState.scanning,
       message: 'TUNAI 스피커 검색 중...',
     );
+
+    // ── Bluetooth 어댑터 상태 확인 ────────────────────────────────
+    final adapterState = await FlutterBluePlus.adapterState.first;
+    if (adapterState != BluetoothAdapterState.on) {
+      state = state.copyWith(
+        connection: BleConnectionState.bluetoothOff,
+        message: '블루투스가 꺼져 있습니다. 설정에서 켜주세요.',
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────
 
     final granted = await _requestBlePermissions();
     if (!granted) {
