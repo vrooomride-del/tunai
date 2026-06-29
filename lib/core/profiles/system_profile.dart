@@ -15,11 +15,20 @@ enum SystemProfileId {
 
 enum ChannelType { woofer, mid, tweeter, fullRange, subwoofer }
 
+/// L / R / 모노 구분 (모노: L/R 분리 미지원 채널)
+enum ChannelSide { left, right, mono }
+
 class ChannelConfig {
   final String name;
   final ChannelType type;
   final (double, double) freqRange; // (low Hz, high Hz)
-  const ChannelConfig({required this.name, required this.type, required this.freqRange});
+  final ChannelSide side;
+  const ChannelConfig({
+    required this.name,
+    required this.type,
+    required this.freqRange,
+    this.side = ChannelSide.mono,
+  });
 }
 
 class SystemProfile {
@@ -29,7 +38,7 @@ class SystemProfile {
   final String chipLabel;   // UI 표시용 DSP 칩 이름
   final DspAdapter Function(RawWriteFn writeRaw) adapterFactory;
   final List<ChannelConfig> channels;
-  final int crossoverPoints; // 크로스오버 수 = 채널 수 - 1
+  final int crossoverPoints; // 크로스오버 수 = 대역 수 - 1
 
   const SystemProfile({
     required this.id,
@@ -43,10 +52,36 @@ class SystemProfile {
 
   int get channelCount => channels.length;
   bool get isAdau1466 => id == SystemProfileId.isobarik || id == SystemProfileId.tunaiReference;
+
+  /// 대역(ChannelType)별로 L/R 채널 쌍을 반환
+  /// mono 채널은 [index, -1] 형태로 반환 (R 없음)
+  List<({ChannelType type, int leftIdx, int rightIdx})> get bandPairs {
+    final Map<ChannelType, ({int l, int r})> map = {};
+    for (int i = 0; i < channels.length; i++) {
+      final ch = channels[i];
+      final prev = map[ch.type] ?? (l: -1, r: -1);
+      if (ch.side == ChannelSide.left || ch.side == ChannelSide.mono) {
+        map[ch.type] = (l: i, r: prev.r);
+      } else if (ch.side == ChannelSide.right) {
+        map[ch.type] = (l: prev.l, r: i);
+      }
+    }
+    // ChannelType 출현 순서 유지
+    final seen = <ChannelType>[];
+    for (final ch in channels) {
+      if (!seen.contains(ch.type)) seen.add(ch.type);
+    }
+    return seen.map((t) {
+      final p = map[t]!;
+      return (type: t, leftIdx: p.l, rightIdx: p.r);
+    }).toList();
+  }
 }
 
 // ── 사전 정의 프로파일 ─────────────────────────────────────────
 
+/// TUNAI ONE — ADAU1701 2웨이 스테레오 (4채널)
+/// ch0: WooferL, ch1: WooferR, ch2: TweeterL, ch3: TweeterR
 final kTunaiOneSystemProfile = SystemProfile(
   id: SystemProfileId.tunaiOne,
   displayName: 'TUNAI ONE',
@@ -54,12 +89,16 @@ final kTunaiOneSystemProfile = SystemProfile(
   chipLabel: 'ADAU1701',
   adapterFactory: (write) => Adau1701Adapter(writeRaw: write),
   channels: const [
-    ChannelConfig(name: 'Woofer',  type: ChannelType.woofer,  freqRange: (40,  2200)),
-    ChannelConfig(name: 'Tweeter', type: ChannelType.tweeter, freqRange: (2200, 20000)),
+    ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2200)),
+    ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2200)),
+    ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2200, 20000)),
+    ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2200, 20000)),
   ],
   crossoverPoints: 1,
 );
 
+/// Isobarik — ADAU1466 3웨이 스테레오 (6채널)
+/// ch0: WooferL, ch1: WooferR, ch2: MidL, ch3: MidR, ch4: TweeterL, ch5: TweeterR
 final kIsobarikSystemProfile = SystemProfile(
   id: SystemProfileId.isobarik,
   displayName: 'Isobarik 거실',
@@ -67,13 +106,17 @@ final kIsobarikSystemProfile = SystemProfile(
   chipLabel: 'ADAU1466',
   adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
   channels: const [
-    ChannelConfig(name: 'Woofer',  type: ChannelType.woofer,  freqRange: (20,  280)),
-    ChannelConfig(name: 'Mid',     type: ChannelType.mid,     freqRange: (280,  2500)),
-    ChannelConfig(name: 'Tweeter', type: ChannelType.tweeter, freqRange: (2500, 20000)),
+    ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (20,  280)),
+    ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (20,  280)),
+    ChannelConfig(name: 'Mid L',     type: ChannelType.mid,     side: ChannelSide.left,  freqRange: (280,  2500)),
+    ChannelConfig(name: 'Mid R',     type: ChannelType.mid,     side: ChannelSide.right, freqRange: (280,  2500)),
+    ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2500, 20000)),
+    ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2500, 20000)),
   ],
   crossoverPoints: 2,
 );
 
+/// TUNAI REFERENCE — ADAU1466 동축 2웨이 스테레오 (4채널)
 final kTunaiReferenceSystemProfile = SystemProfile(
   id: SystemProfileId.tunaiReference,
   displayName: 'TUNAI REFERENCE',
@@ -81,8 +124,10 @@ final kTunaiReferenceSystemProfile = SystemProfile(
   chipLabel: 'ADAU1466',
   adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
   channels: const [
-    ChannelConfig(name: 'Coaxial Woofer',  type: ChannelType.woofer,  freqRange: (40,  2000)),
-    ChannelConfig(name: 'Coaxial Tweeter', type: ChannelType.tweeter, freqRange: (2000, 20000)),
+    ChannelConfig(name: 'Coaxial Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2000)),
+    ChannelConfig(name: 'Coaxial Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2000)),
+    ChannelConfig(name: 'Coaxial Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2000, 20000)),
+    ChannelConfig(name: 'Coaxial Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2000, 20000)),
   ],
   crossoverPoints: 1,
 );

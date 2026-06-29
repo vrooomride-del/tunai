@@ -3,34 +3,38 @@ import 'dart:typed_data';
 import 'dsp_adapter.dart';
 import '../../features/dsp/dsp_compiler.dart';
 
-/// ADAU1701 (TUNAI ONE / JAB4) BLE 어댑터
+/// ADAU1701 (TUNAI ONE / JAB4) BLE 어댑터 — 스테레오 4채널
+///
+/// 채널 인덱스 (SystemProfile.channels 순서와 일치):
+///   0: Woofer  L  1: Woofer  R
+///   2: Tweeter L  3: Tweeter R
 ///
 /// PRAM 레이아웃 (TODO: SigmaStudio export 후 정확한 주소로 교체):
-///   Woofer  밴드 0–5 → 0x0010 + band * 5
-///   Tweeter 밴드 0–5 → 0x0050 + band * 5
-///   크로스오버 HP/LP  → PEQ 직후 슬롯 (TODO: 주소 미확정)
-///   Gain              → TODO
-///   Delay             → TODO
+///   ch0 WooferL  PEQ: 0x0010,  ch1 WooferR  PEQ: 0x0030 (estimate)
+///   ch2 TweeterL PEQ: 0x0050,  ch3 TweeterR PEQ: 0x0070 (estimate)
+///
+/// Gain 레지스터 (SigmaStudio IC Memory Map 확인 2026-06-20):
+///   ch0 WooferL = addr 7 (확정), ch1 WooferR = addr 5 (estimate)
+///   ch2 TweeterL = addr 6 (확정), ch3 TweeterR = addr 4 (estimate)
 class Adau1701Adapter implements DspAdapter {
   final RawWriteFn _writeRaw;
 
-  static const int _basePramWoofer  = 0x0010;
-  static const int _basePramTweeter = 0x0050;
-  static const int _peqBands        = 6; // 채널당 PEQ 슬롯 수
-
-  // XO: PEQ 뒤에 채널당 [HP×4슬롯][LP×4슬롯]
-  // Woofer  XO base: 0x0010 + 6*5 = 0x003A
-  // Tweeter XO base: 0x0050 + 6*5 = 0x007A
-  static const int _xoWooferBase  = _basePramWoofer  + _peqBands * 5;
-  static const int _xoTweeterBase = _basePramTweeter + _peqBands * 5;
+  static const int _peqBands = 6; // 채널당 PEQ 슬롯 수
   static const int _xoSlotsPerSide = 4; // LR48 최대 4 biquad
 
-  // SigmaStudio IC Memory Map 확인 (2026-06-20)
-  // Vol(ch0 Woofer) = addr 7, Vol_2(ch1 Tweeter) = addr 6
-  static const int _gainWoofer  = 7;
-  static const int _gainTweeter = 6;
-  static const int _delayWoofer  = 0x0000; // ← TODO
-  static const int _delayTweeter = 0x0000; // ← TODO
+  // 채널별 PRAM 베이스 (ch0~ch3)
+  static const List<int> _pramBase = [0x0010, 0x0030, 0x0050, 0x0070];
+
+  // 채널별 XO 베이스 = PRAM 베이스 + PEQ 슬롯 수 × 5
+  static int _xoBase(int channelIndex) =>
+      _pramBase[channelIndex] + _peqBands * 5;
+
+  // 채널별 Gain 레지스터 주소
+  // ch0 WooferL=7, ch1 WooferR=5(est), ch2 TweeterL=6, ch3 TweeterR=4(est)
+  static const List<int> _gainAddr = [7, 5, 6, 4];
+
+  // 채널별 Delay 레지스터 주소 (TODO: 미확정)
+  static const List<int> _delayAddr = [0x0000, 0x0000, 0x0000, 0x0000];
 
   Adau1701Adapter({required RawWriteFn writeRaw}) : _writeRaw = writeRaw;
 
@@ -38,8 +42,7 @@ class Adau1701Adapter implements DspAdapter {
   @override
   Future<void> writeBiquad(int channelIndex, int bandIndex, BiquadCoeffs coeffs) async {
     assert(bandIndex < _peqBands);
-    final base = channelIndex == 0 ? _basePramWoofer : _basePramTweeter;
-    final addr = base + bandIndex * 5;
+    final addr = _pramBase[channelIndex] + bandIndex * 5;
     await _writeRaw(_buildFrame(addr, [
       coeffs.b0, coeffs.b1, coeffs.b2, coeffs.a1, coeffs.a2,
     ]));
@@ -54,7 +57,7 @@ class Adau1701Adapter implements DspAdapter {
     final isHpf = config.side == FilterSide.hpf;
     final biquads = _calculateCrossoverBiquads(config.freqHz, isHpf, xoType);
 
-    final xoBase = channelIndex == 0 ? _xoWooferBase : _xoTweeterBase;
+    final xoBase = _xoBase(channelIndex);
     final slotBase = isHpf ? 0 : _xoSlotsPerSide;
 
     for (var i = 0; i < biquads.length; i++) {
@@ -74,7 +77,7 @@ class Adau1701Adapter implements DspAdapter {
   // ── Gain ─────────────────────────────────────────────────────
   @override
   Future<void> writeGain(int channelIndex, double gainDb) async {
-    final addr = channelIndex == 0 ? _gainWoofer : _gainTweeter;
+    final addr = _gainAddr[channelIndex];
     if (addr == 0x0000) return; // TODO: 주소 미확정
     final linear = pow(10.0, gainDb / 20.0).toDouble();
     await _writeRaw(_buildFrame(addr, [linear, 0.0, 0.0, 0.0, 0.0]));
@@ -83,10 +86,9 @@ class Adau1701Adapter implements DspAdapter {
   // ── Delay ────────────────────────────────────────────────────
   @override
   Future<void> writeDelay(int channelIndex, double delayMs) async {
-    final addr = channelIndex == 0 ? _delayWoofer : _delayTweeter;
+    final addr = _delayAddr[channelIndex];
     if (addr == 0x0000) return; // TODO: 주소 미확정
     final samples = (delayMs / 1000.0 * DspCompiler.sampleRate).round();
-    // 샘플 카운트를 5.23 고정소수점으로 인코딩 (정수값)
     await _writeRaw(_buildRawFrame(addr, [
       DspCompiler.toBytes4(samples), [0, 0, 0, 0], [0, 0, 0, 0],
       [0, 0, 0, 0], [0, 0, 0, 0],
@@ -98,8 +100,7 @@ class Adau1701Adapter implements DspAdapter {
   Future<void> writeSubsonicFilter(int channelIndex, double freqHz) async {
     final biquads = _calculateCrossoverBiquads(freqHz, true, _XoType.bw2);
     // XO HP 슬롯의 마지막 슬롯(슬롯 3)을 서브소닉 전용 사용
-    final xoBase = channelIndex == 0 ? _xoWooferBase : _xoTweeterBase;
-    final addr = xoBase + (_xoSlotsPerSide - 1) * 5;
+    final addr = _xoBase(channelIndex) + (_xoSlotsPerSide - 1) * 5;
     final c = biquads[0];
     await _writeRaw(_buildFrame(addr, [c.b0, c.b1, c.b2, c.a1, c.a2]));
   }

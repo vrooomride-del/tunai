@@ -14,6 +14,7 @@ import '../dsp/dsp_compiler.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/dsp/dsp_adapter.dart';
 import '../../core/frd_parser.dart';
+import '../../core/channel_link_provider.dart';
 
 // systemProfileProvider, speakerProfileProvider는 core에서 import됨
 // (community_screen 등 다른 feature에서 순환 없이 접근 가능)
@@ -590,12 +591,27 @@ class _CrossoverCard extends ConsumerStatefulWidget {
 class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
   bool _sending = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // 채널 XO 주파수를 권장값으로 초기화
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final sys = ref.read(systemProfileProvider);
+      final freq = widget.profile.recommendedCrossoverFreq;
+      final map = Map<int, double>.from(ref.read(channelXoFreqProvider));
+      for (int i = 0; i < sys.channels.length; i++) {
+        map.putIfAbsent(i, () => freq);
+      }
+      ref.read(channelXoFreqProvider.notifier).state = map;
+    });
+  }
+
   Future<void> _applySensitivityMatch() async {
     final sys = ref.read(systemProfileProvider);
     final ble = ref.read(bleProvider.notifier);
     final profile = widget.profile;
 
-    // 감도 계산: FRD 우선, 없으면 T/S fallback
     final wooferSens = profile.wooferFrd != null && profile.wooferFrd!.isNotEmpty
         ? FrdParser.calculateSensitivity(profile.wooferFrd!)
         : profile.sensitivity;
@@ -615,6 +631,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
 
     final minSens = wooferSens < tweeterSens ? wooferSens : tweeterSens;
     final adapter = sys.adapterFactory((frame) => ble.sendRawFrame(frame));
+    final gainMap = ref.read(channelGainProvider);
 
     setState(() => _sending = true);
     for (int i = 0; i < sys.channels.length; i++) {
@@ -627,8 +644,10 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
       } else {
         continue;
       }
-      final cut = (minSens - sens).clamp(-40.0, 0.0);
-      await adapter.writeGain(i, cut);
+      // 채널별 커스텀 게인 오프셋 적용
+      final base = (minSens - sens).clamp(-40.0, 0.0);
+      final offset = gainMap[i] ?? 0.0;
+      await adapter.writeGain(i, (base + offset).clamp(-40.0, 0.0));
     }
     setState(() => _sending = false);
 
@@ -642,16 +661,15 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
 
   Future<void> _applyCrossover() async {
     setState(() => _sending = true);
-    final freq = widget.profile.recommendedCrossoverFreq;
     final sys  = ref.read(systemProfileProvider);
     final ble  = ref.read(bleProvider.notifier);
+    final freqMap = ref.read(channelXoFreqProvider);
+    final fallback = widget.profile.recommendedCrossoverFreq;
 
-    // 채널 순서: woofer→ LPF, tweeter→ HPF (mid BPF는 이번 버전 생략)
-    final adapter = sys.adapterFactory(
-      (frame) => ble.sendRawFrame(frame),
-    );
+    final adapter = sys.adapterFactory((frame) => ble.sendRawFrame(frame));
     for (int i = 0; i < sys.channels.length; i++) {
       final ch = sys.channels[i];
+      final freq = freqMap[i] ?? fallback;
       CrossoverConfig? cfg;
       if (ch.type == ChannelType.woofer) {
         cfg = CrossoverConfig(side: FilterSide.lpf, freqHz: freq, slope: CrossoverSlope.lr4);
@@ -671,7 +689,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
 
   @override
   Widget build(BuildContext context) {
-    final freq   = widget.profile.recommendedCrossoverFreq;
+    final sys    = ref.watch(systemProfileProvider);
     final isConn = widget.bState.connection == BleConnectionState.connected;
     final basis  = widget.profile.crossoverBasis;
     final label  = widget.profile.hasFrd ? basis :
@@ -686,14 +704,8 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
         color: Colors.white.withValues(alpha: 0.03),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('권장 크로스오버', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
-        const SizedBox(height: 8),
         Row(children: [
-          Text('${freq.toStringAsFixed(0)} Hz',
-              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w200, letterSpacing: 2)),
-          const SizedBox(width: 12),
-          const Text('LR4',
-              style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
+          const Text('크로스오버', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
           const Spacer(),
           _OutlineButton(
             label: _sending ? '전송 중...' : 'DSP에 적용',
@@ -703,13 +715,21 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
           ),
         ]),
         const SizedBox(height: 4),
-        Text('$label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz',
+        Text('$label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz  ·  LR4',
             style: const TextStyle(color: Colors.white24, fontSize: 10)),
+        const SizedBox(height: 12),
+        // ── 대역별 L/R 링크 컨트롤 ──────────────────────────────
+        ...sys.bandPairs.map((band) => _BandLinkRow(
+          band: band,
+          sys: sys,
+          fallbackFreq: widget.profile.recommendedCrossoverFreq,
+        )),
+        // ── 감도 매칭 ────────────────────────────────────────────
         if (widget.profile.tweeterFrd != null && widget.profile.tweeterFrd!.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const Divider(color: Colors.white12, height: 20),
           Row(children: [
             const Text('감도 매칭',
-                style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1)),
+                style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
             const Spacer(),
             _OutlineButton(
               label: _sending ? '전송 중...' : '감도 매칭 적용',
@@ -721,12 +741,228 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
         ],
         if (!isConn)
           const Padding(
-            padding: EdgeInsets.only(top: 6),
+            padding: EdgeInsets.only(top: 8),
             child: Text('스피커 연결 후 적용 가능합니다',
                 style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
           ),
       ]),
     );
+  }
+}
+
+// ── 대역별 L/R 링크 행 ────────────────────────────────────────────
+
+class _BandLinkRow extends ConsumerWidget {
+  final ({ChannelType type, int leftIdx, int rightIdx}) band;
+  final SystemProfile sys;
+  final double fallbackFreq;
+
+  const _BandLinkRow({
+    required this.band,
+    required this.sys,
+    required this.fallbackFreq,
+  });
+
+  String _bandLabel(ChannelType type) {
+    switch (type) {
+      case ChannelType.woofer:    return 'WOO';
+      case ChannelType.mid:       return 'MID';
+      case ChannelType.tweeter:   return 'TWE';
+      case ChannelType.subwoofer: return 'SUB';
+      case ChannelType.fullRange: return 'FUL';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final linked   = ref.watch(channelLinkProvider)[band.type] ?? true;
+    final hasRight = band.rightIdx >= 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_bandLabel(band.type),
+            style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          // L 채널
+          Expanded(child: _ChannelControl(
+            label: 'L',
+            channelIdx: band.leftIdx,
+            sys: sys,
+            fallbackFreq: fallbackFreq,
+          )),
+          // 링크 토글 버튼
+          if (hasRight) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => ref.toggleLink(band.type),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: linked
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  border: Border.all(
+                    color: linked ? Colors.white54 : Colors.white24,
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    linked ? '🔗' : '⛓️',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // R 채널
+            Expanded(child: _ChannelControl(
+              label: 'R',
+              channelIdx: band.rightIdx,
+              sys: sys,
+              fallbackFreq: fallbackFreq,
+            )),
+          ] else ...[
+            // mono 채널 — R 없음
+            const Expanded(child: SizedBox()),
+          ],
+        ]),
+      ]),
+    );
+  }
+}
+
+// ── 채널 단위 컨트롤 (게인 슬라이더 + 주파수 표시) ────────────────
+
+class _ChannelControl extends ConsumerWidget {
+  final String label;
+  final int channelIdx;
+  final SystemProfile sys;
+  final double fallbackFreq;
+
+  const _ChannelControl({
+    required this.label,
+    required this.channelIdx,
+    required this.sys,
+    required this.fallbackFreq,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gain = ref.watch(channelGainProvider)[channelIdx] ?? 0.0;
+    final freq = ref.watch(channelXoFreqProvider)[channelIdx] ?? fallbackFreq;
+    final ch   = sys.channels[channelIdx];
+
+    // 크로스오버 주파수: woofer/tweeter/mid만 표시
+    final showFreq = ch.type != ChannelType.fullRange;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 라벨 + 주파수
+        Row(children: [
+          Text(label,
+              style: const TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1)),
+          const Spacer(),
+          if (showFreq)
+            GestureDetector(
+              onTap: () => _editFreq(context, ref, freq, ch.type),
+              child: Text('${freq.toStringAsFixed(0)} Hz',
+                  style: const TextStyle(color: Colors.white70, fontSize: 10)),
+            ),
+        ]),
+        // 게인 슬라이더
+        Row(children: [
+          const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 8, letterSpacing: 1)),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 1,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: Colors.white54,
+                inactiveTrackColor: Colors.white12,
+                thumbColor: Colors.white,
+                overlayColor: Colors.white12,
+              ),
+              child: Slider(
+                value: gain.clamp(-20.0, 6.0),
+                min: -20.0,
+                max: 6.0,
+                onChanged: (v) => ref.setChannelGain(
+                  channelIdx,
+                  (v * 10).round() / 10,
+                  sys: sys,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text(
+              '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)}',
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Colors.white54, fontSize: 9),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _editFreq(
+      BuildContext context, WidgetRef ref, double current, ChannelType type) async {
+    final ctrl = TextEditingController(text: current.toStringAsFixed(0));
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          '크로스오버 주파수 ($label)',
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+        ),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            suffixText: 'Hz',
+            suffixStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white54),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = double.tryParse(ctrl.text);
+              if (v != null && v > 0) Navigator.pop(ctx, v);
+            },
+            child: const Text('확인', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+    if (result != null) {
+      ref.setChannelXoFreq(channelIdx, result, sys: sys);
+    }
   }
 }
 
