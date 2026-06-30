@@ -36,7 +36,7 @@
 | 항목 | 상태 |
 |---|---|
 | JAB4 + ICP5 브링업 | ✅ 해결 |
-| ADAU1466 어댑터 | stub, 보드 도착 대기 |
+| ADAU1466 어댑터 | ✅ 구현 완료 — writeGain/Delay 확정 (Volume SPI 검증, Delay 추정). PEQ/XO 5.27 패턴 구현, 주소 미확정 (SigmaStudio export 필요) |
 | Pro 포트 자동감지/UART 탐지 | ✅ 완료 |
 | Pro/모바일 위상정합 DSP 전달 | ⏸ SigmaStudio Delay 블록 추가 필요 (실물 PC 작업) |
 
@@ -50,7 +50,7 @@
 | 공유 시 측정 없으면 빈 프리셋 방지 UX | ✅ 소형 | 측정 없으면 SHARE 버튼 비활성화 또는 경고 |
 | Pro _applyPreset 후 APPLY 안내 snackbar | ✅ 소형 | 현재 DSP state만 업데이트, 유저가 APPLY 눌러야 함을 안내 없음 |
 | 위상정합 펌웨어(Delay 블록) 추가 | ❌ 실물 PC 필요 | SigmaStudio 작업 |
-| ADAU1466 어댑터 구현 | ❌ 보드 도착 대기 | 물리적 전제조건 |
+| ADAU1466 어댑터 구현 | ✅ 완료 — SigmaStudio PEQ/XO 주소 확인 후 _peqBase/_xoBase 교체 필요 | |
 | Modular Tuning Plate 출원 | ❌ 설계 확정 대기 | 외부 공개 전 필수 |
 
 ---
