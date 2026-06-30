@@ -81,6 +81,16 @@ class DspCompiler {
     return fixedVal;
   }
 
+  /// ADAU1466 5.27 고정소수점 변환 (32bit 전체)
+  /// 표현 범위: -16.0 ~ +15.9999999
+  /// ADAU1701의 5.23(28bit)과 달리 32bit 전체 사용 (상위 5bit 정수, 하위 27bit 소수)
+  static int toFixed527(double value) {
+    final clamped = value.clamp(-16.0, 15.9999999);
+    int fixedVal = (clamped * 134217728).round(); // × 2^27
+    if (fixedVal < 0) fixedVal = fixedVal & 0xFFFFFFFF; // 32bit two's complement
+    return fixedVal;
+  }
+
   /// 28bit 정수 → 4바이트 big-endian
   static List<int> toBytes4(int value) => [
     (value >> 24) & 0xFF,
