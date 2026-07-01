@@ -1085,6 +1085,69 @@ class _AiTunePanelState extends State<_AiTunePanel> {
   AiTuningResult? _result;
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
 
+  Future<void> _editBandHz(int idx, num current) async {
+    final ctrl = TextEditingController(text: current.toStringAsFixed(0));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Band ${idx + 1} — 주파수', style: const TextStyle(color: Colors.white, fontSize: 14)),
+        content: TextField(controller: ctrl, autofocus: true, keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(suffixText: 'Hz', suffixStyle: TextStyle(color: Colors.white54),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소', style: TextStyle(color: Colors.white38))),
+          TextButton(onPressed: () { final v = double.tryParse(ctrl.text); if (v != null) Navigator.pop(ctx, v.clamp(20, 20000)); }, child: const Text('확인', style: TextStyle(color: Colors.white70))),
+        ],
+      ),
+    );
+    if (v != null) setState(() => _result!.bands[idx]['frequency'] = v);
+  }
+
+  Future<void> _editBandDb(int idx, num current) async {
+    final ctrl = TextEditingController(text: current.toStringAsFixed(1));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Band ${idx + 1} — 게인', style: const TextStyle(color: Colors.white, fontSize: 14)),
+        content: TextField(controller: ctrl, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(suffixText: 'dB', suffixStyle: TextStyle(color: Colors.white54),
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소', style: TextStyle(color: Colors.white38))),
+          TextButton(onPressed: () { final v = double.tryParse(ctrl.text); if (v != null) Navigator.pop(ctx, v.clamp(-24, 24)); }, child: const Text('확인', style: TextStyle(color: Colors.white70))),
+        ],
+      ),
+    );
+    if (v != null) setState(() => _result!.bands[idx]['gainDb'] = v);
+  }
+
+  Future<void> _editBandQ(int idx, num current) async {
+    final ctrl = TextEditingController(text: current.toStringAsFixed(2));
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('Band ${idx + 1} — Q', style: const TextStyle(color: Colors.white, fontSize: 14)),
+        content: TextField(controller: ctrl, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소', style: TextStyle(color: Colors.white38))),
+          TextButton(onPressed: () { final v = double.tryParse(ctrl.text); if (v != null) Navigator.pop(ctx, v.clamp(0.1, 16)); }, child: const Text('확인', style: TextStyle(color: Colors.white70))),
+        ],
+      ),
+    );
+    if (v != null) setState(() => _result!.bands[idx]['q'] = v);
+  }
+
   Future<void> _suggest() async {
     setState(() { _loading = true; _result = null; });
     final result = await AiTuningService.suggest(
@@ -1168,15 +1231,30 @@ class _AiTunePanelState extends State<_AiTunePanel> {
           final idx = e.key;
           final b = e.value;
           final active = b['enabled'] != false;
+          final hz = b['frequency'] as num;
+          final db = b['gainDb'] as num;
+          final q  = b['q'] as num;
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(children: [
               Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10),
                   decoration: BoxDecoration(color: active ? Colors.white38 : Colors.white12, shape: BoxShape.circle)),
-              Expanded(child: Text('${b['frequency']}Hz', style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 13))),
-              Text('${b['gainDb']}dB', style: TextStyle(color: active ? Colors.white60 : Colors.white24, fontSize: 12)),
+              Expanded(child: GestureDetector(
+                onTap: () => _editBandHz(idx, hz),
+                child: Text('${hz.toStringAsFixed(0)}Hz',
+                    style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 13)),
+              )),
+              GestureDetector(
+                onTap: () => _editBandDb(idx, db),
+                child: Text('${db.toStringAsFixed(1)}dB',
+                    style: TextStyle(color: active ? Colors.white60 : Colors.white24, fontSize: 12)),
+              ),
               const SizedBox(width: 12),
-              Text('Q${b['q']}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              GestureDetector(
+                onTap: () => _editBandQ(idx, q),
+                child: Text('Q${q.toStringAsFixed(2)}',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
               const SizedBox(width: 12),
               if (active && isConnected)
                 GestureDetector(
