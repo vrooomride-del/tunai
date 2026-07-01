@@ -595,7 +595,7 @@ class _SpectrumChart extends StatelessWidget {
     if (displayBins.isEmpty) return const SizedBox.shrink();
     final spots = displayBins.map((b) => FlSpot(b.frequency, b.magnitude.clamp(-60.0, 20.0))).toList();
     return SizedBox(
-      height: 160,
+      height: 220,
       child: Stack(children: [
         LineChart(LineChartData(
           backgroundColor: Colors.transparent,
@@ -909,18 +909,18 @@ class _ChannelControl extends ConsumerWidget {
         // 라벨 + 주파수
         Row(children: [
           Text(label,
-              style: const TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1)),
+              style: const TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
           const Spacer(),
           if (showFreq)
             GestureDetector(
               onTap: () => _editFreq(context, ref, freq, ch.type),
               child: Text('${freq.toStringAsFixed(0)} Hz',
-                  style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ),
         ]),
         // 게인 슬라이더
         Row(children: [
-          const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 8, letterSpacing: 1)),
+          const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
           Expanded(
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
@@ -944,17 +944,58 @@ class _ChannelControl extends ConsumerWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: 36,
-            child: Text(
-              '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)}',
-              textAlign: TextAlign.right,
-              style: const TextStyle(color: Colors.white54, fontSize: 9),
+          GestureDetector(
+            onTap: () => _editGain(context, ref, gain, ch.type),
+            child: SizedBox(
+              width: 44,
+              child: Text(
+                '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
             ),
           ),
         ]),
       ]),
     );
+  }
+
+  Future<void> _editGain(
+      BuildContext context, WidgetRef ref, double current, ChannelType type) async {
+    final ctrl = TextEditingController(text: current.toStringAsFixed(1));
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text('게인 ($label)', style: const TextStyle(color: Colors.white, fontSize: 14)),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            suffixText: 'dB',
+            suffixStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소', style: TextStyle(color: Colors.white38))),
+          TextButton(
+            onPressed: () {
+              final v = double.tryParse(ctrl.text);
+              if (v != null) Navigator.pop(ctx, v.clamp(-20.0, 6.0));
+            },
+            child: const Text('확인', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+    if (result != null) {
+      ref.setChannelGain(channelIdx, result, sys: sys);
+    }
   }
 
   Future<void> _editFreq(
