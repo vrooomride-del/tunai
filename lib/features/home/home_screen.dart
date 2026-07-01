@@ -1204,13 +1204,30 @@ class _AiTunePanelState extends State<_AiTunePanel> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         controller: _ctrl,
-        style: const TextStyle(color: Colors.white, fontSize: 12),
+        style: const TextStyle(color: Colors.white, fontSize: 13),
+        minLines: 2,
+        maxLines: 4,
         decoration: const InputDecoration(
           labelText: 'AI에게 요청',
-          labelStyle: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1),
-          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+          labelStyle: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1),
+          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
+      ),
+      const SizedBox(height: 8),
+      // 빠른 선택 버튼
+      Wrap(
+        spacing: 6, runSpacing: 6,
+        children: ['저음 강조', '고음 감소', '보컬 선명', '전체 플랫', '자동 균형']
+            .map((q) => GestureDetector(
+              onTap: () { _ctrl.text = q; },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(20)),
+                child: Text(q, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+            )).toList(),
       ),
       const SizedBox(height: 12),
       _OutlineButton(
@@ -1222,9 +1239,9 @@ class _AiTunePanelState extends State<_AiTunePanel> {
       if (_result != null && !_result!.isError) ...[
         const SizedBox(height: 16),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(6)),
-          child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.6)),
+          child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.7)),
         ),
         const SizedBox(height: 12),
         // 밴드 카드 — 세로 스크롤 가능한 리스트
