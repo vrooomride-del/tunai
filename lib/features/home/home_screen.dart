@@ -171,9 +171,9 @@ class _StepSection extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Row(children: [
-              Text('0$index', style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 11, fontWeight: FontWeight.w300, letterSpacing: 1)),
+              Text('0$index', style: TextStyle(color: active ? Colors.white : Colors.white54, fontSize: 13, fontWeight: FontWeight.w400, letterSpacing: 1)),
               const SizedBox(width: 12),
-              Text(label, style: TextStyle(color: active ? Colors.white60 : Colors.white24, fontSize: 10, letterSpacing: 3)),
+              Text(label, style: TextStyle(color: active ? Colors.white70 : Colors.white38, fontSize: 12, letterSpacing: 3)),
             ])),
           const SizedBox(height: 16),
           Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: child),
@@ -299,10 +299,10 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
               child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(profile.displayName,
-                      style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 1.5)),
+                      style: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 14, letterSpacing: 1.5)),
                   const SizedBox(height: 2),
                   Text(profile.description,
-                      style: const TextStyle(color: Colors.white30, fontSize: 10)),
+                      style: const TextStyle(color: Colors.white54, fontSize: 12)),
                 ])),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -311,7 +311,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(profile.chipLabel,
-                      style: const TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                      style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
                 ),
                 if (isSelected) ...[
                   const SizedBox(width: 8),
@@ -323,7 +323,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
         }),
         const SizedBox(height: 4),
         Text('${selected.channelCount}ch · 크로스오버 ${selected.crossoverPoints}개',
-            style: const TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+            style: const TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
 
         // FRD 임포트 (프로파일 선택된 경우만)
         if (sp != null && selected.crossoverPoints >= 1) ...[
@@ -374,12 +374,12 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
         // 안내 텍스트
         const Text(
           'T/S 파라미터 (선택)',
-          style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2),
+          style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 2),
         ),
         const SizedBox(height: 4),
         const Text(
           'FRD/ZMA 파일 없어도 Fs·Qts만으로 크로스오버 주파수를 자동 추천합니다.',
-          style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.5),
+          style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5),
         ),
         const SizedBox(height: 8),
         // 현재 T/S 요약 (저장된 경우)
@@ -393,16 +393,16 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(sp.name,
-                  style: const TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1)),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 1)),
               const SizedBox(height: 2),
               Text(
                 'Fs ${sp.fs.toStringAsFixed(0)}Hz  ·  Qts ${sp.qts.toStringAsFixed(2)}  ·  Vas ${sp.vas.toStringAsFixed(1)}L  ·  Sens ${sp.sensitivity.toStringAsFixed(0)}dB',
-                style: const TextStyle(color: Colors.white38, fontSize: 10),
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: 2),
               Text(
                 '추천 크로스오버: ${sp.recommendedCrossoverFreq.toStringAsFixed(0)}Hz (${sp.crossoverBasis})',
-                style: const TextStyle(color: Colors.white54, fontSize: 10),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ]),
           ),
@@ -463,7 +463,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: const Text('T/S 저장 → 크로스오버 자동 계산',
-                  style: TextStyle(color: Colors.white, fontSize: 11, letterSpacing: 1)),
+                  style: TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 1)),
             ),
           ),
         ],
@@ -481,7 +481,7 @@ class _TsField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+      Text(label, style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1)),
       const SizedBox(height: 4),
       TextField(
         controller: ctrl,
@@ -546,7 +546,7 @@ class _BlePanel extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(child: Text(bState.message.isEmpty ? 'TUNAI 스피커를 검색합니다.' : bState.message,
-            style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
+            style: const TextStyle(color: Colors.white60, fontSize: 14, height: 1.5))),
         const SizedBox(width: 16),
         _OutlineButton(
           label: isConnected ? 'DISCONNECT' : isScanning ? 'SCANNING...' : 'SCAN',
@@ -572,7 +572,7 @@ class _BlePanel extends StatelessWidget {
             SizedBox(width: 8),
             Expanded(child: Text(
               'ADAU1466 보드 연결됨. Gain/Delay 검증 완료 — PEQ/XO 주소 청감검증 진행 중.',
-              style: TextStyle(color: Colors.white54, fontSize: 10, height: 1.5),
+              style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
             )),
           ]),
         ),
@@ -617,7 +617,7 @@ class _MeasurePanel extends StatelessWidget {
       Row(children: [
         Expanded(child: Text(
           mState.error ?? (mState.message.isEmpty ? '핑크노이즈 재생 후 공간 음향을 분석합니다.' : mState.message),
-          style: TextStyle(color: mState.error != null ? Colors.redAccent : Colors.white38, fontSize: 13, height: 1.5))),
+          style: TextStyle(color: mState.error != null ? Colors.redAccent : Colors.white60, fontSize: 14, height: 1.5))),
         const SizedBox(width: 16),
         _OutlineButton(
           label: isRunning ? (isConverging ? '수렴 중...' : '측정 중...') :
@@ -722,7 +722,7 @@ class _DspPanel extends StatelessWidget {
     final hint = !hasDsp ? '측정 후 DSP 필터가 생성됩니다.' : !isConnected ? '스피커를 연결하면 DSP를 적용할 수 있습니다.' : chipHint;
     final canApply = hasDsp && isConnected && !isSending;
     return Row(children: [
-      Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
+      Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white60, fontSize: 14, height: 1.5))),
       const SizedBox(width: 16),
       _OutlineButton(label: isSending ? 'SENDING...' : 'APPLY', loading: isSending, enabled: canApply,
           onTap: canApply ? () {
@@ -752,7 +752,7 @@ class _OutlineButton extends StatelessWidget {
         decoration: BoxDecoration(border: Border.all(color: active ? Colors.white : Colors.white24), borderRadius: BorderRadius.circular(6)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (loading) ...[const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white38)), const SizedBox(width: 8)],
-          Text(label, style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w300)),
+          Text(label, style: TextStyle(color: active ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.w400)),
         ]),
       ),
     );
@@ -918,7 +918,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Text('크로스오버', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+          const Text('크로스오버', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
           const Spacer(),
           _OutlineButton(
             label: _sending ? '전송 중...' : 'DSP에 적용',
@@ -929,7 +929,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
         ]),
         const SizedBox(height: 4),
         Text('$label  ·  Fs ${widget.profile.fs.toStringAsFixed(0)} Hz  ·  LR4',
-            style: const TextStyle(color: Colors.white24, fontSize: 10)),
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 12),
         // ── 대역별 L/R 링크 컨트롤 ──────────────────────────────
         ...sys.bandPairs.map((band) => _BandLinkRow(
@@ -942,7 +942,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
           const Divider(color: Colors.white12, height: 20),
           Row(children: [
             const Text('감도 매칭',
-                style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+                style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
             const Spacer(),
             _OutlineButton(
               label: _sending ? '전송 중...' : '감도 매칭 적용',
@@ -995,7 +995,7 @@ class _BandLinkRow extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_bandLabel(band.type),
-            style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+            style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
         const SizedBox(height: 6),
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           // L 채널
@@ -1083,18 +1083,19 @@ class _ChannelControl extends ConsumerWidget {
         // 라벨 + 주파수
         Row(children: [
           Text(label,
-              style: const TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
+              style: const TextStyle(color: Colors.white70, fontSize: 14,
+                  letterSpacing: 1, fontWeight: FontWeight.bold)),
           const Spacer(),
           if (showFreq)
             GestureDetector(
               onTap: () => _editFreq(context, ref, freq, ch.type),
               child: Text('${freq.toStringAsFixed(0)} Hz',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
             ),
         ]),
         // 게인 슬라이더
         Row(children: [
-          const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+          const Text('GAIN', style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
           Expanded(
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
@@ -1125,7 +1126,7 @@ class _ChannelControl extends ConsumerWidget {
               child: Text(
                 '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)}',
                 textAlign: TextAlign.right,
-                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ),
           ),
@@ -1229,17 +1230,17 @@ class _PeakTable extends StatelessWidget {
     return Column(children: [
       const Padding(padding: EdgeInsets.only(bottom: 8),
         child: Row(children: [
-          Expanded(child: Text('FREQ', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2))),
-          SizedBox(width: 72, child: Text('GAIN', textAlign: TextAlign.right, style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2))),
-          SizedBox(width: 56, child: Text('Q', textAlign: TextAlign.right, style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2))),
+          Expanded(child: Text('FREQ', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 2))),
+          SizedBox(width: 80, child: Text('GAIN', textAlign: TextAlign.right, style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 2))),
+          SizedBox(width: 60, child: Text('Q', textAlign: TextAlign.right, style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 2))),
         ])),
       ...peaks.map((p) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(children: [
-          Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10), decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
-          Expanded(child: Text('${p.frequency.toStringAsFixed(1)} Hz', style: const TextStyle(color: Colors.white, fontSize: 14, fontFeatures: [FontFeature.tabularFigures()]))),
-          SizedBox(width: 72, child: Text('${p.gain.toStringAsFixed(1)} dB', textAlign: TextAlign.right, style: const TextStyle(color: Colors.redAccent, fontSize: 13))),
-          SizedBox(width: 56, child: Text(p.q.toStringAsFixed(1), textAlign: TextAlign.right, style: const TextStyle(color: Colors.white38, fontSize: 13))),
+          Container(width: 5, height: 5, margin: const EdgeInsets.only(right: 10), decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle)),
+          Expanded(child: Text('${p.frequency.toStringAsFixed(1)} Hz', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500, fontFeatures: [FontFeature.tabularFigures()]))),
+          SizedBox(width: 80, child: Text('${p.gain.toStringAsFixed(1)} dB', textAlign: TextAlign.right, style: const TextStyle(color: Colors.redAccent, fontSize: 15, fontWeight: FontWeight.w500))),
+          SizedBox(width: 60, child: Text(p.q.toStringAsFixed(1), textAlign: TextAlign.right, style: const TextStyle(color: Colors.white60, fontSize: 15))),
         ]),
       )),
     ]);
@@ -1383,7 +1384,7 @@ class _AiTunePanelState extends State<_AiTunePanel> {
         maxLines: 4,
         decoration: const InputDecoration(
           labelText: 'AI에게 요청',
-          labelStyle: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1),
+          labelStyle: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1),
           enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
           focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1451,8 +1452,9 @@ class _AiTunePanelState extends State<_AiTunePanel> {
                     onTap: () => _editBandHz(idx, hz),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('${hz.toStringAsFixed(0)} Hz',
-                          style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 14)),
-                      const Text('FREQ', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                          style: TextStyle(color: active ? Colors.white : Colors.white38,
+                              fontSize: 16, fontWeight: FontWeight.w500)),
+                      const Text('FREQ', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
                     ]),
                   ),
                 ),
@@ -1464,9 +1466,9 @@ class _AiTunePanelState extends State<_AiTunePanel> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)} dB',
                           style: TextStyle(
-                              color: active ? (db >= 0 ? Colors.white70 : Colors.white54) : Colors.white24,
-                              fontSize: 13)),
-                      const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                              color: active ? (db >= 0 ? Colors.white : Colors.white70) : Colors.white38,
+                              fontSize: 15, fontWeight: FontWeight.w500)),
+                      const Text('GAIN', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
                     ]),
                   ),
                 ),
@@ -1477,8 +1479,8 @@ class _AiTunePanelState extends State<_AiTunePanel> {
                     onTap: () => _editBandQ(idx, q),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('Q ${q.toStringAsFixed(2)}',
-                          style: TextStyle(color: active ? Colors.white54 : Colors.white24, fontSize: 13)),
-                      const Text('Q', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                          style: TextStyle(color: active ? Colors.white70 : Colors.white38, fontSize: 15)),
+                      const Text('Q', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
                     ]),
                   ),
                 ),
