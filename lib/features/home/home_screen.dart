@@ -194,6 +194,51 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
   String? _tweeterFrdName;
   String? _frdError;
 
+  // T/S 직접 입력 상태
+  bool _showTsInput = false;
+  final _fsCtrl   = TextEditingController();
+  final _qtsCtrl  = TextEditingController();
+  final _vasCtrl  = TextEditingController();
+  final _xmaxCtrl = TextEditingController();
+  final _sensCtrl = TextEditingController();
+  String? _tsError;
+
+  @override
+  void dispose() {
+    _fsCtrl.dispose(); _qtsCtrl.dispose(); _vasCtrl.dispose();
+    _xmaxCtrl.dispose(); _sensCtrl.dispose();
+    super.dispose();
+  }
+
+  void _saveTs() {
+    final fs   = double.tryParse(_fsCtrl.text);
+    final qts  = double.tryParse(_qtsCtrl.text);
+    final vas  = double.tryParse(_vasCtrl.text);
+    final xmax = double.tryParse(_xmaxCtrl.text);
+    final sens = double.tryParse(_sensCtrl.text);
+
+    if (fs == null || qts == null) {
+      setState(() => _tsError = 'Fs와 Qts는 필수입니다');
+      return;
+    }
+    setState(() => _tsError = null);
+
+    ref.read(speakerProfileProvider.notifier).state = SpeakerProfile(
+      id: 'custom_ts',
+      name: 'Custom T/S',
+      description: 'Fs ${fs.toStringAsFixed(0)}Hz · Qts ${qts.toStringAsFixed(2)}',
+      fs: fs,
+      qts: qts,
+      vas: vas ?? 5.0,
+      xmax: xmax ?? 5.0,
+      sensitivity: sens ?? 87.0,
+    );
+    setState(() => _showTsInput = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('T/S 파라미터 저장됨 — 크로스오버 ${(qts < 0.4 ? fs * 20 : qts < 0.7 ? fs * 28 : fs * 35).clamp(800, 6000).toStringAsFixed(0)}Hz 추천')),
+    );
+  }
+
   Future<void> _pickFrd({required bool isTweeter}) async {
     setState(() => _frdError = null);
     try {
@@ -321,8 +366,137 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
             Text(_frdError!, style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
           ],
         ],
+
+        // ── T/S 직접 입력 ───────────────────────────────────────────
+        const SizedBox(height: 14),
+        const Divider(color: Colors.white12),
+        const SizedBox(height: 10),
+        // 안내 텍스트
+        const Text(
+          'T/S 파라미터 (선택)',
+          style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 2),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'FRD/ZMA 파일 없어도 Fs·Qts만으로 크로스오버 주파수를 자동 추천합니다.',
+          style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.5),
+        ),
+        const SizedBox(height: 8),
+        // 현재 T/S 요약 (저장된 경우)
+        if (sp != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white24),
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.white.withValues(alpha: 0.02),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(sp.name,
+                  style: const TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1)),
+              const SizedBox(height: 2),
+              Text(
+                'Fs ${sp.fs.toStringAsFixed(0)}Hz  ·  Qts ${sp.qts.toStringAsFixed(2)}  ·  Vas ${sp.vas.toStringAsFixed(1)}L  ·  Sens ${sp.sensitivity.toStringAsFixed(0)}dB',
+                style: const TextStyle(color: Colors.white38, fontSize: 10),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '추천 크로스오버: ${sp.recommendedCrossoverFreq.toStringAsFixed(0)}Hz (${sp.crossoverBasis})',
+                style: const TextStyle(color: Colors.white54, fontSize: 10),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 6),
+        ],
+        // 입력 폼 토글 버튼
+        GestureDetector(
+          onTap: () => setState(() => _showTsInput = !_showTsInput),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(children: [
+              const Icon(Icons.tune, color: Colors.white24, size: 13),
+              const SizedBox(width: 8),
+              Text(
+                _showTsInput ? 'T/S 입력 닫기' : 'T/S 직접 입력',
+                style: const TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1),
+              ),
+              const Spacer(),
+              Icon(_showTsInput ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  color: Colors.white24, size: 14),
+            ]),
+          ),
+        ),
+        if (_showTsInput) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: _TsField(label: 'Fs (Hz) *', ctrl: _fsCtrl, hint: '80')),
+            const SizedBox(width: 8),
+            Expanded(child: _TsField(label: 'Qts *', ctrl: _qtsCtrl, hint: '0.38')),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _TsField(label: 'Vas (L)', ctrl: _vasCtrl, hint: '5.0')),
+            const SizedBox(width: 8),
+            Expanded(child: _TsField(label: 'Xmax (mm)', ctrl: _xmaxCtrl, hint: '5.0')),
+          ]),
+          const SizedBox(height: 8),
+          _TsField(label: '감도 dB/W/m', ctrl: _sensCtrl, hint: '87'),
+          const SizedBox(height: 4),
+          const Text('* Fs·Qts 필수, 나머지 선택',
+              style: TextStyle(color: Colors.white24, fontSize: 9)),
+          if (_tsError != null) ...[
+            const SizedBox(height: 4),
+            Text(_tsError!, style: const TextStyle(color: Colors.redAccent, fontSize: 10)),
+          ],
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _saveTs,
+            child: Container(
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('T/S 저장 → 크로스오버 자동 계산',
+                  style: TextStyle(color: Colors.white, fontSize: 11, letterSpacing: 1)),
+            ),
+          ),
+        ],
       ],
     );
+  }
+}
+
+class _TsField extends StatelessWidget {
+  final String label;
+  final TextEditingController ctrl;
+  final String hint;
+  const _TsField({required this.label, required this.ctrl, required this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+      const SizedBox(height: 4),
+      TextField(
+        controller: ctrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.white12),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+          focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+        ),
+      ),
+    ]);
   }
 }
 
