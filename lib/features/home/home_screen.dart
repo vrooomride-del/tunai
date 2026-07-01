@@ -383,23 +383,22 @@ class _BlePanel extends StatelessWidget {
         ),
       ]),
 
-      // ADAU1466 탐지 배너 — 보드 도착 전까지 "지원 준비 중" 안내
+      // ADAU1466 탐지 배너 — PEQ/XO 주소 청감검증 진행 중
       if (bState.detectedBoard == DetectedBoard.adau1466) ...[
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+            border: Border.all(color: Colors.white24),
             borderRadius: BorderRadius.circular(4),
-            color: Colors.amber.withValues(alpha: 0.05),
+            color: Colors.white.withValues(alpha: 0.03),
           ),
           child: const Row(children: [
-            Icon(Icons.info_outline, color: Colors.amber, size: 14),
+            Icon(Icons.check_circle_outline, color: Colors.white54, size: 14),
             SizedBox(width: 8),
             Expanded(child: Text(
-              'ADAU1466 보드가 탐지됐습니다. 이 보드는 현재 지원 준비 중입니다.\n'
-              'DSP 기능은 ADAU1701(JAB4) 보드에서 사용 가능합니다.',
-              style: TextStyle(color: Colors.amber, fontSize: 10, height: 1.5),
+              'ADAU1466 보드 연결됨. Gain/Delay 검증 완료 — PEQ/XO 주소 청감검증 진행 중.',
+              style: TextStyle(color: Colors.white54, fontSize: 10, height: 1.5),
             )),
           ]),
         ),
@@ -545,9 +544,9 @@ class _DspPanel extends StatelessWidget {
     final isSending = bState.isSending;
     final hasDsp = mState.packets.isNotEmpty;
     final profile = ref.watch(systemProfileProvider);
-    final chipHint = profile.isAdau1466 ? '${profile.chipLabel} — SigmaStudio 주소맵 미확정' : '${mState.packets.length}개 노치 필터 → ${profile.chipLabel} Safeload';
+    final chipHint = '${mState.packets.length}개 노치 필터 → ${profile.chipLabel} Safeload';
     final hint = !hasDsp ? '측정 후 DSP 필터가 생성됩니다.' : !isConnected ? '스피커를 연결하면 DSP를 적용할 수 있습니다.' : chipHint;
-    final canApply = hasDsp && isConnected && !isSending && !profile.isAdau1466;
+    final canApply = hasDsp && isConnected && !isSending;
     return Row(children: [
       Expanded(child: Text(isSending ? bState.message : hint, style: const TextStyle(color: Colors.white38, fontSize: 13, height: 1.5))),
       const SizedBox(width: 16),
