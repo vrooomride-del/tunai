@@ -769,7 +769,7 @@ class _SpectrumChart extends StatelessWidget {
     if (displayBins.isEmpty) return const SizedBox.shrink();
     final spots = displayBins.map((b) => FlSpot(b.frequency, b.magnitude.clamp(-60.0, 20.0))).toList();
     return SizedBox(
-      height: 220,
+      height: 280,
       child: Stack(children: [
         LineChart(LineChartData(
           backgroundColor: Colors.transparent,
@@ -1260,6 +1260,14 @@ class _AiTunePanelState extends State<_AiTunePanel> {
   AiTuningResult? _result;
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
 
+  @override
+  void didUpdateWidget(_AiTunePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mState.peaks.isEmpty && widget.mState.peaks.isNotEmpty && !_loading && _result == null) {
+      _suggest();
+    }
+  }
+
   Future<void> _editBandHz(int idx, num current) async {
     final ctrl = TextEditingController(text: current.toStringAsFixed(0));
     final v = await showDialog<double>(
@@ -1412,7 +1420,24 @@ class _AiTunePanelState extends State<_AiTunePanel> {
         onTap: widget.mState.peaks.isEmpty ? null : _suggest,
       ),
       if (_result != null && !_result!.isError) ...[
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+            borderRadius: BorderRadius.circular(6),
+            color: Colors.amber.withValues(alpha: 0.04),
+          ),
+          child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('⚠️ ', style: TextStyle(fontSize: 12)),
+            Expanded(child: Text(
+              'PEQ 값 조정 시 트위터 채널 게인을 크게 올리지 마세요. '
+              '볼륨이 높은 상태에서 트위터가 손상될 수 있습니다.',
+              style: TextStyle(color: Colors.amber, fontSize: 12, height: 1.5),
+            )),
+          ]),
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(6)),
