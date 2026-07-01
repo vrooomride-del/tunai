@@ -1227,6 +1227,7 @@ class _AiTunePanelState extends State<_AiTunePanel> {
           child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.6)),
         ),
         const SizedBox(height: 12),
+        // 밴드 카드 — 세로 스크롤 가능한 리스트
         ..._result!.bands.asMap().entries.map((e) {
           final idx = e.key;
           final b = e.value;
@@ -1235,37 +1236,73 @@ class _AiTunePanelState extends State<_AiTunePanel> {
           final db = b['gainDb'] as num;
           final q  = b['q'] as num;
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(children: [
-              Container(width: 4, height: 4, margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(color: active ? Colors.white38 : Colors.white12, shape: BoxShape.circle)),
-              Expanded(child: GestureDetector(
-                onTap: () => _editBandHz(idx, hz),
-                child: Text('${hz.toStringAsFixed(0)}Hz',
-                    style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 13)),
-              )),
-              GestureDetector(
-                onTap: () => _editBandDb(idx, db),
-                child: Text('${db.toStringAsFixed(1)}dB',
-                    style: TextStyle(color: active ? Colors.white60 : Colors.white24, fontSize: 12)),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: active ? Colors.white24 : Colors.white12),
+                borderRadius: BorderRadius.circular(6),
+                color: active ? Colors.white.withValues(alpha: 0.02) : Colors.transparent,
               ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () => _editBandQ(idx, q),
-                child: Text('Q${q.toStringAsFixed(2)}',
-                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
-              ),
-              const SizedBox(width: 12),
-              if (active && isConnected)
-                GestureDetector(
-                  onTap: () => _applyBand(b, idx),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(3)),
-                    child: const Text('APPLY', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+              child: Row(children: [
+                // 밴드 번호
+                SizedBox(
+                  width: 24,
+                  child: Text('${idx + 1}',
+                      style: TextStyle(color: active ? Colors.white38 : Colors.white12,
+                          fontSize: 11, fontFamily: 'monospace')),
+                ),
+                const SizedBox(width: 8),
+                // Hz — 탭 편집
+                Expanded(
+                  flex: 3,
+                  child: GestureDetector(
+                    onTap: () => _editBandHz(idx, hz),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${hz.toStringAsFixed(0)} Hz',
+                          style: TextStyle(color: active ? Colors.white : Colors.white38, fontSize: 14)),
+                      const Text('FREQ', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                    ]),
                   ),
                 ),
-            ]),
+                // dB — 탭 편집
+                Expanded(
+                  flex: 2,
+                  child: GestureDetector(
+                    onTap: () => _editBandDb(idx, db),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)} dB',
+                          style: TextStyle(
+                              color: active ? (db >= 0 ? Colors.white70 : Colors.white54) : Colors.white24,
+                              fontSize: 13)),
+                      const Text('GAIN', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                    ]),
+                  ),
+                ),
+                // Q — 탭 편집
+                Expanded(
+                  flex: 2,
+                  child: GestureDetector(
+                    onTap: () => _editBandQ(idx, q),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Q ${q.toStringAsFixed(2)}',
+                          style: TextStyle(color: active ? Colors.white54 : Colors.white24, fontSize: 13)),
+                      const Text('Q', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+                    ]),
+                  ),
+                ),
+                // APPLY 버튼
+                if (active && isConnected)
+                  GestureDetector(
+                    onTap: () => _applyBand(b, idx),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(3)),
+                      child: const Text('APPLY', style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1)),
+                    ),
+                  ),
+              ]),
+            ),
           );
         }),
         const SizedBox(height: 12),
