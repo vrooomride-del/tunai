@@ -52,6 +52,7 @@ class SystemProfile {
 
   int get channelCount => channels.length;
   bool get isAdau1466 => id == SystemProfileId.isobarik || id == SystemProfileId.tunaiReference;
+  int get maxPeqBands => isAdau1466 ? 20 : 10;
 
   /// 대역(ChannelType)별로 L/R 채널 쌍을 반환
   /// mono 채널은 [index, -1] 형태로 반환 (R 없음)

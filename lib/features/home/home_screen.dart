@@ -1259,6 +1259,7 @@ class _AiTunePanelState extends State<_AiTunePanel> {
   bool _applying = false;
   AiTuningResult? _result;
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
+  SystemProfileId? _lastProfileId;
 
   @override
   void didUpdateWidget(_AiTunePanel oldWidget) {
@@ -1365,7 +1366,11 @@ class _AiTunePanelState extends State<_AiTunePanel> {
       return;
     }
     setState(() => _applying = true);
-    final enabledBands = _result!.bands.where((b) => b['enabled'] != false).toList();
+    final maxBands = widget.ref.read(systemProfileProvider).maxPeqBands;
+    final enabledBands = _result!.bands
+        .take(maxBands)
+        .where((b) => b['enabled'] != false)
+        .toList();
     final peaks = enabledBands.map((b) => ResonancePeak(
       frequency: (b['frequency'] as num).toDouble(),
       gain: (b['gainDb'] as num).toDouble(),
@@ -1384,6 +1389,15 @@ class _AiTunePanelState extends State<_AiTunePanel> {
   @override
   Widget build(BuildContext context) {
     final isConnected = widget.ref.watch(bleProvider).connection == BleConnectionState.connected;
+    final profile = widget.ref.watch(systemProfileProvider);
+    final maxBands = profile.maxPeqBands;
+    // 보드 전환 시 AI 결과 초기화
+    if (_lastProfileId != null && _lastProfileId != profile.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() { _result = null; _loading = false; });
+      });
+    }
+    _lastProfileId = profile.id;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         controller: _ctrl,
@@ -1444,8 +1458,8 @@ class _AiTunePanelState extends State<_AiTunePanel> {
           child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.7)),
         ),
         const SizedBox(height: 12),
-        // 밴드 카드 — 세로 스크롤 가능한 리스트
-        ..._result!.bands.asMap().entries.map((e) {
+        // 밴드 카드 — maxBands 수만 표시
+        ..._result!.bands.take(maxBands).toList().asMap().entries.map((e) {
           final idx = e.key;
           final b = e.value;
           final active = b['enabled'] != false;
