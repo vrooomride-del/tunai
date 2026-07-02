@@ -9,15 +9,17 @@ class MyTuneStorage {
 
   static Future<void> save(List<ResonancePeak> peaks) async {
     final prefs = await SharedPreferences.getInstance();
-    final json = jsonEncode(peaks.map((p) => {'frequency': p.frequency, 'gain': p.gain, 'q': p.q}).toList());
+    final json = jsonEncode({
+      'savedAt': DateTime.now().toIso8601String(),
+      'peaks': peaks.map((p) => {'frequency': p.frequency, 'gain': p.gain, 'q': p.q}).toList(),
+    });
     await prefs.setString(_key, json);
   }
 
   static Future<List<ResonancePeak>?> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
+    final raw = await _rawEntry();
     if (raw == null) return null;
-    final list = jsonDecode(raw) as List;
+    final list = raw['peaks'] as List;
     return list
         .map((e) => ResonancePeak(
               frequency: (e['frequency'] as num).toDouble(),
@@ -27,8 +29,21 @@ class MyTuneStorage {
         .toList();
   }
 
+  static Future<DateTime?> loadSavedAt() async {
+    final raw = await _rawEntry();
+    if (raw == null) return null;
+    return DateTime.tryParse(raw['savedAt'] as String? ?? '');
+  }
+
   static Future<bool> hasSaved() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.containsKey(_key);
+  }
+
+  static Future<Map<String, dynamic>?> _rawEntry() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
   }
 }
