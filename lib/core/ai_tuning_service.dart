@@ -7,14 +7,17 @@ class AiTuningResult {
   final List<Map<String, dynamic>> bands;
   final String explanation;
   final bool isError;
+  /// AI가 산정한 예상 음질 점수 (0-100). 백엔드가 아직 지원하지 않으면 null.
+  final int? soundScore;
 
-  const AiTuningResult({required this.bands, required this.explanation, this.isError = false});
+  const AiTuningResult({required this.bands, required this.explanation, this.isError = false, this.soundScore});
 
   factory AiTuningResult.fromJson(Map<String, dynamic> json) => AiTuningResult(
     bands: (json['bands'] as List? ?? [])
         .map((b) => Map<String, dynamic>.from(b as Map))
         .toList(),
     explanation: json['explanation'] ?? '',
+    soundScore: (json['soundScore'] as num?)?.round(),
   );
 
   factory AiTuningResult.error(String msg) => AiTuningResult(bands: [], explanation: msg, isError: true);

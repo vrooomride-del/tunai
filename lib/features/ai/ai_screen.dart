@@ -238,6 +238,10 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
         onTap: widget.mState.peaks.isEmpty ? null : _suggest,
       ),
       if (_result != null && !_result!.isError) ...[
+        if (_result!.soundScore != null) ...[
+          const SizedBox(height: 16),
+          _SoundScoreCard(result: _result!),
+        ],
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -269,6 +273,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
           final hz = b['frequency'] as num;
           final db = b['gainDb'] as num;
           final q  = b['q'] as num;
+          final reason = b['reason'] as String?;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Container(
@@ -278,7 +283,8 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
                 borderRadius: BorderRadius.circular(6),
                 color: active ? Colors.white.withValues(alpha: 0.02) : Colors.transparent,
               ),
-              child: Row(children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
                 SizedBox(
                   width: 24,
                   child: Text('${idx + 1}',
@@ -323,6 +329,12 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
                   ),
                 ),
               ]),
+              if (reason != null && reason.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('→ "$reason"',
+                    style: TextStyle(color: active ? Colors.white38 : Colors.white12, fontSize: 11, fontStyle: FontStyle.italic)),
+              ],
+              ]),
             ),
           );
         }),
@@ -345,5 +357,47 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
           child: Text(_result!.explanation, style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
         ),
     ]);
+  }
+}
+
+/// Sound Score + "AI says" 요약 — 밴드별 reason을 모아 사용자가 한눈에 이해하게 함
+class _SoundScoreCard extends StatelessWidget {
+  final AiTuningResult result;
+  const _SoundScoreCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final reasons = result.bands
+        .map((b) => b['reason'] as String?)
+        .where((r) => r != null && r.isNotEmpty)
+        .cast<String>()
+        .toSet()
+        .toList();
+    return SectionCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          const Text('Sound Score', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
+          const SizedBox(width: 10),
+          Text('${result.soundScore}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
+          const SizedBox(width: 4),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Icon(Icons.arrow_upward, color: Colors.greenAccent, size: 14),
+          ),
+        ]),
+        if (reasons.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const Text('AI says:', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1)),
+          const SizedBox(height: 6),
+          ...reasons.map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('✓ ', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Expanded(child: Text(r, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4))),
+            ]),
+          )),
+        ],
+      ]),
+    );
   }
 }

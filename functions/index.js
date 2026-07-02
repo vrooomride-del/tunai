@@ -43,9 +43,12 @@ async function callGemini(prompt, systemInstruction) {
 
 // ── TUNAI (mobile) ──────────────────────────────────────────────
 const SYSTEM_MOBILE = `당신은 전문 DSP 음향 엔지니어입니다. ADAU1701/1466 DSP의 PEQ 노치 필터를 설계합니다.
-규칙: frequency(Hz 정수), gainDb(음수 -1~-24), q(1~10), enabled(true)
+일반 소비자용 앱이므로 각 밴드마다 "왜 이 보정을 했는지"를 한 문장으로 reason에 담아 사용자를 이해시켜야 합니다.
+soundScore는 튜닝 후 예상 음질 점수(0-100, 정수)로, 검출된 공진 문제가 얼마나 심각했는지와
+이번 보정으로 얼마나 개선됐는지를 종합해 산정합니다.
+규칙: frequency(Hz 정수), gainDb(음수 -1~-24), q(1~10), enabled(true), reason(한국어 한 문장, 예: "책상 반사 180Hz 보정")
 JSON 형식 외 출력 금지.
-출력: {"bands":[{"frequency":120,"gainDb":-3.5,"q":4.0,"enabled":true}],"explanation":"한국어 2-3문장"}`;
+출력: {"soundScore":89,"bands":[{"frequency":120,"gainDb":-3.5,"q":4.0,"enabled":true,"reason":"책상 반사로 인한 피크 보정"}],"explanation":"한국어 2-3문장"}`;
 
 exports.aiTune = onCall(
   { region: 'asia-northeast3', timeoutSeconds: 30, memory: '256MiB' },
@@ -79,7 +82,7 @@ exports.aiTune = onCall(
     const prompt = `측정된 공진 주파수:\n${peakStr}${tsSection}${locationSection}\n사용자 요청: ${userRequest || '자연스럽고 균형잡힌 소리로 튜닝해줘'}`;
     try {
       const json = await callGemini(prompt, SYSTEM_MOBILE);
-      return { bands: json.bands, explanation: json.explanation };
+      return { bands: json.bands, explanation: json.explanation, soundScore: json.soundScore };
     } catch (e) {
       if (e.status === 429) throw new HttpsError('resource-exhausted', 'AI 사용량 한도 초과.');
       throw new HttpsError('internal', `AI 오류: ${e.message}`);
