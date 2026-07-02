@@ -549,18 +549,33 @@ class _PresetCard extends StatelessWidget {
                 style: const TextStyle(color: Colors.white38, fontSize: 12)),
           ],
           const SizedBox(height: 10),
+          // 스피커 모델 태그 + 별점 + 다운로드 수 — 크게 표시
           Row(
             children: [
               if (preset['room_tag'] != null) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white10, borderRadius: BorderRadius.circular(4)),
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   child: Text(preset['room_tag'],
-                      style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 1)),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
               ],
+              _StarRating(likes: (preset['likes'] as num?)?.toInt() ?? 0),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.download, color: Colors.white54, size: 15),
+              const SizedBox(width: 4),
+              Text(_formatCount(preset['downloads']),
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+              const Text(' downloads', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              const SizedBox(width: 12),
               Text('${fps.length}밴드',
                   style: const TextStyle(color: Colors.white24, fontSize: 10)),
               const Spacer(),
@@ -582,17 +597,40 @@ class _PresetCard extends StatelessWidget {
                 onTap: onComment,
                 child: const Icon(Icons.chat_bubble_outline, color: Colors.white38, size: 14),
               ),
-              const SizedBox(width: 12),
-              Text('↓${preset['downloads'] ?? 0}',
-                  style: const TextStyle(color: Colors.white24, fontSize: 10)),
-              const SizedBox(width: 8),
-              Text('by ${preset['nickname'] ?? ''}',
-                  style: const TextStyle(color: Colors.white24, fontSize: 10)),
             ],
           ),
+          const SizedBox(height: 4),
+          Text('by ${preset['nickname'] ?? ''}',
+              style: const TextStyle(color: Colors.white24, fontSize: 10)),
         ],
       ),
     );
+  }
+
+  static String _formatCount(dynamic value) {
+    final n = (value as num?)?.toInt() ?? 0;
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+}
+
+/// likes 수를 5점 만점 별점으로 간이 환산 (전용 평점 API가 없어 좋아요 기반 근사치)
+class _StarRating extends StatelessWidget {
+  final int likes;
+  const _StarRating({required this.likes});
+
+  @override
+  Widget build(BuildContext context) {
+    final stars = likes <= 0 ? 0 : (1 + (likes.clamp(0, 100) / 25)).clamp(1, 5).round();
+    return Row(mainAxisSize: MainAxisSize.min, children: List.generate(5, (i) {
+      return Icon(i < stars ? Icons.star : Icons.star_border,
+          color: i < stars ? Colors.amber : Colors.white24, size: 14);
+    }));
   }
 }
 
