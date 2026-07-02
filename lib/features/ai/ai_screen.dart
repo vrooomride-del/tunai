@@ -163,6 +163,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
       location: location?.promptKey,
     );
     if (mounted) setState(() { _loading = false; _result = result; });
+    if (!result.isError) ref.read(lastAiResultProvider.notifier).state = result;
   }
 
   Future<void> _applyAll() async {

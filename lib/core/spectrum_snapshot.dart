@@ -41,6 +41,11 @@ class SpectrumSnapshotController extends StateNotifier<SpectrumSnapshot> {
 
   void reset() => state = const SpectrumSnapshot();
 
+  /// [bins] 위에 [peaks]를 합성한 미리보기 곡선을 반환 (DSP 전송값에는 영향 없음)
+  static List<FrequencyBin> previewWithPeaks(
+          List<FrequencyBin> bins, List<ResonancePeak> peaks) =>
+      _applyPeaksToBins(bins, peaks);
+
   static List<FrequencyBin> _applyPeaksToBins(
       List<FrequencyBin> bins, List<ResonancePeak> peaks) {
     return bins.map((b) {

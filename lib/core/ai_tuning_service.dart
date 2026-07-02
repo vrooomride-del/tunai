@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/audio_analyzer.dart';
 import 'speaker_profile.dart';
 
@@ -22,6 +23,9 @@ class AiTuningResult {
 
   factory AiTuningResult.error(String msg) => AiTuningResult(bands: [], explanation: msg, isError: true);
 }
+
+/// 가장 최근 AI 튜닝 결과 — FINE TUNE 탭이 "AI가 만든 기본 EQ" 위에 취향 레이어를 얹을 때 참조
+final lastAiResultProvider = StateProvider<AiTuningResult?>((ref) => null);
 
 class AiTuningService {
   static final _functions = FirebaseFunctions.instanceFor(region: 'asia-northeast3');
