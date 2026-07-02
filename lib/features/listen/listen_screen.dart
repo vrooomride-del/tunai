@@ -6,6 +6,7 @@ import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
+import '../../shared/preset_bar.dart';
 
 /// LISTEN 탭 — Before/After A/B 비교 + 3색 스펙트럼 오버레이.
 /// "와... 진짜 달라졌네"를 사용자가 직접 느끼게 하는 화면.
@@ -48,6 +49,8 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'LISTEN'),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
+            const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),

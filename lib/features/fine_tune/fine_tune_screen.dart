@@ -8,6 +8,7 @@ import '../../core/audio_analyzer.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../shared/widgets.dart';
+import '../../shared/preset_bar.dart';
 
 /// FINE TUNE 탭 — AI가 만든 기본 EQ 위에 취향(Warm/Neutral/Studio/Vocal/Movie/Bright)을 얹는다.
 class FineTuneScreen extends ConsumerStatefulWidget {
@@ -66,6 +67,8 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'FINE TUNE'),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
+            const SizedBox(height: 8),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),

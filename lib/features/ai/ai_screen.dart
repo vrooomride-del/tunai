@@ -10,6 +10,7 @@ import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
 import '../../shared/widgets.dart';
+import '../../shared/preset_bar.dart';
 
 /// AI 탭 — 측정 결과를 AI가 분석해 PEQ를 제안하고, 이유를 설명하고, APPLY 한다.
 /// "DSP를 조작하는 화면"이 아니라 "AI가 만든 결과를 확인하는 화면".
@@ -26,6 +27,8 @@ class AiScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'AI'),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
+            const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),

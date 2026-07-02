@@ -8,6 +8,7 @@ import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
+import '../../shared/preset_bar.dart';
 
 /// MEASURE 탭 — 설치 위치 선택(방이 Driver보다 먼저) + 마이크 측정.
 /// 측정 완료 시 [onMeasured]로 AI 탭 자동 전환을 요청한다.
@@ -35,6 +36,8 @@ class MeasureScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'MEASURE'),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
+            const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
