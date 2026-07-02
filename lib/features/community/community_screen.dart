@@ -537,7 +537,7 @@ class _PresetCard extends StatelessWidget {
                     border: Border.all(color: Colors.white24),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('GET',
+                  child: const Text('APPLY',
                       style: TextStyle(color: Colors.white, fontSize: 10, letterSpacing: 2)),
                 ),
               ),
