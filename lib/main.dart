@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'features/home/home_screen.dart';
-import 'features/community/community_screen.dart';
-import 'features/history/history_screen.dart';
+import 'features/connect/connect_screen.dart';
+import 'features/measure/measure_screen.dart';
+import 'features/ai/ai_screen.dart';
+import 'features/listen/listen_screen.dart';
+import 'features/more/more_screen.dart';
 import 'features/device/device_screen.dart';
 
 void main() async {
@@ -95,25 +97,28 @@ class RootScreen extends StatefulWidget {
 class _RootScreenState extends State<RootScreen> {
   int _currentIndex = 0;
 
-  final _screens = const [
-    HomeScreen(),
-    DeviceScreen(),
-    CommunityScreen(),
-    HistoryScreen(),
-  ];
+  void _goTo(int i) => setState(() => _currentIndex = i);
 
   @override
   Widget build(BuildContext context) {
+    final screens = [
+      ConnectScreen(onConnected: () => _goTo(1)),
+      MeasureScreen(onMeasured: () => _goTo(2)),
+      AiScreen(onApplied: () => _goTo(3)),
+      const ListenScreen(),
+      const MoreScreen(),
+    ];
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      body: _screens[_currentIndex],
+      body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: Colors.white12, width: 0.5)),
         ),
         child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
           currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
+          onTap: _goTo,
           backgroundColor: const Color(0xFF0A0A0A),
           selectedItemColor: Colors.white,
           unselectedItemColor: Colors.white24,
@@ -121,20 +126,24 @@ class _RootScreenState extends State<RootScreen> {
           unselectedLabelStyle: const TextStyle(fontSize: 10, letterSpacing: 1),
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.speaker, size: 20),
-              label: 'TUNE',
+              icon: Icon(Icons.bluetooth, size: 20),
+              label: 'CONNECT',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.qr_code_scanner, size: 20),
-              label: 'DEVICE',
+              icon: Icon(Icons.mic_none, size: 20),
+              label: 'MEASURE',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline, size: 20),
-              label: 'COMMUNITY',
+              icon: Icon(Icons.auto_awesome_outlined, size: 20),
+              label: 'AI',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.history, size: 20),
-              label: 'HISTORY',
+              icon: Icon(Icons.headphones, size: 20),
+              label: 'LISTEN',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.more_horiz, size: 20),
+              label: 'MORE',
             ),
           ],
         ),

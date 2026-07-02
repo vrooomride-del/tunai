@@ -54,7 +54,7 @@ exports.aiTune = onCall(
     if (!checkRateLimit(rateKey)) {
       throw new HttpsError('resource-exhausted', '시간당 AI 튜닝 한도를 초과했습니다.');
     }
-    const { peaks, userRequest, speakerProfile } = request.data;
+    const { peaks, userRequest, speakerProfile, location } = request.data;
     if (!peaks || !Array.isArray(peaks) || peaks.length === 0) {
       throw new HttpsError('invalid-argument', 'peaks 데이터가 필요합니다.');
     }
@@ -65,7 +65,18 @@ exports.aiTune = onCall(
     if (speakerProfile) {
       tsSection = `\nSPEAKER T/S: Fs=${speakerProfile.fs}Hz, Xmax=${speakerProfile.xmax}mm, 감도=${speakerProfile.sensitivity}dB`;
     }
-    const prompt = `측정된 공진 주파수:\n${peakStr}${tsSection}\n사용자 요청: ${userRequest || '자연스럽고 균형잡힌 소리로 튜닝해줘'}`;
+    const locationLabels = {
+      desk: '책상 위 (근접 반사면 존재)',
+      living_room: '거실 (넓은 공간, 벽 반사)',
+      near_wall: '벽 근처 배치 (저역 부밍 가능)',
+      studio: '스튜디오/모니터링 환경',
+      custom: '사용자 지정 위치',
+    };
+    let locationSection = '';
+    if (location) {
+      locationSection = `\n설치 위치: ${locationLabels[location] || location} — 이 위치 특성을 감안해 튜닝하고, 위치 관련 보정이 있다면 explanation에 언급할 것`;
+    }
+    const prompt = `측정된 공진 주파수:\n${peakStr}${tsSection}${locationSection}\n사용자 요청: ${userRequest || '자연스럽고 균형잡힌 소리로 튜닝해줘'}`;
     try {
       const json = await callGemini(prompt, SYSTEM_MOBILE);
       return { bands: json.bands, explanation: json.explanation };

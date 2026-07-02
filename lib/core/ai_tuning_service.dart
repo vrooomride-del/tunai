@@ -27,6 +27,7 @@ class AiTuningService {
     required List<ResonancePeak> peaks,
     required String userRequest,
     SpeakerProfile? speakerProfile,
+    String? location,
   }) async {
     try {
       debugPrint('[AI] Firebase Functions 호출 시작...');
@@ -43,6 +44,7 @@ class AiTuningService {
           'xmax': speakerProfile.xmax,
           'sensitivity': speakerProfile.sensitivity,
         },
+        if (location != null) 'location': location,
       });
       debugPrint('[AI] 응답 수신 완료');
       return AiTuningResult.fromJson(Map<String, dynamic>.from(result.data));
