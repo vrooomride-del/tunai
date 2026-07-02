@@ -7,6 +7,7 @@ import '../../core/audio_analyzer.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../core/speaker_profile.dart';
 import '../../core/install_location.dart';
+import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
 import '../../shared/widgets.dart';
 
@@ -189,7 +190,10 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('AI 추천 ${peaks.length}개 밴드 APPLY 완료'),
     ));
-    if (ok) widget.onApplied();
+    if (ok) {
+      ref.read(spectrumSnapshotProvider.notifier).applyPeaks(peaks);
+      widget.onApplied();
+    }
   }
 
   @override

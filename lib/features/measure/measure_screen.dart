@@ -5,6 +5,7 @@ import '../measurement/measurement_controller.dart';
 import '../ble/ble_controller.dart';
 import '../../core/speaker_profile.dart';
 import '../../core/install_location.dart';
+import '../../core/spectrum_snapshot.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 
@@ -21,6 +22,9 @@ class MeasureScreen extends ConsumerWidget {
 
     ref.listen<MeasurementState>(measurementProvider, (prev, next) {
       if (next.step == MeasurementStep.done && prev?.step != MeasurementStep.done) {
+        if (next.scmsBins.isNotEmpty) {
+          ref.read(spectrumSnapshotProvider.notifier).setBefore(next.scmsBins);
+        }
         onMeasured();
       }
     });
