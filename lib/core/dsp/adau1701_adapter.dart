@@ -10,10 +10,10 @@ import '../../features/dsp/dsp_compiler.dart';
 ///   2: Tweeter L  3: Tweeter R
 ///
 /// PRAM 레이아웃 (SigmaStudio export 주소 확정, 2026-07):
-///   peqBase=14, 채널당 6밴드×5계수=30워드 연속 배치
-///   ch0 WooferL  PEQ: 14,  ch1 WooferR  PEQ: 44
-///   ch2 TweeterL PEQ: 74,  ch3 TweeterR PEQ: 104
-///   XO 베이스 = 채널 PEQ 베이스 + 30 (Filter 블록 범위 안, peqBase 기준)
+///   peqBase=14, 스테레오 링크 그룹당 10밴드×5계수=50워드 연속 배치 (20밴드 총합, 14~113)
+///   Woofer그룹(ch0/ch1 공유) PEQ: 14~63
+///   Tweeter그룹(ch2/ch3 공유) PEQ: 64~113
+///   XO 베이스 — 미확정 (SigmaStudio Filter 블록 주소 확인 전까지 no-op)
 ///
 /// Gain 레지스터 (SigmaStudio IC Memory Map 확정):
 ///   Vol(우퍼, 스테레오 링크) = addr 7 → ch0/ch1 공유
@@ -25,19 +25,18 @@ import '../../features/dsp/dsp_compiler.dart';
 class Adau1701Adapter implements DspAdapter {
   final RawWriteFn _writeRaw;
 
-  static const int _peqBands = 6; // 채널당 PEQ 슬롯 수
+  static const int _peqBands = 10; // 그룹(스테레오 링크)당 PEQ 슬롯 수
   static const int _xoSlotsPerSide = 4; // LR48 최대 4 biquad
 
-  // PEQ 베이스 (확정) — 채널0 시작 주소. 채널별 베이스 = peqBase + ch×(peqBands×5)
+  // PEQ 베이스 (확정) — Woofer그룹 시작 주소. 그룹별 베이스 = peqBase + group×(peqBands×5)
   static const int _peqBase = 14;
 
-  // 채널별 PRAM 베이스 (ch0~ch3): peqBase 기준으로 30워드씩 연속 배치
+  // 채널 → PEQ 그룹 베이스 (Gain/Mute와 동일하게 스테레오 링크: ch0/1=Woofer, ch2/3=Tweeter)
   static int _pramBase(int channelIndex) =>
-      _peqBase + channelIndex * _peqBands * 5;
+      _peqBase + (channelIndex ~/ 2) * _peqBands * 5;
 
-  // 채널별 XO 베이스 = PRAM 베이스 + PEQ 슬롯 수 × 5 (Filter 블록 범위 안, peqBase 기준 교체)
-  static int _xoBase(int channelIndex) =>
-      _pramBase(channelIndex) + _peqBands * 5;
+  // 채널별 XO 베이스 — SigmaStudio Filter 블록 주소 미확정, 확인 전까지 no-op
+  static int? _xoBase(int channelIndex) => null; // TODO: 주소 미확정
 
   // 채널별 Gain 레지스터 주소 — Vol(우퍼)=7, Vol_2(트위터)=6, 스테레오 링크라 L/R 공유
   static const List<int> _gainAddr = [7, 7, 6, 6];
@@ -66,13 +65,15 @@ class Adau1701Adapter implements DspAdapter {
   // ── 크로스오버 ───────────────────────────────────────────────
   @override
   Future<void> writeCrossover(int channelIndex, CrossoverConfig config) async {
+    final xoBase = _xoBase(channelIndex);
+    if (xoBase == null) return; // TODO: XO 주소 미확정
+
     final xoType = _mapSlope(config.slope);
     if (xoType == null) return;
 
     final isHpf = config.side == FilterSide.hpf;
     final biquads = _calculateCrossoverBiquads(config.freqHz, isHpf, xoType);
 
-    final xoBase = _xoBase(channelIndex);
     final slotBase = isHpf ? 0 : _xoSlotsPerSide;
 
     for (var i = 0; i < biquads.length; i++) {
@@ -126,9 +127,11 @@ class Adau1701Adapter implements DspAdapter {
   // ── 서브소닉 HPF ─────────────────────────────────────────────
   @override
   Future<void> writeSubsonicFilter(int channelIndex, double freqHz) async {
+    final xoBase = _xoBase(channelIndex);
+    if (xoBase == null) return; // TODO: XO 주소 미확정
     final biquads = _calculateCrossoverBiquads(freqHz, true, _XoType.bw2);
     // XO HP 슬롯의 마지막 슬롯(슬롯 3)을 서브소닉 전용 사용
-    final addr = _xoBase(channelIndex) + (_xoSlotsPerSide - 1) * 5;
+    final addr = xoBase + (_xoSlotsPerSide - 1) * 5;
     final c = biquads[0];
     await _writeRaw(_buildFrame(addr, [c.b0, c.b1, c.b2, c.a1, c.a2]));
   }
