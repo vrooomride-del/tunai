@@ -152,11 +152,21 @@ class BleController extends StateNotifier<BleState> {
     );
 
     try {
-      await device.connect(timeout: const Duration(seconds: 10));
+      // flutter_blue_plus의 connect(timeout:)이 일부 기기/OS 조합에서 제대로
+      // 발동하지 않아 SCANNING/연결 중 상태로 무한 대기하는 사례가 있었음 —
+      // Dart 레벨에서 강제 타임아웃을 걸어 반드시 error 상태로 복구되게 함.
+      await device
+          .connect(timeout: const Duration(seconds: 10))
+          .timeout(const Duration(seconds: 12), onTimeout: () {
+        throw TimeoutException('연결 타임아웃 (12초) — 기기 전원/거리를 확인하세요.');
+      });
       _device = device;
 
-      // 서비스 검색 + 디버그 덤프
-      final services = await device.discoverServices();
+      // 서비스 검색 + 디버그 덤프 (여기도 무한 대기 방지)
+      final services = await device.discoverServices().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('서비스 검색 타임아웃 (10초)'),
+      );
 
       // ── DEBUG: ICP5 실제 GATT 구조 출력 ──────────────────────────────
       debugPrint('══════════════════════════════════════════');
