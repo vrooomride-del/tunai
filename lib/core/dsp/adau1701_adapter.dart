@@ -9,85 +9,77 @@ import '../../features/dsp/dsp_compiler.dart';
 ///   0: Woofer  L  1: Woofer  R
 ///   2: Tweeter L  3: Tweeter R
 ///
-/// PRAM 레이아웃 (SigmaStudio export 주소 확정, 2026-07):
-///   peqBase=14, 스테레오 링크 그룹당 10밴드×5계수=50워드 연속 배치 (20밴드 총합, 14~113)
-///   Woofer그룹(ch0/ch1 공유) PEQ: 14~63
-///   Tweeter그룹(ch2/ch3 공유) PEQ: 64~113
-///   XO 베이스 — 미확정 (SigmaStudio Filter 블록 주소 확인 전까지 no-op)
+/// PRAM 주소맵 — JAB4_DSP_Firmware_Hardware_SouceCode_V112_2021_01_12_IC_1_PARAM.h
+/// (SigmaStudio export 원본 대조 확정, 2026-07):
 ///
-/// Gain 레지스터 (SigmaStudio IC Memory Map 확정):
+///   이 펌웨어에는 별도의 "PEQ" 모듈이 없다. addr 14~799는 전부 크로스오버(XO)용
+///   2차 필터 캐스케이드 8개(스테레오 페어 4쌍) + 210~211 믹서로 구성된다:
+///     Filter1_4  14~111    Filter1_9  112~209   (98워드씩)
+///     2XMixer1_3 210~211 (XO 믹스 포인트)
+///     Filter1_10 212~309   Filter1_11 310~407
+///     Filter1_5  408~505   Filter1_8  506~603
+///     Filter1_6  604~701   Filter1_7  702~799
+///   블록 → (채널, HPF/LPF) 매핑과 블록 내부 스테이지 오프셋은 아직 미확정 —
+///   SigmaStudio .dspproj를 열어 블록 라벨을 육안 확인해야 한다(Boot Camp
+///   Windows). 확인 전까지 writeCrossover/writeSubsonicFilter는 no-op.
+///
+///   writeBiquad(PEQ)는 이 펌웨어가 지원하지 않으므로 no-op이다 — 이전에
+///   peqBase=14로 가정했던 것은 오판이었고(실제로는 XO 캐스케이드 영역),
+///   향후 PEQ가 필요하면 SigmaStudio에서 별도 PEQ 블록을 추가해 펌웨어를
+///   재컴파일해야 한다.
+///
+///   참고용(미사용): SW vol1=800, Gain3/Gain1=801~804, Inv1_10/Inv1_9(극성)=810/811
+///
+/// Gain 레지스터 (SigmaStudio IC Memory Map 확정, 변경 없음):
 ///   Vol(우퍼, 스테레오 링크) = addr 7 → ch0/ch1 공유
 ///   Vol_2(트위터, 스테레오 링크) = addr 6 → ch2/ch3 공유
 ///
-/// Mute 레지스터 (확정):
+/// Mute 레지스터 (확정, 변경 없음):
 ///   채널(밴드) 뮤트 — Woofer=11, Tweeter=12 (스테레오 링크)
 ///   출력 뮤트 — 물리 출력 채널별 개별: ch0=805, ch1=806, ch2=807, ch3=808
 class Adau1701Adapter implements DspAdapter {
   final RawWriteFn _writeRaw;
 
-  static const int _peqBands = 10; // 그룹(스테레오 링크)당 PEQ 슬롯 수
-  static const int _xoSlotsPerSide = 4; // LR48 최대 4 biquad
+  // ── XO 필터 블록 (확정 주소, 채널/필터타입 매핑 미확정) ────────────
+  // Filter1_4, 1_9, 1_10, 1_11, 1_5, 1_8, 1_6, 1_7 순서, 각 98워드 연속 배치
+  static const List<int> _xoFilterBlockBase = [
+    14, 112, 212, 310, 408, 506, 604, 702,
+  ];
+  static const int _xoMixerBase = 210; // 2XMixer1_3
 
-  // PEQ 베이스 (확정) — Woofer그룹 시작 주소. 그룹별 베이스 = peqBase + group×(peqBands×5)
-  static const int _peqBase = 14;
+  // 채널 → XO 필터 블록 인덱스 — TODO: SigmaStudio .dspproj 육안 확인 후 채우기
+  static int? _xoBlockIndex(int channelIndex, FilterSide side) {
+    assert(_xoFilterBlockBase.length == 8 && _xoMixerBase == 210);
+    return null; // 매핑 미확정
+  }
 
-  // 채널 → PEQ 그룹 베이스 (Gain/Mute와 동일하게 스테레오 링크: ch0/1=Woofer, ch2/3=Tweeter)
-  static int _pramBase(int channelIndex) =>
-      _peqBase + (channelIndex ~/ 2) * _peqBands * 5;
-
-  // 채널별 XO 베이스 — SigmaStudio Filter 블록 주소 미확정, 확인 전까지 no-op
-  static int? _xoBase(int channelIndex) => null; // TODO: 주소 미확정
-
-  // 채널별 Gain 레지스터 주소 — Vol(우퍼)=7, Vol_2(트위터)=6, 스테레오 링크라 L/R 공유
+  // 채널별 Gain 레지스터 주소 — Vol(우퍼)=7, Vol_2(트위터)=6, 스테레오 링크라 L/R 공유 (변경 없음)
   static const List<int> _gainAddr = [7, 7, 6, 6];
 
-  // 채널(밴드) 뮤트 주소 — Woofer=11, Tweeter=12, 스테레오 링크라 L/R 공유
+  // 채널(밴드) 뮤트 주소 — Woofer=11, Tweeter=12, 스테레오 링크라 L/R 공유 (변경 없음)
   static const List<int> _channelMuteAddr = [11, 11, 12, 12];
 
-  // 출력 뮤트 주소 — 물리 출력 채널별 개별
+  // 출력 뮤트 주소 — 물리 출력 채널별 개별 (변경 없음)
   static const List<int> _outputMuteAddr = [805, 806, 807, 808];
 
-  // 채널별 Delay 레지스터 주소 — 펌웨어 미구현, no-op 유지
+  // 채널별 Delay 레지스터 주소 — 펌웨어 미구현, no-op 유지 (변경 없음)
   static const List<int> _delayAddr = [0x0000, 0x0000, 0x0000, 0x0000];
 
   Adau1701Adapter({required RawWriteFn writeRaw}) : _writeRaw = writeRaw;
 
-  // ── PEQ 밴드 ─────────────────────────────────────────────────
+  // ── PEQ ──────────────────────────────────────────────────────
+  // 이 펌웨어에는 PEQ 모듈이 없음(addr 14~799는 전부 XO 캐스케이드) — no-op.
+  // 향후 PEQ가 필요하면 SigmaStudio에서 PEQ 블록을 추가해 펌웨어를 재컴파일해야 한다.
   @override
-  Future<void> writeBiquad(int channelIndex, int bandIndex, BiquadCoeffs coeffs) async {
-    assert(bandIndex < _peqBands);
-    final addr = _pramBase(channelIndex) + bandIndex * 5;
-    await _writeRaw(_buildFrame(addr, [
-      coeffs.b0, coeffs.b1, coeffs.b2, coeffs.a1, coeffs.a2,
-    ]));
-  }
+  Future<void> writeBiquad(int channelIndex, int bandIndex, BiquadCoeffs coeffs) async {}
 
   // ── 크로스오버 ───────────────────────────────────────────────
+  // 블록→(채널,HPF/LPF) 매핑과 블록 내부 스테이지 오프셋 미확정 — SigmaStudio
+  // .dspproj 육안 확인 전까지 no-op.
   @override
   Future<void> writeCrossover(int channelIndex, CrossoverConfig config) async {
-    final xoBase = _xoBase(channelIndex);
-    if (xoBase == null) return; // TODO: XO 주소 미확정
-
-    final xoType = _mapSlope(config.slope);
-    if (xoType == null) return;
-
-    final isHpf = config.side == FilterSide.hpf;
-    final biquads = _calculateCrossoverBiquads(config.freqHz, isHpf, xoType);
-
-    final slotBase = isHpf ? 0 : _xoSlotsPerSide;
-
-    for (var i = 0; i < biquads.length; i++) {
-      final addr = xoBase + (slotBase + i) * 5;
-      await _writeRaw(_buildFrame(addr, [
-        biquads[i].b0, biquads[i].b1, biquads[i].b2,
-        biquads[i].a1, biquads[i].a2,
-      ]));
-    }
-    // 남은 슬롯 → passthrough
-    for (var i = biquads.length; i < _xoSlotsPerSide; i++) {
-      final addr = xoBase + (slotBase + i) * 5;
-      await _writeRaw(_buildFrame(addr, [1.0, 0.0, 0.0, 0.0, 0.0]));
-    }
+    final blockIndex = _xoBlockIndex(channelIndex, config.side);
+    if (blockIndex == null) return; // TODO: 블록 매핑 미확정
   }
 
   // ── Gain ─────────────────────────────────────────────────────
@@ -125,57 +117,15 @@ class Adau1701Adapter implements DspAdapter {
   }
 
   // ── 서브소닉 HPF ─────────────────────────────────────────────
+  // XO 블록 매핑 미확정 — writeCrossover와 동일 사유로 no-op.
   @override
   Future<void> writeSubsonicFilter(int channelIndex, double freqHz) async {
-    final xoBase = _xoBase(channelIndex);
-    if (xoBase == null) return; // TODO: XO 주소 미확정
-    final biquads = _calculateCrossoverBiquads(freqHz, true, _XoType.bw2);
-    // XO HP 슬롯의 마지막 슬롯(슬롯 3)을 서브소닉 전용 사용
-    final addr = xoBase + (_xoSlotsPerSide - 1) * 5;
-    final c = biquads[0];
-    await _writeRaw(_buildFrame(addr, [c.b0, c.b1, c.b2, c.a1, c.a2]));
+    final blockIndex = _xoBlockIndex(channelIndex, FilterSide.hpf);
+    if (blockIndex == null) return; // TODO: 블록 매핑 미확정
   }
 
   @override
   Future<DspState> readCurrentState() async => const DspState(raw: {});
-
-  // ── 크로스오버 biquad 계산 ───────────────────────────────────
-  static List<_BQ> _calculateCrossoverBiquads(
-      double freqHz, bool isHpf, _XoType type) {
-    switch (type) {
-      case _XoType.bw2:
-        return [_xoBiquad(freqHz, isHpf, 0.7071)];
-      case _XoType.bw4:
-        return [_xoBiquad(freqHz, isHpf, 0.5412),
-                _xoBiquad(freqHz, isHpf, 1.3066)];
-      case _XoType.lr2:
-        return [_xoBiquad(freqHz, isHpf, 0.5)];
-      case _XoType.lr4:
-        return [_xoBiquad(freqHz, isHpf, 0.7071),
-                _xoBiquad(freqHz, isHpf, 0.7071)];
-      case _XoType.lr8:
-        return [_xoBiquad(freqHz, isHpf, 0.5412),
-                _xoBiquad(freqHz, isHpf, 1.3066),
-                _xoBiquad(freqHz, isHpf, 0.5412),
-                _xoBiquad(freqHz, isHpf, 1.3066)];
-    }
-  }
-
-  static _BQ _xoBiquad(double freqHz, bool isHpf, double q) {
-    final w0 = 2 * pi * freqHz / DspCompiler.sampleRate;
-    final alpha = sin(w0) / (2 * q);
-    final cosW = cos(w0);
-    double b0, b1, b2;
-    if (isHpf) {
-      b0 = (1 + cosW) / 2; b1 = -(1 + cosW); b2 = (1 + cosW) / 2;
-    } else {
-      b0 = (1 - cosW) / 2; b1 = 1 - cosW;    b2 = (1 - cosW) / 2;
-    }
-    final a0 = 1 + alpha;
-    final a1 = -2 * cosW;
-    final a2 = 1 - alpha;
-    return _BQ(b0/a0, b1/a0, b2/a0, -(a1/a0), -(a2/a0));
-  }
 
   // ── 프레임 빌더 ──────────────────────────────────────────────
   Uint8List _buildFrame(int addr, List<double> coeffs5) {
@@ -193,23 +143,4 @@ class Adau1701Adapter implements DspAdapter {
     final packet = RegisterPacket(pramTargetAddr: addr, coeffBytes: bytes);
     return DspCompiler.buildBleFrame(packet);
   }
-
-  static _XoType? _mapSlope(CrossoverSlope slope) {
-    switch (slope) {
-      case CrossoverSlope.bypass: return null;
-      case CrossoverSlope.bw2:   return _XoType.bw2;
-      case CrossoverSlope.bw4:   return _XoType.bw4;
-      case CrossoverSlope.lr2:   return _XoType.lr2;
-      case CrossoverSlope.lr4:   return _XoType.lr4;
-      case CrossoverSlope.lr8:   return _XoType.lr8;
-    }
-  }
 }
-
-// 로컬 biquad 계수 레코드
-class _BQ {
-  final double b0, b1, b2, a1, a2;
-  const _BQ(this.b0, this.b1, this.b2, this.a1, this.a2);
-}
-
-enum _XoType { bw2, bw4, lr2, lr4, lr8 }

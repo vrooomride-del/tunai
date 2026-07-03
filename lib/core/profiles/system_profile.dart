@@ -52,6 +52,8 @@ class SystemProfile {
 
   int get channelCount => channels.length;
   bool get isAdau1466 => id == SystemProfileId.isobarik || id == SystemProfileId.tunaiReference;
+  // ADAU1701(비-1466) 펌웨어에는 PEQ 모듈이 없음 — Adau1701Adapter.writeBiquad는
+  // no-op. 이 값은 현재 로컬 미리보기/밴드 합치기 한도로만 쓰임(실기기 전송 없음).
   int get maxPeqBands => isAdau1466 ? 20 : 10;
 
   /// 대역(ChannelType)별로 L/R 채널 쌍을 반환
