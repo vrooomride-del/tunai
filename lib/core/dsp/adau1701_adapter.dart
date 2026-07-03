@@ -9,31 +9,46 @@ import '../../features/dsp/dsp_compiler.dart';
 ///   0: Woofer  L  1: Woofer  R
 ///   2: Tweeter L  3: Tweeter R
 ///
-/// PRAM 레이아웃 (TODO: SigmaStudio export 후 정확한 주소로 교체):
-///   ch0 WooferL  PEQ: 0x0010,  ch1 WooferR  PEQ: 0x0030 (estimate)
-///   ch2 TweeterL PEQ: 0x0050,  ch3 TweeterR PEQ: 0x0070 (estimate)
+/// PRAM 레이아웃 (SigmaStudio export 주소 확정, 2026-07):
+///   peqBase=14, 채널당 6밴드×5계수=30워드 연속 배치
+///   ch0 WooferL  PEQ: 14,  ch1 WooferR  PEQ: 44
+///   ch2 TweeterL PEQ: 74,  ch3 TweeterR PEQ: 104
+///   XO 베이스 = 채널 PEQ 베이스 + 30 (Filter 블록 범위 안, peqBase 기준)
 ///
-/// Gain 레지스터 (SigmaStudio IC Memory Map 확인 2026-06-20):
-///   ch0 WooferL = addr 7 (확정), ch1 WooferR = addr 5 (estimate)
-///   ch2 TweeterL = addr 6 (확정), ch3 TweeterR = addr 4 (estimate)
+/// Gain 레지스터 (SigmaStudio IC Memory Map 확정):
+///   Vol(우퍼, 스테레오 링크) = addr 7 → ch0/ch1 공유
+///   Vol_2(트위터, 스테레오 링크) = addr 6 → ch2/ch3 공유
+///
+/// Mute 레지스터 (확정):
+///   채널(밴드) 뮤트 — Woofer=11, Tweeter=12 (스테레오 링크)
+///   출력 뮤트 — 물리 출력 채널별 개별: ch0=805, ch1=806, ch2=807, ch3=808
 class Adau1701Adapter implements DspAdapter {
   final RawWriteFn _writeRaw;
 
   static const int _peqBands = 6; // 채널당 PEQ 슬롯 수
   static const int _xoSlotsPerSide = 4; // LR48 최대 4 biquad
 
-  // 채널별 PRAM 베이스 (ch0~ch3)
-  static const List<int> _pramBase = [0x0010, 0x0030, 0x0050, 0x0070];
+  // PEQ 베이스 (확정) — 채널0 시작 주소. 채널별 베이스 = peqBase + ch×(peqBands×5)
+  static const int _peqBase = 14;
 
-  // 채널별 XO 베이스 = PRAM 베이스 + PEQ 슬롯 수 × 5
+  // 채널별 PRAM 베이스 (ch0~ch3): peqBase 기준으로 30워드씩 연속 배치
+  static int _pramBase(int channelIndex) =>
+      _peqBase + channelIndex * _peqBands * 5;
+
+  // 채널별 XO 베이스 = PRAM 베이스 + PEQ 슬롯 수 × 5 (Filter 블록 범위 안, peqBase 기준 교체)
   static int _xoBase(int channelIndex) =>
-      _pramBase[channelIndex] + _peqBands * 5;
+      _pramBase(channelIndex) + _peqBands * 5;
 
-  // 채널별 Gain 레지스터 주소
-  // ch0 WooferL=7, ch1 WooferR=5(est), ch2 TweeterL=6, ch3 TweeterR=4(est)
-  static const List<int> _gainAddr = [7, 5, 6, 4];
+  // 채널별 Gain 레지스터 주소 — Vol(우퍼)=7, Vol_2(트위터)=6, 스테레오 링크라 L/R 공유
+  static const List<int> _gainAddr = [7, 7, 6, 6];
 
-  // 채널별 Delay 레지스터 주소 (TODO: 미확정)
+  // 채널(밴드) 뮤트 주소 — Woofer=11, Tweeter=12, 스테레오 링크라 L/R 공유
+  static const List<int> _channelMuteAddr = [11, 11, 12, 12];
+
+  // 출력 뮤트 주소 — 물리 출력 채널별 개별
+  static const List<int> _outputMuteAddr = [805, 806, 807, 808];
+
+  // 채널별 Delay 레지스터 주소 — 펌웨어 미구현, no-op 유지
   static const List<int> _delayAddr = [0x0000, 0x0000, 0x0000, 0x0000];
 
   Adau1701Adapter({required RawWriteFn writeRaw}) : _writeRaw = writeRaw;
@@ -42,7 +57,7 @@ class Adau1701Adapter implements DspAdapter {
   @override
   Future<void> writeBiquad(int channelIndex, int bandIndex, BiquadCoeffs coeffs) async {
     assert(bandIndex < _peqBands);
-    final addr = _pramBase[channelIndex] + bandIndex * 5;
+    final addr = _pramBase(channelIndex) + bandIndex * 5;
     await _writeRaw(_buildFrame(addr, [
       coeffs.b0, coeffs.b1, coeffs.b2, coeffs.a1, coeffs.a2,
     ]));
@@ -81,6 +96,19 @@ class Adau1701Adapter implements DspAdapter {
     if (addr == 0x0000) return; // TODO: 주소 미확정
     final linear = pow(10.0, gainDb / 20.0).toDouble();
     await _writeRaw(_buildFrame(addr, [linear, 0.0, 0.0, 0.0, 0.0]));
+  }
+
+  // ── Mute (확정 주소, DspAdapter 인터페이스 밖 — Adau1701 전용 부가 기능) ──
+  /// 채널(밴드) 단위 뮤트 — Woofer/Tweeter 스테레오 링크 블록이라 L/R 공유
+  Future<void> writeChannelMute(int channelIndex, bool muted) async {
+    final addr = _channelMuteAddr[channelIndex];
+    await _writeRaw(_buildFrame(addr, [muted ? 0.0 : 1.0, 0.0, 0.0, 0.0, 0.0]));
+  }
+
+  /// 출력 단위 뮤트 — 물리 출력 채널 개별
+  Future<void> writeOutputMute(int channelIndex, bool muted) async {
+    final addr = _outputMuteAddr[channelIndex];
+    await _writeRaw(_buildFrame(addr, [muted ? 0.0 : 1.0, 0.0, 0.0, 0.0, 0.0]));
   }
 
   // ── Delay ────────────────────────────────────────────────────
