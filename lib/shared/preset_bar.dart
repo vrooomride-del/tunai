@@ -36,6 +36,11 @@ class PresetBar extends ConsumerWidget {
       case PresetBarSelection.factory:
         peaks = const [];
         break;
+      case PresetBarSelection.reference:
+        // 1단계: Factory와 동일한 플랫 EQ(무보정)로 정의 — 별도 기준 커브 데이터가
+        // 생기면 그때 구분되는 로직을 넣을 것
+        peaks = const [];
+        break;
       case PresetBarSelection.aiTune:
         final result = ref.read(lastAiResultProvider);
         if (result == null) {

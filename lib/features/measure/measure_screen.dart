@@ -204,7 +204,7 @@ class _MeasurePanel extends StatelessWidget {
       if (step == MeasurementStep.idle && isConnected) ...[
         const SizedBox(height: 10),
         OutlineButton(
-          label: 'AUTO TUNE (반복수렴)',
+          label: 'AI Optimize (반복수렴)',
           onTap: () => ctrl.startClosedLoop(speakerProfile: ref.read(speakerProfileProvider)),
         ),
         const SizedBox(height: 4),

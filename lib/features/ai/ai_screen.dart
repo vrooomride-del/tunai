@@ -72,6 +72,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
   bool _loading = false;
   bool _applying = false;
   AiTuningResult? _result;
+  int? _previousScore;
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
   SystemProfileId? _lastProfileId;
   bool _autoRequested = false;
@@ -157,6 +158,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
   }
 
   Future<void> _suggest() async {
+    final previousScore = _result?.soundScore;
     setState(() { _loading = true; _result = null; });
     final location = ref.read(installLocationProvider);
     final result = await AiTuningService.suggest(
@@ -165,7 +167,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
       speakerProfile: ref.read(speakerProfileProvider),
       location: location?.promptKey,
     );
-    if (mounted) setState(() { _loading = false; _result = result; });
+    if (mounted) setState(() { _loading = false; _result = result; _previousScore = previousScore; });
     if (!result.isError) ref.read(lastAiResultProvider.notifier).state = result;
   }
 
@@ -207,7 +209,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     final maxBands = profile.maxPeqBands;
     if (_lastProfileId != null && _lastProfileId != profile.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() { _result = null; _loading = false; });
+        if (mounted) setState(() { _result = null; _loading = false; _previousScore = null; });
       });
     }
     _lastProfileId = profile.id;
@@ -248,7 +250,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
       if (_result != null && !_result!.isError) ...[
         if (_result!.soundScore != null) ...[
           const SizedBox(height: 16),
-          _SoundScoreCard(result: _result!),
+          _SoundScoreCard(result: _result!, previousScore: _previousScore),
         ],
         const SizedBox(height: 12),
         Container(
@@ -371,22 +373,48 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
 /// Sound Score + "AI says" 요약 — 밴드별 reason을 모아 사용자가 한눈에 이해하게 함
 class _SoundScoreCard extends StatelessWidget {
   final AiTuningResult result;
-  const _SoundScoreCard({required this.result});
+  final int? previousScore;
+  const _SoundScoreCard({required this.result, this.previousScore});
 
   @override
   Widget build(BuildContext context) {
+    // reason 문자열에 그 밴드의 주파수/게인을 붙여서 "왜"뿐 아니라 "어디를 얼마나"도
+    // 한눈에 보이게 함. 밴드마다 수치가 달라 자연히 중복 제거됨.
     final reasons = result.bands
-        .map((b) => b['reason'] as String?)
-        .where((r) => r != null && r.isNotEmpty)
-        .cast<String>()
+        .where((b) => (b['reason'] as String?)?.isNotEmpty == true)
+        .map((b) {
+          final reason = b['reason'] as String;
+          final hz = (b['frequency'] as num).round();
+          final db = (b['gainDb'] as num).toDouble();
+          return '$reason — ${hz}Hz, ${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)}dB';
+        })
         .toSet()
         .toList();
+    final prev = previousScore;
+    final score = result.soundScore;
+    final showDelta = prev != null && score != null;
+    final delta = showDelta ? score - prev : 0;
     return SectionCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           const Text('Sound Score', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
           const SizedBox(width: 10),
-          Text('${result.soundScore}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
+          if (showDelta) ...[
+            Text('$prev', style: const TextStyle(color: Colors.white38, fontSize: 20, fontWeight: FontWeight.w300)),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text('→', style: TextStyle(color: Colors.white38, fontSize: 18)),
+            ),
+          ],
+          Text('$score', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
+          if (showDelta) ...[
+            const SizedBox(width: 6),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('(${delta >= 0 ? '+' : ''}$delta)',
+                  style: TextStyle(color: delta >= 0 ? Colors.greenAccent : Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w500)),
+            ),
+          ],
           const SizedBox(width: 4),
           const Padding(
             padding: EdgeInsets.only(bottom: 6),

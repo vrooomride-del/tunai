@@ -3,7 +3,7 @@
 > 이 표는 매 세션 시작/종료 시 갱신한다.
 > 새 작업으로 새기 전에 반드시 먼저 읽고, 세션 끝나면 변경된 항목만 갱신해서 다음 HANDOFF.md에 그대로 옮긴다.
 
-**업데이트: 2026-07-04 (ADAU1466 주소 전면 반영 — PEQ/Delay 확정, XO는 SafeLoad 구조라 별도 검증 필요)**
+**업데이트: 2026-07-04 (모바일 UX 개선 1단계 — 문구/표시 개선, GPT 리뷰 반영. DSP 로직 변경 없음)**
 
 ---
 
@@ -370,6 +370,47 @@ Inv=810~811, I2C=0x34)는 변경 없음.
 2. XO(HPF/LPF)는 SafeLoad 프로토콜 자체를 조사(ADI 문서 또는 실측 캡처)한 뒤에만
    `experimentalXoWriteEnabled`를 켤 것 — 지금 스텁은 레지스터 배치를 가정한 것일 뿐
    검증되지 않음
+
+### 커밋
+`2281717` — feat(mobile): ADAU1466 주소 전면 반영 — PEQ/Delay 확정, XO는 SafeLoad 구조 (adau1466_adapter.dart)
+
+---
+
+## 이번 세션 추가 — 모바일 UX 개선 1단계: 문구/표시 개선 (GPT UX 리뷰 반영)
+
+### 배경
+GPT UX 리뷰 제안 중 코드 영향이 적은 것부터 진행. Pro는 이번 스코프 아님, DSP 로직/주소
+변경 없음 — 순수 UI 레이어만.
+
+### 수정 내용
+1. **버튼 라벨**: `measure_screen.dart`의 "AUTO TUNE (반복수렴)" → "AI Optimize (반복수렴)"
+   (기능/로직 동일, 라벨만)
+2. **Sound Score 개선폭 표시**: `ai_screen.dart`의 `_AiTunePanelState`에 `_previousScore`
+   필드 추가 — `_suggest()` 재호출 시 이전 `_result.soundScore`를 캡처해 넘겨줌.
+   `_SoundScoreCard`가 이전 점수가 있으면 "89 → 96 (+7)" 형식(색상: 상승 초록/하락 빨강),
+   없으면 기존처럼 단일 숫자만 표시. 시스템 프로파일 전환 시 `_previousScore`도 함께 리셋
+3. **"AI says" 수치 포함**: `_SoundScoreCard`의 reason 목록을 밴드별 `frequency`/`gainDb`와
+   묶어 "책상 반사로 인한 피크 보정 — 180Hz, -3.2dB" 형식으로 표시. **백엔드 확인 결과
+   `functions/index.js`의 `aiTune` 응답이 이미 밴드마다 `frequency`/`gainDb`/`reason`을
+   별도 필드로 반환하고 있어(SYSTEM_MOBILE 프롬프트 스키마 기준) 백엔드 수정은 불필요했음**
+   — 클라이언트에서 이미 있는 필드를 조합해서 표시만 개선
+4. **프리셋 바에 "Reference" 추가**: `preset_bar_provider.dart`의 `PresetBarSelection`
+   enum에 `reference` 추가, 순서를 Factory/Reference/AI Tune/My Tune/(배치 프리셋)으로
+   재배열. **Factory와 동일하게 플랫 EQ(무보정)로 정의**(Dart 표준 라이브러리 상
+   `peaks = const []`) — 실제로 구분되는 기준 커브 데이터가 없어서 1단계에서는 이름만
+   분리. 향후 진짜 "기준 커브"(예: 공장 측정 원본 곡선) 데이터가 생기면 그때 로직을
+   분리할 것. `preset_bar.dart`의 `_select()` switch에 `case reference` 추가(exhaustive
+   switch라 빠뜨리면 컴파일 에러 — 안전)
+
+### 확인
+`flutter analyze` — 0 issues. **UI 실측 테스트는 못 함** — AI 튜닝 결과 표시는 실제
+측정 데이터+Firebase 응답이 있어야 확인 가능해서 코드 리뷰 수준으로만 검증했음. 다음
+세션에서 실기기/시뮬레이터로 AI 탭 플로우를 한번 돌려 Sound Score 델타 표시와 "AI says"
+문구가 의도대로 나오는지 확인 필요
+
+### 다음 세션
+1. 위 4개 변경사항 실제 화면에서 시각 확인
+2. 2단계(CONNECT 플로우 개선) 착수 여부 확인
 
 ### 커밋
 (다음 커밋 예정)

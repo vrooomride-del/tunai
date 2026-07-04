@@ -2,13 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/audio_analyzer.dart';
 
 /// 상단 프리셋 바 항목 — 기존 보드선택 칩 자리를 대체.
-enum PresetBarSelection { factory, myTune, aiTune, nearWall, desk, studio }
+/// 순서: Factory / Reference / AI Tune / My Tune / (배치 프리셋)
+enum PresetBarSelection { factory, reference, aiTune, myTune, nearWall, desk, studio }
 
 extension PresetBarSelectionLabel on PresetBarSelection {
   String get label => switch (this) {
         PresetBarSelection.factory => 'Factory',
-        PresetBarSelection.myTune => 'My Tune',
+        PresetBarSelection.reference => 'Reference',
         PresetBarSelection.aiTune => 'AI Tune',
+        PresetBarSelection.myTune => 'My Tune',
         PresetBarSelection.nearWall => 'Near Wall',
         PresetBarSelection.desk => 'Desk',
         PresetBarSelection.studio => 'Studio',
