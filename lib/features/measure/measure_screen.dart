@@ -10,6 +10,9 @@ import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
 
+/// 측정 전 체크리스트를 확인했는지 — 세션 동안만 유지(강제 검증 아닌 안내용 UI)
+final preMeasureChecklistDoneProvider = StateProvider<bool>((ref) => false);
+
 /// MEASURE 탭 — 설치 위치 선택(방이 Driver보다 먼저) + 마이크 측정.
 /// 측정 완료 시 [onMeasured]로 AI 탭 자동 전환을 요청한다.
 class MeasureScreen extends ConsumerWidget {
@@ -130,6 +133,13 @@ class _MeasurePanel extends StatelessWidget {
     final isConverging = step == MeasurementStep.converging;
     final isConnected = bState.connection == BleConnectionState.connected;
 
+    final checklistDone = ref.watch(preMeasureChecklistDoneProvider);
+    if (step == MeasurementStep.idle && isConnected && !checklistDone) {
+      return _PreMeasureChecklist(
+        onConfirmed: () => ref.read(preMeasureChecklistDoneProvider.notifier).state = true,
+      );
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!isConnected)
         const Padding(
@@ -221,5 +231,60 @@ class _MeasurePanel extends StatelessWidget {
       if (mState.scmsBins.isNotEmpty) ...[const SizedBox(height: 20), SpectrumChart(bins: mState.scmsBins, peaks: mState.peaks)],
       if (mState.peaks.isNotEmpty) ...[const SizedBox(height: 16), PeakTable(peaks: mState.peaks)],
     ]);
+  }
+}
+
+/// 측정 진입 전 안내 체크리스트 — 강제 검증이 아니라 사용자가 준비 상태를
+/// 스스로 확인하도록 돕는 UI. 체크 여부와 무관하게 "확인" 버튼으로 진행 가능.
+class _PreMeasureChecklist extends StatefulWidget {
+  final VoidCallback onConfirmed;
+  const _PreMeasureChecklist({required this.onConfirmed});
+
+  @override
+  State<_PreMeasureChecklist> createState() => _PreMeasureChecklistState();
+}
+
+class _PreMeasureChecklistState extends State<_PreMeasureChecklist> {
+  bool _mic = false;
+  bool _speaker = false;
+  bool _quiet = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('측정 전 확인', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 2),
+      const Text('강제 검증은 아니며, 정확한 측정을 위한 안내입니다',
+          style: TextStyle(color: Colors.white24, fontSize: 10)),
+      const SizedBox(height: 14),
+      _ChecklistItem(label: 'Microphone Ready', checked: _mic, onChanged: (v) => setState(() => _mic = v)),
+      _ChecklistItem(label: 'Speaker Ready', checked: _speaker, onChanged: (v) => setState(() => _speaker = v)),
+      _ChecklistItem(label: 'Environment Quiet', checked: _quiet, onChanged: (v) => setState(() => _quiet = v)),
+      const SizedBox(height: 14),
+      OutlineButton(label: '확인 — 측정 시작', onTap: widget.onConfirmed),
+    ]);
+  }
+}
+
+class _ChecklistItem extends StatelessWidget {
+  final String label;
+  final bool checked;
+  final ValueChanged<bool> onChanged;
+  const _ChecklistItem({required this.label, required this.checked, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!checked),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(children: [
+          Icon(checked ? Icons.check_box : Icons.check_box_outline_blank,
+              color: checked ? Colors.white70 : Colors.white24, size: 18),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(color: checked ? Colors.white70 : Colors.white54, fontSize: 13)),
+        ]),
+      ),
+    );
   }
 }

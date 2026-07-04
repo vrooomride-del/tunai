@@ -3,7 +3,7 @@
 > 이 표는 매 세션 시작/종료 시 갱신한다.
 > 새 작업으로 새기 전에 반드시 먼저 읽고, 세션 끝나면 변경된 항목만 갱신해서 다음 HANDOFF.md에 그대로 옮긴다.
 
-**업데이트: 2026-07-04 (모바일 UX 개선 1단계 — 문구/표시 개선, GPT 리뷰 반영. DSP 로직 변경 없음)**
+**업데이트: 2026-07-04 (모바일 UX 개선 2단계 — CONNECT 플로우 개선, GPT 리뷰 반영. DSP 로직 변경 없음)**
 
 ---
 
@@ -411,6 +411,51 @@ GPT UX 리뷰 제안 중 코드 영향이 적은 것부터 진행. Pro는 이번
 ### 다음 세션
 1. 위 4개 변경사항 실제 화면에서 시각 확인
 2. 2단계(CONNECT 플로우 개선) 착수 여부 확인
+
+### 커밋
+`dd48ab8` — feat(mobile): UX 개선 1단계 — 문구/표시 개선 (GPT 리뷰 반영)
+
+---
+
+## 이번 세션 추가 — 모바일 UX 개선 2단계: CONNECT 플로우 개선 (GPT UX 리뷰 반영)
+
+### 배경
+1단계(문구/표시)에 이어 CONNECT 화면 플로우 확장. Pro는 이번 스코프 아님, BLE 스캔/연결
+핵심 로직(`ble_controller.dart`의 실제 스캔/연결 호출)은 변경 없음 — 상태 세분화 +
+UI 레이어만.
+
+### 수정 내용
+1. **단계별 진행상태 체크리스트**: `BleConnectionState`에 `found`(스캔 중 기기 발견 순간)와
+   `notFound`(스캔 완료 후 못 찾음, 기존엔 `error`로 뭉쳐 있었음) 두 상태를 세분화 추가.
+   실제 스캔 루프(`scanAndConnect`)는 그대로 두고, 기기를 찾은 시점에 `found` 상태를 잠깐
+   거쳐가도록 한 줄만 추가. `connect_screen.dart`에 새 `_ConnectSteps` 위젯 — Bluetooth
+   ON/Speaker Found/Connecting.../Connected 4단계를 체크마크(✓)로 표시, 진행 중인 단계는
+   스피너로 표시
+2. **연결 완료 확장 화면**: 새 `_ConnectedInfoCard` — 기기 아이콘+이름, "Ready" 상태,
+   "Start AI Setup" 버튼(MEASURE 탭 이동, 기존 `onConnected` 콜백 재사용). **Firmware
+   버전은 생략** — `fff1`(NOTIFY 특성)이 코드에 정의만 돼 있고 실제로 read/subscribe하는
+   경로가 없어서, 페이로드 포맷이 확인되기 전까지는 표시하지 않기로 함(추후 별도 작업)
+3. **최초 실행 웰컴**: 새 `lib/core/onboarding_storage.dart`(SharedPreferences, `MyTuneStorage`
+   패턴 따름) — "Welcome to TUNAI — Let's make your speaker sound amazing." 다이얼로그를
+   `ConnectScreen`(이제 `ConsumerStatefulWidget`으로 전환) `initState`에서 1회만 표시
+4. **검색 실패 가이드**: 새 `notFound` 상태일 때 `_ScanFailureGuide` 카드 — "Can't find your
+   speaker?" + Turn on speaker/Move closer 안내 문구, "Setup New Speaker" 버튼은 재스캔
+   (`scanAndConnect()` 재호출)으로 연결 — 별도 페어링 관리 기능은 없어서 정직하게 재시도로 매핑
+5. **MEASURE 진입 전 체크리스트**: 새 `preMeasureChecklistDoneProvider`(세션 동안만 유지,
+   앱 재시작 시 리셋)와 `_PreMeasureChecklist` 위젯 — Microphone/Speaker Ready, Environment
+   Quiet 3항목. **체크 여부와 무관하게 "확인" 버튼은 항상 활성** — 강제 검증이 아닌 안내용 UI
+
+### 확인
+`flutter analyze` — 0 issues. **UI 실측 테스트는 못 함** — 실제 BLE 기기 연결/해제
+사이클과 최초 실행 상태를 시뮬레이터에서 재현하려면 별도 준비가 필요해서 코드 리뷰
+수준으로만 검증했음
+
+### 다음 세션
+1. 실기기로 CONNECT 전체 플로우(스캔→발견→연결→Ready 화면, 못 찾았을 때 가이드, 앱
+   최초 실행 웰컴, MEASURE 체크리스트) 한번 돌려 확인
+2. 3단계(LISTEN Loop, Speaker Health, Test Tone) 착수 여부 확인
+3. Firmware 버전 표시가 필요하면 `fff1` 특성의 실제 페이로드 포맷부터 확인(SigmaStudio
+   또는 실기기 BLE 덤프)
 
 ### 커밋
 (다음 커밋 예정)

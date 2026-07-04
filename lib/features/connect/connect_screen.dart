@@ -2,16 +2,51 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../ble/ble_controller.dart';
+import '../../core/onboarding_storage.dart';
 import '../../shared/widgets.dart';
 
 /// CONNECT 탭 — 스피커 BLE 스캔/연결만 담당.
 /// 연결 성공 시 [onConnected]로 MEASURE 탭 자동 전환을 요청한다.
-class ConnectScreen extends ConsumerWidget {
+class ConnectScreen extends ConsumerStatefulWidget {
   final VoidCallback onConnected;
   const ConnectScreen({super.key, required this.onConnected});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConnectScreen> createState() => _ConnectScreenState();
+}
+
+class _ConnectScreenState extends ConsumerState<ConnectScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWelcome());
+  }
+
+  Future<void> _maybeShowWelcome() async {
+    final seen = await OnboardingStorage.hasSeenWelcome();
+    if (seen || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Welcome to TUNAI', style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: const Text(
+          "Let's make your speaker sound amazing.",
+          style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('시작하기', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+    await OnboardingStorage.markWelcomeSeen();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bState = ref.watch(bleProvider);
 
     ref.listen<BleState>(bleProvider, (prev, next) {
@@ -21,12 +56,18 @@ class ConnectScreen extends ConsumerWidget {
       }
       if (next.connection == BleConnectionState.connected &&
           prev?.connection != BleConnectionState.connected) {
-        onConnected();
+        widget.onConnected();
       }
     });
 
-    final isScanning = bState.connection == BleConnectionState.scanning || bState.connection == BleConnectionState.connecting;
+    final isScanning = bState.connection == BleConnectionState.scanning ||
+        bState.connection == BleConnectionState.found ||
+        bState.connection == BleConnectionState.connecting;
     final isConnected = bState.connection == BleConnectionState.connected;
+    final notFound = bState.connection == BleConnectionState.notFound;
+    // 스캔을 한번이라도 시작했는지 — 이 시점부터 단계별 체크리스트를 보여준다
+    final showSteps = bState.connection != BleConnectionState.disconnected &&
+        bState.connection != BleConnectionState.bluetoothOff;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -54,6 +95,11 @@ class ConnectScreen extends ConsumerWidget {
                                 : () => ref.read(bleProvider.notifier).scanAndConnect(),
                           ),
                         ]),
+
+                        if (showSteps && !isConnected) ...[
+                          const SizedBox(height: 12),
+                          _ConnectSteps(state: bState.connection),
+                        ],
 
                         // ADAU1466 탐지 배너 — PEQ/XO 주소 청감검증 진행 중
                         if (bState.detectedBoard == DetectedBoard.adau1466) ...[
@@ -97,10 +143,17 @@ class ConnectScreen extends ConsumerWidget {
                         ],
                       ]),
                     ),
+
+                    if (notFound) ...[
+                      const SizedBox(height: 16),
+                      _ScanFailureGuide(onRetry: () => ref.read(bleProvider.notifier).scanAndConnect()),
+                    ],
+
                     if (isConnected) ...[
                       const SizedBox(height: 16),
-                      Center(
-                        child: OutlineButton(label: 'MEASURE로 이동', onTap: onConnected),
+                      _ConnectedInfoCard(
+                        deviceName: bState.deviceName,
+                        onStartAiSetup: widget.onConnected,
                       ),
                     ],
                   ],
@@ -110,6 +163,132 @@ class ConnectScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// CONNECT 진행상태 체크리스트 — Bluetooth ON / Speaker Found / Connecting / Connected
+class _ConnectSteps extends StatelessWidget {
+  final BleConnectionState state;
+  const _ConnectSteps({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = state == BleConnectionState.scanning ||
+        state == BleConnectionState.found ||
+        state == BleConnectionState.connecting;
+
+    final steps = <(String, bool)>[
+      ('Bluetooth ON', state != BleConnectionState.bluetoothOff),
+      ('Speaker Found', state == BleConnectionState.found ||
+          state == BleConnectionState.connecting ||
+          state == BleConnectionState.connected),
+      ('Connecting...', state == BleConnectionState.connecting ||
+          state == BleConnectionState.connected),
+      ('Connected', state == BleConnectionState.connected),
+    ];
+    final currentIdx = steps.indexWhere((s) => !s.$2);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < steps.length; i++)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: steps[i].$2
+                    ? const Icon(Icons.check_circle, color: Colors.greenAccent, size: 16)
+                    : (active && i == currentIdx)
+                        ? const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                          )
+                        : const Icon(Icons.circle_outlined, color: Colors.white24, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Text(steps[i].$1,
+                  style: TextStyle(
+                      color: steps[i].$2 || (active && i == currentIdx) ? Colors.white70 : Colors.white24,
+                      fontSize: 12)),
+            ]),
+          ),
+      ],
+    );
+  }
+}
+
+/// 연결 완료 후 확장 정보 카드 — 기기명 / Ready 상태 / AI Setup 시작 버튼
+/// (Firmware 버전: 현재 BLE로 읽는 경로가 없어 생략 — fff1 특성 페이로드 확인 후 추가 예정)
+class _ConnectedInfoCard extends StatelessWidget {
+  final String? deviceName;
+  final VoidCallback onStartAiSetup;
+  const _ConnectedInfoCard({required this.deviceName, required this.onStartAiSetup});
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(
+            width: 40, height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(20)),
+            child: const Icon(Icons.speaker, color: Colors.white70, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(deviceName ?? 'TUNAI 스피커', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              const Row(children: [
+                Icon(Icons.check_circle, color: Colors.greenAccent, size: 12),
+                SizedBox(width: 4),
+                Text('Ready', style: TextStyle(color: Colors.greenAccent, fontSize: 11, letterSpacing: 1)),
+              ]),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        OutlineButton(label: 'Start AI Setup', onTap: onStartAiSetup),
+      ]),
+    );
+  }
+}
+
+/// 검색 실패 가이드 — 일정 시간 스캔했는데도 못 찾았을 때 안내
+class _ScanFailureGuide extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _ScanFailureGuide({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text("Can't find your speaker?", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 10),
+        const _GuideTip(text: 'Turn on speaker — 스피커 전원이 켜져 있는지 확인하세요'),
+        const _GuideTip(text: 'Move closer — 스피커와 더 가까이서 시도해보세요'),
+        const SizedBox(height: 12),
+        OutlineButton(label: 'Setup New Speaker', onTap: onRetry),
+      ]),
+    );
+  }
+}
+
+class _GuideTip extends StatelessWidget {
+  final String text;
+  const _GuideTip({required this.text});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('• ', style: TextStyle(color: Colors.white38, fontSize: 12)),
+        Expanded(child: Text(text, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4))),
+      ]),
     );
   }
 }

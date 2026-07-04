@@ -13,7 +13,9 @@ class TunaiUUID {
   static const String statusNotify = 'fff1'; // READ|NOTIFY
 }
 
-enum BleConnectionState { disconnected, scanning, connecting, connected, error, bluetoothOff }
+// found/notFound은 CONNECT 화면의 단계별 진행상태 표시(체크리스트 UI)를 위해
+// scanning과 connecting 사이에 세분화한 상태 — 실제 스캔/연결 로직은 변경 없음.
+enum BleConnectionState { disconnected, scanning, found, connecting, connected, notFound, error, bluetoothOff }
 
 /// 연결 후 보드 자동탐지 결과
 enum DetectedBoard {
@@ -126,13 +128,22 @@ class BleController extends StateNotifier<BleState> {
         if (!FlutterBluePlus.isScanningNow) break;
       }
 
+      if (found != null) {
+        // 체크리스트 UI용 중간 상태 — stopScan()의 await 덕분에 다음 프레임에
+        // 실제로 잠깐 표시된 뒤 _connectToDevice()가 connecting으로 넘어간다.
+        state = state.copyWith(
+          connection: BleConnectionState.found,
+          message: '${found.advName} 발견됨 — 연결 준비 중...',
+        );
+      }
+
       await FlutterBluePlus.stopScan();
 
       if (found != null) {
         await _connectToDevice(found);
       } else {
         state = state.copyWith(
-          connection: BleConnectionState.error,
+          connection: BleConnectionState.notFound,
           message: 'TUNAI/ICP5 스피커를 찾을 수 없습니다.\nMiumax에서 보이는 BLE 이름을 확인하세요.',
         );
       }
