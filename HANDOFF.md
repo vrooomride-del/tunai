@@ -3,7 +3,7 @@
 > 이 표는 매 세션 시작/종료 시 갱신한다.
 > 새 작업으로 새기 전에 반드시 먼저 읽고, 세션 끝나면 변경된 항목만 갱신해서 다음 HANDOFF.md에 그대로 옮긴다.
 
-**업데이트: 2026-07-04 (모바일 UX 개선 3단계 완료 — LISTEN Loop/Test Tone/Speaker Health. GPT UX 리뷰 전체 완료)**
+**업데이트: 2026-07-04 ("Living Speaker" 아키텍처 브리프 기준 현황 점검 — 진단만, 코드 변경 없음)**
 
 ---
 
@@ -505,4 +505,60 @@ UI 레이어만.
 Loop/Test Tone/Speaker Health)까지 모두 반영 완료. 다음은 실기기 테스트 순서.
 
 ### 커밋
-(다음 커밋 예정)
+`ef909fc` — feat(mobile): UX 개선 3단계(최종) — LISTEN Loop, Test Tone, Speaker Health (GPT 리뷰 반영)
+
+---
+
+## "Living Speaker" 아키텍처 브리프 — Gap Analysis (진단 전용, 코드 변경 없음, 2026-07-04)
+
+### 배경
+새 5계층 아키텍처 브리프(AIP/AOS/AIE/AKG/ACM) 도착. 현재 tunai/tunai_pro 코드베이스가
+이 구조와 얼마나 부합하는지 순수 진단만 수행 — 리팩토링/신규 구현 없음.
+
+### 5계층 매핑
+
+| 계층 | 매핑된 모듈 | 상태 | 격차 |
+|---|---|---|---|
+| **AIP** (플랫폼) | Firebase(Analytics/Crashlytics/Functions만, Firestore 미사용·패키지도 없음) + 별도 커스텀 REST API(`api.tunai.kr`, `lib/core/api_service.dart`) — auth/device 등록/community/measurement 업로드. `my_tune_storage.dart`는 로컬(SharedPreferences)만 | 부분있음 | Firebase와 REST API가 서로 분리된 두 시스템, 로컬↔클라우드 동기화 없음(My Tune은 아예 클라우드 대응 없음), 통합 플랫폼 데이터 레이어 없음. tunai_pro는 Firebase 의존성 자체가 없음 |
+| **AOS** (운영체제) | `dsp_controller.dart`(Pro, 프리셋 저장/로드 CRUD), `preset_bar_provider.dart`+`preset_bar.dart`(모바일, Factory/Reference/AI Tune/My Tune 선택) | 부분있음(보호 로직 없음) | 상태머신이 아니라 단순 CRUD(전이 가드 없음). Factory/User 레이어 분리 없음. 트위터 보호 클램프 전무 — `SafetyProfile.clampBassBoost`(우퍼<200Hz 전용)만 존재하고 그마저 측정 후 1회성 자동튠에만 호출됨 |
+| **AIE** (지능엔진) | `functions/index.js`의 `aiTune`/`aiTunePro`, `ai_tuning_service.dart`, Sound Score(LLM 자체 산출) | 부분있음 | 타겟커브 개념 코드에 없음(grep 0건). 후보 여러개 생성 안 함(LLM 1회 호출→1개 결과 그대로 사용). 프롬프트에 "flat화 지양"/"dip 과잉boost 금지" 지시 없음. 서버측 스키마/범위 검증 없음(LLM JSON 출력 그대로 클라이언트 전달) |
+| **AKG** (지식그래프) | `speaker_profile.dart`, `install_location.dart`, `spectrum_snapshot.dart`, `taste_preset.dart`, community의 `enclosure_hash` | 거의 없음 | 모든 엔티티가 독립된 flat 구조/전역 Riverpod provider로 존재 — `deviceId`/`profileId`/`locationId` 등으로 서로 연결되는 코드 0건(전수 grep 확인). 유일한 연결점은 `enclosure_hash`(스피커 인클로저 지오메트리에서 파생한 약한 지문, preset↔enclosure만 연결) — 기기/측정/튜닝/선호를 잇는 진짜 관계형·그래프 모델은 없음 |
+| **ACM** (실행계층) | `dsp_adapter.dart` 인터페이스 + `adau1701_adapter.dart`/`adau1466_adapter.dart`(mobile+Pro 각자), `ble_controller.dart`(모바일)/`connect_controller.dart`(Pro, UART+BLE) | 있음(단, 중복) | 인터페이스 자체는 깔끔히 분리(칩별 주소/픽스드포인트 로직이 어댑터 밖으로 새지 않음, 확인됨). 단 tunai/tunai_pro가 완전히 독립된 복사본 — 공유 패키지 없어 이미 `RawWriteFn` 시그니처가 서로 다름(모바일 `Future<bool> Function(List<int>)` vs Pro `Future<void> Function(Uint8List)`), drift 위험 |
+
+### "MVP에서도 반드시 남겨야 할 구조" 8개 항목 체크
+
+| # | 항목 | 상태 | 위치 | 격차 |
+|---|---|---|---|---|
+| A | Tuning Package abstraction | 부분있음 | `dsp_controller.dart`(Pro) `DspState` 저장/로드(131~163행) — gain/delay/PEQ/XO 모두 포함; `my_tune_storage.dart`(모바일) | 모바일 My Tune은 PEQ 밴드만 저장(XO/Delay 없음). 두 repo가 공유하는 번들 모델 없음 |
+| B | DSP Platform abstraction | **있음** | `dsp_adapter.dart`(양쪽 repo) | ACM 항목 참고 — 확인됨, 격차 없음 |
+| C | Factory / User Layer separation | **없음** | `preset_bar.dart:36-38`(Factory = `const []` 하드코딩), `dsp_controller.dart:131-163`(모든 프리셋이 같은 `dsp_presets`/`dsp_preset_$name` 네임스페이스) | "Factory"라는 이름의 프리셋도 사용자가 그대로 덮어쓰기/삭제 가능 — read-only 플래그나 보호된 네임스페이스가 아예 없음 |
+| D | Safety Validation Layer | **부분있음(실질적으로 핵심 경로엔 없음)** | `ai_screen.dart:_applyAll`, `preset_bar.dart:_select`, `dsp_controller.dart:updateOutputBand/updateOutputGain` | 개별 슬라이더 편집 다이얼로그엔 범위 제한(freq/gain/Q)이 있지만, **실제 BLE/UART로 나가는 3개 경로(AI 일괄적용, 프리셋 전환, PEQ 밴드 저장)엔 클램프가 전혀 없음.** 트위터 채널 특정 보호는 0건(아래 안전원칙 점검 참고) |
+| E | Measurement History | **없음** | `spectrum_snapshot.dart`(before/afterAi/current 3슬롯짜리 전역 상태, 앱 재시작 시 소실) | 시계열 이력 없음. `api_service.dart`에 업로드 엔드포인트(`saveMeasurement`)는 있으나 조회/이력 UI가 어디에도 없음 |
+| F | Target Curve Versioning | **없음** | (전수 grep 결과 0건: `targetCurve`/`target curve`/`reference curve`) | 타겟커브 개념 자체가 코드에 없음. AI는 매번 원시 peaks에서 처음부터 새로 제안만 함 |
+| G | Preset and Rollback Structure | 부분있음 | `dsp_controller.dart` 저장/로드, `MyTuneStorage` | 여러 프리셋 저장/전환은 가능하나 undo/rollback(변경 직전 자동 스냅샷) 메커니즘은 없음. `preset_bar.dart:_save`도 기존 My Tune을 확인 없이 그냥 덮어씀 |
+| H | AIP-ready Profile Model | **없음** | `SpeakerProfile`/`InstallLocation`/`SpectrumSnapshot`/`TastePreset`/`DeviceService`(`registered_device` 키)/`AuthController`(`user_id` 등 키) 전부 독립 | 통합 프로필 모델이 없고, 클라우드 확장 스키마로 쓸 단일 구조가 없음 — AKG 항목과 동일한 근본 원인 |
+
+### 핵심 안전원칙 점검
+
+**① 트위터 보호 필터가 사용자 EQ로 절대 우회 안 되는 구조인가 → 아니오, 사실상 보호 장치가 없음.**
+
+실제 write-path 추적 결과(에이전트가 파일:라인 단위로 확인):
+- **Pro 수동 슬라이더**: `peq_band.dart`의 게인 슬라이더(-24~24dB, 트위터/우퍼 동일 위젯) → `dsp_controller.dart:updateOutputBand`(클램프 없음, PeqBand 그대로 저장) → `sendToDsp()` → `Adau1701Adapter.writeBiquad`(현재 PEQ가 이 펌웨어에 없어 no-op — 다른 이유로 안 나감) / `writeGain`(클램프 없음) → `ConnectController.sendBytes`(값 검증 전혀 없이 raw bytes 전송)
+- **모바일 AI 일괄적용**: `ai_screen.dart:_applyAll`(클램프 없음) → `DspCompiler.compileAll` → `toFixed523`의 클램프(`-16.0~15.9999999`)는 fixed-point 오버플로 방지용일 뿐 dB 세이프티가 아님 → `ble_controller.dart:sendPackets`(값 검증 없음)
+- **유일한 실제 안전 클램프**: `SafetyProfile.clampBassBoost`(양쪽 repo에 중복 존재) — **우퍼(<200Hz) 전용**이고, 그마저 측정 후 1회성 자동튠 경로(`measurement_controller.dart:305-312`)에서만 호출됨. 수동 슬라이더/AI 일괄적용/프리셋 전환에는 전혀 안 걸림
+- 트위터 보호는 **UI 경고 문구로만 존재**(`ai_screen.dart:266-267`, `measurement_mic_screen.dart:388-389` — "트위터 채널 게인을 크게 올리지 마세요") — 이 문구를 어떤 검증/차단 로직에도 연결하지 않음. 사용자가 무시하면 그대로 전송됨
+
+**② Factory preset이 실제로 보호(읽기전용)되는가 → 아니오.**
+모바일에서 Factory는 저장된 오브젝트가 아니라 하드코딩된 빈 배열(`const []`)일 뿐이라 "덮어쓸 대상" 자체가 없음(그 자체로는 안전하지만, 진짜 공장 캘리브레이션 데이터를 나타내지 않는다는 기존에 알려진 제약과 동일 선상). Pro는 프리셋을 이름 기반으로 저장하는데(`dsp_presets` 리스트 + `dsp_preset_$name`), "Factory"라는 이름이 특별 취급되지 않아 사용자가 그 이름으로 저장하면 덮어써짐.
+
+### 종합 판단
+현재 코드베이스는 **ACM(실행계층)과 AIE(지능엔진 프로토타입)는 실질적으로 존재**하지만, **AOS의 보호/롤백 구조, AKG의 관계형 데이터, AIP의 통합 플랫폼 레이어는 거의 없다.** 가장 시급한 격차는 **D(Safety Validation Layer)**와 **C(Factory/User 분리)** — 둘 다 "트위터 보호"라는 제품의 핵심 안전 약속이 현재 코드상 UI 문구 수준에 그친다는 같은 근본 문제를 가리킨다.
+
+### 다음 세션
+이 보고서를 바탕으로 어느 격차부터 메울지 논의 필요. (에이전트 권고 아님 — 사용자 판단 필요, 후보만 나열)
+- 안전 최우선이면: D(Safety Validation Layer, 특히 트위터 클램프)부터
+- 제품 신뢰성이면: C(Factory/User 레이어 분리)부터
+- 장기 확장성이면: H/AKG(통합 프로필 모델)부터 — 다른 항목들이 이 위에 자연히 얹힘
+
+### 커밋
+(다음 커밋 예정 — 이번 세션은 진단만, 코드 변경 없음)
