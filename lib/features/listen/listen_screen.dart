@@ -4,9 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
+import '../../main.dart' show currentTabIndexProvider;
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
+
+/// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
+/// Loop를 자동 정지하기 위해 필요
+const _kListenTabIndex = 3;
 
 /// LISTEN 탭 — Before/After A/B 비교 + 3색 스펙트럼 오버레이.
 /// "와... 진짜 달라졌네"를 사용자가 직접 느끼게 하는 화면.
@@ -18,14 +23,17 @@ class ListenScreen extends ConsumerStatefulWidget {
 
 class _ListenScreenState extends ConsumerState<ListenScreen> {
   bool _showAfter = true;
-  bool _autoSwitch = false;
+  bool _loop = false;
   Timer? _timer;
 
-  void _setAutoSwitch(bool v) {
-    setState(() => _autoSwitch = v);
+  // Before/After 각각 이만큼 보여준 뒤 자동 전환 (요청: 1.5초씩)
+  static const _loopInterval = Duration(milliseconds: 1500);
+
+  void _setLoop(bool v) {
+    setState(() => _loop = v);
     _timer?.cancel();
     if (v) {
-      _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      _timer = Timer.periodic(_loopInterval, (_) {
         setState(() => _showAfter = !_showAfter);
       });
     }
@@ -43,6 +51,12 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
     final hasBefore = snap.before != null;
     final hasAfter = snap.afterAi != null;
 
+    // 다른 탭으로 이동하면 Loop 자동 정지 — IndexedStack은 이 화면을 dispose하지
+    // 않으므로 currentTabIndexProvider로 탭 이탈을 감지해야 한다.
+    ref.listen<int>(currentTabIndexProvider, (prev, next) {
+      if (next != _kListenTabIndex && _loop) _setLoop(false);
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -59,10 +73,10 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                     : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         _AbToggle(
                           showAfter: _showAfter,
-                          autoSwitch: _autoSwitch,
+                          loop: _loop,
                           hasAfter: hasAfter,
-                          onSelect: hasAfter ? (v) => setState(() { _showAfter = v; _setAutoSwitch(false); }) : null,
-                          onAutoSwitchChanged: hasAfter ? _setAutoSwitch : null,
+                          onSelect: hasAfter ? (v) => setState(() { _showAfter = v; _setLoop(false); }) : null,
+                          onLoopChanged: hasAfter ? _setLoop : null,
                         ),
                         const SizedBox(height: 12),
                         SectionCard(
@@ -109,11 +123,11 @@ class _EmptyState extends StatelessWidget {
 
 class _AbToggle extends StatelessWidget {
   final bool showAfter;
-  final bool autoSwitch;
+  final bool loop;
   final bool hasAfter;
   final ValueChanged<bool>? onSelect;
-  final ValueChanged<bool>? onAutoSwitchChanged;
-  const _AbToggle({required this.showAfter, required this.autoSwitch, required this.hasAfter, this.onSelect, this.onAutoSwitchChanged});
+  final ValueChanged<bool>? onLoopChanged;
+  const _AbToggle({required this.showAfter, required this.loop, required this.hasAfter, this.onSelect, this.onLoopChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -127,18 +141,18 @@ class _AbToggle extends StatelessWidget {
       ),
       const SizedBox(width: 12),
       GestureDetector(
-        onTap: onAutoSwitchChanged == null ? null : () => onAutoSwitchChanged!(!autoSwitch),
+        onTap: onLoopChanged == null ? null : () => onLoopChanged!(!loop),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: autoSwitch ? Colors.white : Colors.white24),
+            border: Border.all(color: loop ? Colors.white : Colors.white24),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(children: [
-            Icon(autoSwitch ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                color: autoSwitch ? Colors.white : Colors.white38, size: 14),
+            Icon(loop ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                color: loop ? Colors.white : Colors.white38, size: 14),
             const SizedBox(width: 4),
-            Text('0.5s', style: TextStyle(color: autoSwitch ? Colors.white : Colors.white38, fontSize: 10, letterSpacing: 1)),
+            Text('LOOP', style: TextStyle(color: loop ? Colors.white : Colors.white38, fontSize: 10, letterSpacing: 1)),
           ]),
         ),
       ),

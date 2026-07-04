@@ -3,7 +3,7 @@
 > 이 표는 매 세션 시작/종료 시 갱신한다.
 > 새 작업으로 새기 전에 반드시 먼저 읽고, 세션 끝나면 변경된 항목만 갱신해서 다음 HANDOFF.md에 그대로 옮긴다.
 
-**업데이트: 2026-07-04 (모바일 UX 개선 2단계 — CONNECT 플로우 개선, GPT 리뷰 반영. DSP 로직 변경 없음)**
+**업데이트: 2026-07-04 (모바일 UX 개선 3단계 완료 — LISTEN Loop/Test Tone/Speaker Health. GPT UX 리뷰 전체 완료)**
 
 ---
 
@@ -456,6 +456,53 @@ UI 레이어만.
 2. 3단계(LISTEN Loop, Speaker Health, Test Tone) 착수 여부 확인
 3. Firmware 버전 표시가 필요하면 `fff1` 특성의 실제 페이로드 포맷부터 확인(SigmaStudio
    또는 실기기 BLE 덤프)
+
+### 커밋
+`bf15464` — feat(mobile): UX 개선 2단계 — CONNECT 플로우 개선 (GPT 리뷰 반영)
+
+---
+
+## 이번 세션 추가 — 모바일 UX 개선 3단계(최종): LISTEN Loop / Test Tone / Speaker Health
+
+### 배경
+1단계(dd48ab8)·2단계(bf15464)에 이어 GPT UX 리뷰 마지막 단계. BLE/DSP 핵심 통신
+로직은 변경 없음. **중요 발견**: LISTEN 화면은 애초에 실제 오디오를 재생하는 화면이
+아니라 Before/After 스펙트럼 "그래프"를 토글하는 화면이었다(기존에도 오디오 재생
+코드가 전혀 없었음) — 이 사실을 확인하고 "Loop"를 실제 오디오 A/B가 아니라 기존
+그래프 자동전환 기능의 명칭/주기 변경으로 정직하게 구현했다(가짜로 오디오가 재생되는
+것처럼 보이게 하지 않음).
+
+### 수정 내용
+1. **LISTEN Loop**: 기존 "0.5s" 자동전환 칩을 "LOOP"로 개명하고 주기를 1.5초로 변경
+   (`_autoSwitch`→`_loop`, `500ms`→`1500ms`). **탭 이탈 시 자동 정지** 요구사항을 위해
+   `main.dart`에 `currentTabIndexProvider`(새 StateProvider) 추가 — `IndexedStack`은
+   비활성 탭을 dispose하지 않아 기존 `dispose()`만으로는 탭 전환 시 타이머가 안 멈췄던
+   문제를 해결. `RootScreen`을 `ConsumerStatefulWidget`으로 전환해 `_goTo()`에서 이
+   provider를 갱신, `ListenScreen`이 `ref.listen`으로 감지해 LISTEN(index 3)을 벗어나면
+   `_setLoop(false)` 호출
+2. **Test Tone 확인**: 새 `lib/core/tone_generator.dart`(`PinkNoiseGenerator`와 동일한
+   WAV 헤더 구조, 파형만 1kHz 사인파로 교체, 클릭음 방지용 10ms 페이드인/아웃 포함).
+   `connect_screen.dart`에 `_TestToneDialog` 추가 — 연결 성공 시 `widget.onConnected()`를
+   바로 부르지 않고 이 다이얼로그를 먼저 띄움: 1초 재생 → "들리나요?" YES/NO.
+   YES면 MEASURE로 진행. NO면 트러블슈팅 안내(볼륨/케이블/입력소스 확인) + "다시 시도"
+   버튼. 완전히 막히는 걸 방지하기 위해 트러블슈팅 화면에 "건너뛰기"도 추가(스펙엔 없었지만
+   재생이 정말 안 되는 환경—예: 개발 중 스피커 미연결—에서 못 빠져나가는 걸 막기 위한 판단)
+3. **Speaker Health 신규 화면**: `lib/features/health/speaker_health_screen.dart`,
+   MORE 메뉴에 항목 추가. **DSP Load/Amplifier/Tweeter/Woofer/Limiter 전부 "정보 없음"
+   으로 표시** — `DspAdapter.readCurrentState()`가 두 어댑터(1701/1466) 모두 항상
+   `DspState(raw: {})` 빈 값을 반환하고, BLE `fff1`(NOTIFY 특성)은 상수로 정의만
+   돼 있을 뿐 실제 subscribe/read 코드가 전혀 없음을 확인했음(grep으로 `setNotifyValue`/
+   `lastValueStream` 전무 확인). 화면 상단에 "하드웨어 지원 준비중" 배지 고정 표시 —
+   2단계에서 Firmware 버전을 생략한 것과 동일한 원칙(가짜 데이터 절대 금지)
+
+### 확인
+`flutter analyze` — 0 issues. **UI 실측 테스트는 못 함** — Test Tone은 실제 오디오
+출력 장치+연결된 스피커가 있어야 의미 있게 확인 가능하고, LISTEN Loop 탭 이탈 정지는
+실기기/시뮬레이터로 탭을 오가며 확인해야 해서 코드 리뷰 수준으로만 검증했음
+
+### GPT UX 리뷰 3단계 전체 완료
+1단계(dd48ab8, 문구/표시) → 2단계(bf15464, CONNECT 플로우) → 3단계(이번 커밋, LISTEN
+Loop/Test Tone/Speaker Health)까지 모두 반영 완료. 다음은 실기기 테스트 순서.
 
 ### 커밋
 (다음 커밋 예정)

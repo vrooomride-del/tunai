@@ -4,6 +4,7 @@ import '../fine_tune/fine_tune_screen.dart';
 import '../advanced/advanced_screen.dart';
 import '../community/community_screen.dart';
 import '../library/library_screen.dart';
+import '../health/speaker_health_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import '../../shared/widgets.dart';
@@ -37,6 +38,9 @@ class MoreScreen extends ConsumerWidget {
                   _MenuItem(label: 'COMMUNITY', description: '프리셋 공유 · 다운로드',
                       icon: Icons.people_outline,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen()))),
+                  _MenuItem(label: 'SPEAKER HEALTH', description: 'DSP Load · Amplifier · Limiter 상태',
+                      icon: Icons.health_and_safety_outlined,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()))),
                   const Divider(color: Colors.white12, height: 32),
                   _MenuItem(
                     label: auth.isLoggedIn ? (auth.nickname ?? 'MY PROFILE') : 'LOGIN',

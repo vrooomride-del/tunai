@@ -87,17 +87,25 @@ class _OnboardingGateState extends State<_OnboardingGate> {
   }
 }
 
-class RootScreen extends StatefulWidget {
+/// 현재 활성 탭 인덱스 — 탭을 벗어났을 때 자동 정지해야 하는 화면(LISTEN Loop 등)이
+/// 참고할 수 있도록 전역으로 노출. IndexedStack은 비활성 탭도 dispose하지 않으므로
+/// 이 provider 없이는 "다른 화면으로 이동" 여부를 알 수 없다.
+final currentTabIndexProvider = StateProvider<int>((ref) => 0);
+
+class RootScreen extends ConsumerStatefulWidget {
   const RootScreen({super.key});
 
   @override
-  State<RootScreen> createState() => _RootScreenState();
+  ConsumerState<RootScreen> createState() => _RootScreenState();
 }
 
-class _RootScreenState extends State<RootScreen> {
+class _RootScreenState extends ConsumerState<RootScreen> {
   int _currentIndex = 0;
 
-  void _goTo(int i) => setState(() => _currentIndex = i);
+  void _goTo(int i) {
+    setState(() => _currentIndex = i);
+    ref.read(currentTabIndexProvider.notifier).state = i;
+  }
 
   @override
   Widget build(BuildContext context) {
