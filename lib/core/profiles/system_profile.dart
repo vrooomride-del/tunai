@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../dsp/dsp_adapter.dart';
 import '../dsp/adau1701_adapter.dart';
 import '../dsp/adau1466_adapter.dart';
+import '../dsp/validating_dsp_adapter.dart';
 
 /// 선택된 시스템 프로파일 전역 상태
 final systemProfileProvider =
@@ -82,56 +83,70 @@ class SystemProfile {
 }
 
 // ── 사전 정의 프로파일 ─────────────────────────────────────────
+//
+// adapterFactory는 항상 ValidatingDspAdapter로 감싸서 반환한다 — Safety Validation
+// Layer(AOS 항목 D)를 우회할 방법을 없애기 위함. 채널 리스트를 top-level const로
+// 먼저 선언해 adapterFactory 클로저와 channels 필드가 동일한 리스트를 참조하게 함
+// (SystemProfile 생성자 호출 자체는 const가 아니라 이 참조가 가능함).
 
 /// TUNAI ONE — ADAU1701 2웨이 스테레오 (4채널)
 /// ch0: WooferL, ch1: WooferR, ch2: TweeterL, ch3: TweeterR
+const _tunaiOneChannels = [
+  ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2200)),
+  ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2200)),
+  ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2200, 20000)),
+  ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2200, 20000)),
+];
+
 final kTunaiOneSystemProfile = SystemProfile(
   id: SystemProfileId.tunaiOne,
   displayName: 'TUNAI ONE',
   description: '5.25" 우퍼 + 1" 트위터 2웨이 · JAB4(ADAU1701)',
   chipLabel: 'ADAU1701',
-  adapterFactory: (write) => Adau1701Adapter(writeRaw: write),
-  channels: const [
-    ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2200)),
-    ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2200)),
-    ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2200, 20000)),
-    ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2200, 20000)),
-  ],
+  adapterFactory: (write) =>
+      ValidatingDspAdapter(Adau1701Adapter(writeRaw: write), _tunaiOneChannels),
+  channels: _tunaiOneChannels,
   crossoverPoints: 1,
 );
 
 /// Isobarik — ADAU1466 3웨이 스테레오 (6채널)
 /// ch0: WooferL, ch1: WooferR, ch2: MidL, ch3: MidR, ch4: TweeterL, ch5: TweeterR
+const _isobarikChannels = [
+  ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (20,  280)),
+  ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (20,  280)),
+  ChannelConfig(name: 'Mid L',     type: ChannelType.mid,     side: ChannelSide.left,  freqRange: (280,  2500)),
+  ChannelConfig(name: 'Mid R',     type: ChannelType.mid,     side: ChannelSide.right, freqRange: (280,  2500)),
+  ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2500, 20000)),
+  ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2500, 20000)),
+];
+
 final kIsobarikSystemProfile = SystemProfile(
   id: SystemProfileId.isobarik,
   displayName: 'Isobarik 거실',
   description: 'Linn Isobarik 3웨이 · 파란보드(ADAU1466 + CS42448)',
   chipLabel: 'ADAU1466',
-  adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
-  channels: const [
-    ChannelConfig(name: 'Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (20,  280)),
-    ChannelConfig(name: 'Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (20,  280)),
-    ChannelConfig(name: 'Mid L',     type: ChannelType.mid,     side: ChannelSide.left,  freqRange: (280,  2500)),
-    ChannelConfig(name: 'Mid R',     type: ChannelType.mid,     side: ChannelSide.right, freqRange: (280,  2500)),
-    ChannelConfig(name: 'Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2500, 20000)),
-    ChannelConfig(name: 'Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2500, 20000)),
-  ],
+  adapterFactory: (write) =>
+      ValidatingDspAdapter(Adau1466Adapter(writeRaw: write), _isobarikChannels),
+  channels: _isobarikChannels,
   crossoverPoints: 2,
 );
 
 /// TUNAI REFERENCE — ADAU1466 동축 2웨이 스테레오 (4채널)
+const _tunaiReferenceChannels = [
+  ChannelConfig(name: 'Coaxial Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2000)),
+  ChannelConfig(name: 'Coaxial Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2000)),
+  ChannelConfig(name: 'Coaxial Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2000, 20000)),
+  ChannelConfig(name: 'Coaxial Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2000, 20000)),
+];
+
 final kTunaiReferenceSystemProfile = SystemProfile(
   id: SystemProfileId.tunaiReference,
   displayName: 'TUNAI REFERENCE',
   description: '5.25" 동축 2웨이 · 파란보드(ADAU1466 + CS42448) + TPA3255 + QCC5125',
   chipLabel: 'ADAU1466',
-  adapterFactory: (write) => Adau1466Adapter(writeRaw: write),
-  channels: const [
-    ChannelConfig(name: 'Coaxial Woofer L',  type: ChannelType.woofer,  side: ChannelSide.left,  freqRange: (40,  2000)),
-    ChannelConfig(name: 'Coaxial Woofer R',  type: ChannelType.woofer,  side: ChannelSide.right, freqRange: (40,  2000)),
-    ChannelConfig(name: 'Coaxial Tweeter L', type: ChannelType.tweeter, side: ChannelSide.left,  freqRange: (2000, 20000)),
-    ChannelConfig(name: 'Coaxial Tweeter R', type: ChannelType.tweeter, side: ChannelSide.right, freqRange: (2000, 20000)),
-  ],
+  adapterFactory: (write) =>
+      ValidatingDspAdapter(Adau1466Adapter(writeRaw: write), _tunaiReferenceChannels),
+  channels: _tunaiReferenceChannels,
   crossoverPoints: 1,
 );
 

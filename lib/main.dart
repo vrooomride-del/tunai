@@ -9,6 +9,7 @@ import 'features/ai/ai_screen.dart';
 import 'features/listen/listen_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/device/device_screen.dart';
+import 'core/dsp_safety_notice.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ class TunaiApp extends StatelessWidget {
     return MaterialApp(
       title: 'TUNAI',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: DspSafetyNotice.scaffoldMessengerKey,
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),

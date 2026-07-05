@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'dart:typed_data';
 import '../../core/audio_analyzer.dart';
+import '../../core/dsp_safety.dart';
+import '../../core/dsp_safety_notice.dart';
 
 /// Biquad IIR 노치 필터 계수
 class BiquadCoefficients {
@@ -122,15 +124,29 @@ class DspCompiler {
   }
 
   /// 복수 피크 → 복수 패킷
+  ///
+  /// 이 함수는 (advanced_screen.dart의 DspAdapter 경유 경로와 달리) AI 일괄적용
+  /// (ai_screen.dart)과 프리셋 전환(preset_bar.dart)이 실기기로 값을 보내는 유일한
+  /// 경로다 — 채널 구분 없이 주파수+게인만 갖고 있어 [DspSafety.validateBandGain]으로
+  /// 직접 검증한다(Safety Validation Layer, AOS 항목 D). 호출자가 검증을 건너뛸
+  /// 방법이 없도록 이 함수 내부에서 강제 적용한다.
   static List<RegisterPacket> compileAll(
       List<ResonancePeak> peaks, {int startPramAddr = peqStartPramAddr}) {
     final packets = <RegisterPacket>[];
     int addr = startPramAddr;
     for (final peak in peaks) {
-      packets.add(compilePeak(peak, addr));
+      final safe = _applySafety(peak);
+      packets.add(compilePeak(safe, addr));
       addr += 5;
     }
     return packets;
+  }
+
+  static ResonancePeak _applySafety(ResonancePeak peak) {
+    final r = DspSafety.validateBandGain(peak.frequency, peak.gain);
+    if (!r.wasClamped) return peak;
+    if (r.reason != null) DspSafetyNotice.show(r.reason!);
+    return ResonancePeak(frequency: peak.frequency, gain: r.value, q: peak.q);
   }
 
   /// BLE 전송용 27바이트 프레임 생성
