@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/audio_analyzer.dart';
 import '../core/ai_tuning_service.dart';
+import '../core/factory_preset.dart';
 import '../core/my_tune_storage.dart';
 import '../core/spectrum_snapshot.dart';
 import '../features/ble/ble_controller.dart';
@@ -34,12 +35,14 @@ class PresetBar extends ConsumerWidget {
     List<ResonancePeak> peaks;
     switch (sel) {
       case PresetBarSelection.factory:
-        peaks = const [];
+        // 읽기전용 Factory 레이어(factory_preset.dart) — 코드에 내장된 불변 값,
+        // 저장/수정 대상이 아님(AOS 항목 C)
+        peaks = kFactoryPresetFlat.bands;
         break;
       case PresetBarSelection.reference:
-        // 1단계: Factory와 동일한 플랫 EQ(무보정)로 정의 — 별도 기준 커브 데이터가
+        // Factory와 동일한 플랫 EQ(무보정)로 정의 — 별도 기준 커브 데이터가
         // 생기면 그때 구분되는 로직을 넣을 것
-        peaks = const [];
+        peaks = kFactoryPresetFlat.bands;
         break;
       case PresetBarSelection.aiTune:
         final result = ref.read(lastAiResultProvider);
