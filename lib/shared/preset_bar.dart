@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/audio_analyzer.dart';
 import '../core/ai_tuning_service.dart';
+import '../core/akg/user_preference_signal.dart';
+import '../core/device_service.dart';
 import '../core/factory_preset.dart';
 import '../core/my_tune_storage.dart';
 import '../core/spectrum_snapshot.dart';
+import '../features/auth/auth_controller.dart';
 import '../features/ble/ble_controller.dart';
 import '../features/dsp/dsp_compiler.dart';
 import '../features/fine_tune/taste_preset.dart';
@@ -80,6 +83,8 @@ class PresetBar extends ConsumerWidget {
       await ref.read(bleProvider.notifier).sendPackets(packets);
     }
 
+    _recordPreferenceSignal(ref, sel);
+
     final snap = ref.read(spectrumSnapshotProvider);
     final base = snap.afterAi ?? snap.before;
     if (base != null) {
@@ -96,6 +101,30 @@ class PresetBar extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
   }
 
+  /// AKG-ready 선호 신호 기록(fire-and-forget) — Factory 선택은 "롤백"으로,
+  /// 나머지는 "선택"으로 남긴다. 지금 당장 아무도 분석하지 않고 나중에 AIE가
+  /// 참조할 수 있도록 저장만 해둔다. 실패해도 프리셋 적용 흐름엔 영향 없음.
+  void _recordPreferenceSignal(WidgetRef ref, PresetBarSelection sel) {
+    () async {
+      try {
+        final device = await DeviceService.loadDevice();
+        final signal = UserPreferenceSignal(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          timestamp: DateTime.now(),
+          deviceId: device?.serial,
+          userId: ref.read(authProvider).userId,
+          action: sel == PresetBarSelection.factory
+              ? PreferenceAction.rollback
+              : PreferenceAction.select,
+          presetLabel: sel.label,
+        );
+        await UserPreferenceSignalStore.append(signal);
+      } catch (_) {
+        // 이력 저장 실패는 무시
+      }
+    }();
+  }
+
   Future<void> _save(BuildContext context, WidgetRef ref) async {
     final peaks = _currentEffectivePeaks(ref);
     if (peaks.isEmpty) {
@@ -103,7 +132,27 @@ class PresetBar extends ConsumerWidget {
       return;
     }
     await MyTuneStorage.save(peaks);
+    _recordSaveSignal(ref);
     if (context.mounted) _snack(context, 'My Tune으로 저장됨 (${peaks.length}개 밴드)');
+  }
+
+  void _recordSaveSignal(WidgetRef ref) {
+    () async {
+      try {
+        final device = await DeviceService.loadDevice();
+        final signal = UserPreferenceSignal(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          timestamp: DateTime.now(),
+          deviceId: device?.serial,
+          userId: ref.read(authProvider).userId,
+          action: PreferenceAction.save,
+          presetLabel: PresetBarSelection.myTune.label,
+        );
+        await UserPreferenceSignalStore.append(signal);
+      } catch (_) {
+        // 이력 저장 실패는 무시
+      }
+    }();
   }
 
   @override

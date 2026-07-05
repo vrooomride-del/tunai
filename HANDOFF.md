@@ -3,7 +3,7 @@
 > 이 표는 매 세션 시작/종료 시 갱신한다.
 > 새 작업으로 새기 전에 반드시 먼저 읽고, 세션 끝나면 변경된 항목만 갱신해서 다음 HANDOFF.md에 그대로 옮긴다.
 
-**업데이트: 2026-07-05 (Factory/User Layer 분리 완료 — AOS 항목 C)**
+**업데이트: 2026-07-05 (AKG-ready Profile Model 추가 완료 — 항목 H. Gap analysis D/C/H+B 4개 항목 전체 마무리)**
 
 ---
 
@@ -696,6 +696,72 @@ Factory 선택 시에도 `preset_bar.dart:_select`가 그대로 `DspCompiler.com
 ### 다음 세션
 H(AKG 프로필 모델) 진행 여부 확인 필요. 상세 마이그레이션/설계 내용은 Pro 쪽
 HANDOFF.md 참고(이번 세션의 실질적 작업은 Pro 쪽이 더 큼).
+
+### 커밋
+`ce7fc85` — feat(mobile): Factory/User Layer 분리 — AOS 항목 C
+
+---
+
+## AKG-ready Profile Model 추가 완료 (gap analysis 항목 H, 마지막, 2026-07-05)
+
+### 배경
+gap analysis 4개 후보(B/C/D/H) 중 마지막. AKG(Acoustic Knowledge Graph)는 기기/드라이버/
+공간/측정/튜닝/선호 관계를 저장하는 계층 — MVP에서는 실제 그래프 DB 없이, 각 엔티티가
+서로의 ID를 참조하는 필드만 있으면 충분하다는 전제로 진행.
+
+### 기존에 이미 있던 노드
+- **User**: `AuthState.userId`(`auth_controller.dart`, 커스텀 REST API 기반)
+- **Device**: `TunaiDevice`(`device_service.dart`, `serial`이 사실상 deviceId)
+- **Preset**: `MyTuneStorage`(My Tune 단일 슬롯), `FactoryPreset`(직전 세션에 추가)
+
+### 없던 것 중 이번에 추가한 것
+- **`lib/core/akg/measurement_session.dart`**: `MeasurementSession` — 측정 1회의
+  메타데이터(id, timestamp, deviceId, userId, spaceType, peakCount, iterations,
+  residualErrorDb, converged). `MeasurementSessionStore`가 SharedPreferences에
+  append-only로 최근 200개까지 저장. **이게 부수적으로 기존 gap analysis 항목
+  E(Measurement History — 그때는 "없음"으로 판정됨)도 같이 메워준다** — 이전엔
+  `SpectrumSnapshot`의 3슬롯(before/afterAi/current)뿐이라 시계열 이력이 전혀
+  없었는데, 이제 매 측정마다 이력이 쌓임(단, 지금은 저장만 하고 조회 UI는 없음 —
+  "기존 UI 변경 최소화" 지침에 따름)
+- **`lib/core/akg/user_preference_signal.dart`**: `UserPreferenceSignal` — 사용자가
+  프리셋을 select/rollback/save/delete했는지 로그(id, timestamp, deviceId, userId,
+  action, presetLabel). `UserPreferenceSignalStore`가 동일하게 최근 200개까지 저장.
+  지금 당장 아무도 이 데이터를 분석하지 않음 — 나중에 AIE가 참조할 수 있게 저장만
+
+### 연결 지점 (기존 UI/로직 변경 최소화, 훅만 추가)
+- `measurement_controller.dart`: `startMeasurement`/`startClosedLoop`가
+  `MeasurementStep.done`에 도달하는 3개 지점(단일 측정, Closed Loop 수렴, Closed
+  Loop 최대반복) 모두에서 `_recordSession()` 호출(fire-and-forget, 실패해도 측정
+  흐름에 영향 없음)
+- `preset_bar.dart`: `_select()`가 프리셋 적용 후 `_recordPreferenceSignal()` 호출
+  (Factory 선택은 `rollback`, 나머지는 `select`), `_save()`가 My Tune 저장 후
+  `_recordSaveSignal()` 호출(`save`)
+
+### 관계(엣지) 표현 방식
+그래프 DB 없이 ID 참조 필드만으로 표현 — 예: `MeasurementSession.deviceId` →
+`TunaiDevice.serial`, `MeasurementSession.userId` → `AuthState.userId`. 나중에 실제
+그래프 DB로 옮길 때 이 필드들이 그대로 엣지가 된다.
+
+### 확인
+`flutter analyze` — 0 issues. **실기기 테스트는 못 함** — 코드 리뷰 수준으로만 검증.
+저장 자체가 fire-and-forget try/catch로 감싸여 있어 실패해도 기존 기능(측정/프리셋
+적용)에 영향 없음을 코드로 확인.
+
+### Gap Analysis 4개 항목 전체 마무리
+- **B (DSP Platform abstraction)** — 이미 있었음(확인만)
+- **C (Factory/User Layer 분리)** — 완료(직전 세션)
+- **D (Safety Validation Layer)** — 완료(그 전 세션)
+- **H (AKG-ready Profile Model)** — 완료(이번 세션)
+
+남은 후보: **AIP(클라우드 동기화)** — 이번 세션 의도적으로 스킵(로컬 데이터 모델만).
+지금 쌓이기 시작한 `MeasurementSession`/`UserPreferenceSignal`이 나중에 AIP로 동기화될
+1순위 후보.
+
+### 다음 세션
+다음 우선순위 제안 필요 — 후보: (1) 실기기 테스트 밀린 것들 전부 한번에 검증(ADAU1701
+XO 매핑, ADAU1466 PEQ/Delay, 이번 세션들의 Safety/Factory/AKG 로직), (2) AIP 트랙
+착수(로컬에 쌓인 AKG 데이터를 클라우드로 동기화), (3) mobile/Pro 코드 중복 해소(ACM
+계층 등 여러 곳에서 반복 발견됨).
 
 ### 커밋
 (다음 커밋 예정)

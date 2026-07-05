@@ -12,6 +12,10 @@ import '../../core/mic_calibration.dart';
 import '../../core/speaker_profile.dart';
 import '../ble/ble_controller.dart' show bleProvider;
 import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety, RegisterPacket;
+import '../auth/auth_controller.dart' show authProvider;
+import '../../core/device_service.dart';
+import '../../core/install_location.dart';
+import '../../core/akg/measurement_session.dart';
 
 enum MeasurementStep {
   idle,
@@ -111,6 +115,7 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         packets: packets,
         iteration: 1,
       );
+      _recordSession(peakCount: safePeaks.length, iterations: 1);
     } catch (e) {
       state = state.copyWith(step: MeasurementStep.error, error: e.toString());
     }
@@ -168,6 +173,12 @@ class MeasurementController extends StateNotifier<MeasurementState> {
               hasConverged: true,
               residualErrorDb: residual,
             );
+            _recordSession(
+              peakCount: safePeaks.length,
+              iterations: iter + 1,
+              residualErrorDb: residual,
+              converged: true,
+            );
             debugPrint('[LOOP] ✅ 수렴 성공');
             return;
           }
@@ -196,6 +207,12 @@ class MeasurementController extends StateNotifier<MeasurementState> {
             ' 추가 수동 조정이 필요할 수 있습니다.',
         hasConverged: false,
         residualErrorDb: lastResidual,
+      );
+      _recordSession(
+        peakCount: lastPeaks.length,
+        iterations: _maxIterations,
+        residualErrorDb: lastResidual,
+        converged: false,
       );
     } catch (e) {
       state = state.copyWith(step: MeasurementStep.error, error: e.toString());
@@ -337,6 +354,36 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
   void _update(MeasurementStep step, String message) {
     state = state.copyWith(step: step, message: message);
+  }
+
+  /// 측정 1회 완료 시 AKG-ready 이력에 기록(fire-and-forget) — 지금 당장 아무도
+  /// 이 데이터를 읽지 않지만, 나중에 AIE/Measurement History가 참조할 수 있도록
+  /// 저장만 해둔다. 실패해도 측정 자체 흐름에는 영향 없음.
+  void _recordSession({
+    required int peakCount,
+    int? iterations,
+    double? residualErrorDb,
+    bool converged = false,
+  }) {
+    () async {
+      try {
+        final device = await DeviceService.loadDevice();
+        final session = MeasurementSession(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          timestamp: DateTime.now(),
+          deviceId: device?.serial,
+          userId: _ref.read(authProvider).userId,
+          spaceType: _ref.read(installLocationProvider)?.name,
+          peakCount: peakCount,
+          iterations: iterations,
+          residualErrorDb: residualErrorDb,
+          converged: converged,
+        );
+        await MeasurementSessionStore.append(session);
+      } catch (_) {
+        // 이력 저장 실패는 무시 — 측정 기능 자체를 막지 않음
+      }
+    }();
   }
 
   Future<File> _saveWav(Uint8List bytes) async {
