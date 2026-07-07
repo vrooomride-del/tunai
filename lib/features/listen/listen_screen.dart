@@ -8,6 +8,7 @@ import '../../main.dart' show currentTabIndexProvider;
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
+import '../dsp/master_volume_controller.dart';
 
 /// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
 /// Loop를 자동 정지하기 위해 필요
@@ -64,7 +65,9 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
           children: [
             const TunaiTopBar(subtitle: 'LISTEN'),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            const _MasterVolumeSection(),
+            const SizedBox(height: 4),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
@@ -101,6 +104,73 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Master Volume ─────────────────────────────────────────────
+
+class _MasterVolumeSection extends ConsumerWidget {
+  const _MasterVolumeSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final vol = ref.watch(masterVolumeProvider);
+    final ctrl = ref.read(masterVolumeProvider.notifier);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('MASTER VOL',
+                  style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 3)),
+              const SizedBox(width: 12),
+              Text('${vol.toStringAsFixed(1)} dB',
+                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              const Spacer(),
+              for (final db in [-60.0, -50.0, -40.0]) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => ctrl.setVolume(db),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                          color: vol == db ? Colors.white54 : Colors.white24, width: 0.5),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text('${db.toInt()}',
+                        style: TextStyle(
+                          color: vol == db ? Colors.white70 : Colors.white38,
+                          fontSize: 10, letterSpacing: 1,
+                        )),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 1.5,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: Colors.white54,
+              inactiveTrackColor: Colors.white12,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white12,
+            ),
+            child: Slider(
+              value: vol,
+              min: -70, max: 0,
+              onChanged: (v) => ctrl.updateUiOnly(v),
+              onChangeEnd: (v) => ctrl.setVolume(v),
+            ),
+          ),
+        ],
       ),
     );
   }
