@@ -79,7 +79,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
                     Text('취향을 선택하세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1)),
                   ]),
                   const SizedBox(height: 2),
-                  const Text('AI가 만든 기본 EQ 위에 추가로 적용됩니다', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Text('Acoustic Tune 위에 취향을 더합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 12),
                   ...kTastePresets.map((preset) {
                     final isSelected = selected?.id == preset.id;

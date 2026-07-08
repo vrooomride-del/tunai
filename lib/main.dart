@@ -64,7 +64,26 @@ class _OnboardingGateState extends State<_OnboardingGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_done == null) return const Scaffold(backgroundColor: Color(0xFF0A0A0A));
+    if (_done == null) { return const Scaffold(
+      backgroundColor: Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(32, 60, 32, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('TUNAI', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w200, letterSpacing: 10)),
+              SizedBox(height: 32),
+              Text('Sound that understands\nyour room.', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w300, height: 1.35)),
+              SizedBox(height: 16),
+              Text('당신의 공간을 이해하는 소리.', style: TextStyle(color: Color(0x66FFFFFF), fontSize: 14)),
+              SizedBox(height: 24),
+              Text('Powered by TUNAI Acoustic Intelligence', style: TextStyle(color: Color(0x33FFFFFF), fontSize: 11, letterSpacing: 1)),
+            ],
+          ),
+        ),
+      ),
+    ); }
     if (!_done!) {
       return OnboardingScreen(onComplete: () => setState(() => _done = true));
     }
@@ -124,11 +143,11 @@ class _RootScreenState extends ConsumerState<RootScreen> {
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.mic_none, size: 20),
-              label: 'MEASURE',
+              label: 'ROOM',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.auto_awesome_outlined, size: 20),
-              label: 'AI',
+              label: 'TUNE',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.headphones, size: 20),

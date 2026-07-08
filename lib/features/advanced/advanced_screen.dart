@@ -8,14 +8,31 @@ import '../../core/frd_parser.dart';
 import '../../core/channel_link_provider.dart';
 import '../../core/dsp/dsp_adapter.dart';
 import '../../shared/widgets.dart';
-import '../community/community_screen.dart';
 import '../history/history_screen.dart';
 import '../device/device_screen.dart';
 
-/// ADVANCED 탭 — 숨겨진 전문가 기능: 보드 선택, T/S, FRD, 크로스오버, 채널 게인.
-/// 일반 사용자는 여기까지 올 필요 없이 CONNECT→MEASURE→AI→LISTEN만으로 충분하다.
 class AdvancedScreen extends ConsumerWidget {
   const AdvancedScreen({super.key});
+
+  void _showProDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('TUNAI PRO', style: TextStyle(color: Colors.white, fontSize: 15, letterSpacing: 2)),
+        content: const Text(
+          'Full PEQ, crossover, and driver controls are available in TUNAI PRO.\n\nComing Soon.',
+          style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,7 +49,27 @@ class AdvancedScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _SectionLabel('보드 · 스피커 프로파일'),
+                    // ── Speaker Profile ──────────────────────────────────
+                    const _SectionLabel('SPEAKER PROFILE'),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white24),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('TUNAI ONE',
+                            style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1.5)),
+                        const SizedBox(height: 4),
+                        Text('5.25" 동축 2웨이 액티브 스피커',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12)),
+                      ]),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Board / System Profile ───────────────────────────
+                    const _SectionLabel('보드 · 시스템 프로파일'),
                     const SizedBox(height: 8),
                     const SectionCard(child: _SpeakerSelectPanel()),
                     Consumer(builder: (_, r, __) {
@@ -47,16 +84,31 @@ class AdvancedScreen extends ConsumerWidget {
                       ]);
                     }),
                     const SizedBox(height: 20),
-                    const _SectionLabel('내 스피커 · 커뮤니티 · 기록'),
+                    const _SectionLabel('내 스피커 · 기록'),
                     const SizedBox(height: 8),
                     _MenuRow(label: '내 스피커 등록 (QR)', icon: Icons.qr_code_scanner,
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DeviceScreen()))),
                     const SizedBox(height: 8),
-                    _MenuRow(label: 'COMMUNITY', icon: Icons.people_outline,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen()))),
-                    const SizedBox(height: 8),
                     _MenuRow(label: 'HISTORY (내 측정 기록)', icon: Icons.history,
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoryScreen()))),
+                    const SizedBox(height: 28),
+
+                    // ── TUNAI PRO ────────────────────────────────────────
+                    GestureDetector(
+                      onTap: () => _showProDialog(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white24),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Open in TUNAI PRO',
+                          style: TextStyle(color: Colors.white54, fontSize: 13, letterSpacing: 1.5),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),

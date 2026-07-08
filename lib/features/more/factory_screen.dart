@@ -58,6 +58,15 @@ class FactoryScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'FACTORY'),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              color: const Color(0xFF3A1A00),
+              child: const Text(
+                'Changing factory settings may affect speaker safety and sound output.\n팩토리 설정 변경은 스피커 안전성과 출력에 영향을 줄 수 있습니다.',
+                style: TextStyle(color: Color(0xFFFFB366), fontSize: 11, height: 1.5),
+              ),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),

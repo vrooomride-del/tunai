@@ -9,8 +9,6 @@ import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
 import '../dsp/master_volume_controller.dart';
-import 'test_tone_controller.dart';
-
 /// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
 /// Loop를 자동 정지하기 위해 필요
 const _kListenTabIndex = 3;
@@ -85,7 +83,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                         const SizedBox(height: 12),
                         SectionCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                            Text(_showAfter && hasAfter ? 'AFTER (AI 적용)' : 'BEFORE (원본 측정)',
+                            Text(_showAfter && hasAfter ? 'Acoustic Tune' : 'Original Sound',
                                 style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
                             const SizedBox(height: 8),
                             SpectrumChart(
@@ -119,8 +117,6 @@ class _MasterVolumeSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final vol = ref.watch(masterVolumeProvider);
     final ctrl = ref.read(masterVolumeProvider.notifier);
-    final toneIsPlaying = ref.watch(testToneProvider);
-    final toneCtrl = ref.read(testToneProvider.notifier);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -173,43 +169,6 @@ class _MasterVolumeSection extends ConsumerWidget {
               onChangeEnd: (v) => ctrl.setVolume(v),
             ),
           ),
-          // ── Test Tone ────────────────────────────────────────────────────
-          GestureDetector(
-            onTap: toneCtrl.toggle,
-            child: Container(
-              height: 34,
-              margin: const EdgeInsets.only(bottom: 4),
-              decoration: BoxDecoration(
-                color: toneIsPlaying
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.transparent,
-                border: Border.all(
-                    color: toneIsPlaying ? Colors.white54 : Colors.white24),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    toneIsPlaying
-                        ? Icons.stop_circle_outlined
-                        : Icons.music_note_outlined,
-                    color: toneIsPlaying ? Colors.white70 : Colors.white38,
-                    size: 14,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    toneIsPlaying ? '1 kHz STOP' : '1 kHz TEST TONE',
-                    style: TextStyle(
-                        color:
-                            toneIsPlaying ? Colors.white70 : Colors.white38,
-                        fontSize: 11,
-                        letterSpacing: 1.5),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -223,9 +182,12 @@ class _EmptyState extends StatelessWidget {
     return const SectionCard(
       child: Column(children: [
         Icon(Icons.graphic_eq, color: Colors.white24, size: 32),
-        SizedBox(height: 10),
-        Text('MEASURE에서 측정을 완료하면 Before/After 비교가 여기에 표시됩니다',
-            style: TextStyle(color: Colors.white54, fontSize: 13), textAlign: TextAlign.center),
+        SizedBox(height: 12),
+        Text('No room profile yet.',
+            style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w300)),
+        SizedBox(height: 8),
+        Text('Run a Room Scan first, then create an Acoustic Tune.\nOriginal Sound and Acoustic Tune will appear here for comparison.',
+            style: TextStyle(color: Colors.white38, fontSize: 12, height: 1.6), textAlign: TextAlign.center),
       ]),
     );
   }
@@ -244,9 +206,9 @@ class _AbToggle extends StatelessWidget {
     return Row(children: [
       Expanded(
         child: Row(children: [
-          Expanded(child: _AbButton(label: 'BEFORE', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false))),
+          Expanded(child: _AbButton(label: 'ORIGINAL SOUND', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false))),
           const SizedBox(width: 8),
-          Expanded(child: _AbButton(label: 'AFTER', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
+          Expanded(child: _AbButton(label: 'ACOUSTIC TUNE', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
         ]),
       ),
       const SizedBox(width: 12),
@@ -302,9 +264,9 @@ class _Legend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Row(children: [
-      _LegendDot(color: Colors.white38, label: 'Before (원본)'),
+      _LegendDot(color: Colors.white38, label: 'Original Sound'),
       SizedBox(width: 16),
-      _LegendDot(color: Colors.greenAccent, label: 'After (AI 적용)'),
+      _LegendDot(color: Colors.greenAccent, label: 'Acoustic Tune'),
       SizedBox(width: 16),
       _LegendDot(color: Colors.lightBlueAccent, label: '현재'),
     ]);

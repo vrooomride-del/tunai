@@ -35,7 +35,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               Text(_isLogin ? 'SIGN IN' : 'CREATE ACCOUNT',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 4)),
-              const SizedBox(height: 60),
+              const SizedBox(height: 16),
+              const Text(
+                'Save your room profiles, sync presets,\nand access TUNAI Cloud.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white24, fontSize: 12, height: 1.6),
+              ),
+              const SizedBox(height: 44),
               _Field(label: 'EMAIL', controller: _emailCtrl, keyboardType: TextInputType.emailAddress),
               const SizedBox(height: 16),
               if (!_isLogin) ...[
@@ -154,6 +160,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   _isLogin ? '계정이 없으신가요?  CREATE ACCOUNT' : '이미 계정이 있으신가요?  SIGN IN',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 20),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Center(
+                  child: Text(
+                    'Continue without login',
+                    style: TextStyle(color: Colors.white24, fontSize: 12, decoration: TextDecoration.underline),
+                  ),
                 ),
               ),
             ],

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../measurement/measurement_controller.dart';
@@ -114,13 +113,6 @@ class MeasureScreen extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 0),
                       child: PresetBar(),
                     ),
-                    if (kDebugMode) ...[
-                      const SizedBox(height: 16),
-                      OutlineButton(
-                        label: '🛠 더미 데이터 주입',
-                        onTap: () => ref.read(measurementProvider.notifier).injectDummyData(),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -165,10 +157,10 @@ class _MeasuringViewState extends State<_MeasuringView> {
   void initState() {
     super.initState();
     _phases = const [
-      ('Checking bass response', '저역 반응 확인 중'),
-      ('Detecting reflections', '반사음 감지 중'),
-      ('Analyzing stereo balance', '좌우 밸런스 분석 중'),
-      ('Preparing optimization', '최적화 준비 중'),
+      ('Checking bass response', '저역 반응을 확인하고 있습니다'),
+      ('Detecting room reflections', '공간 반사를 감지하고 있습니다'),
+      ('Balancing stereo image', '스테레오 이미지를 정렬하고 있습니다'),
+      ('Creating your Acoustic Tune', '어쿠스틱 튠을 생성하고 있습니다'),
     ];
     _tick();
   }
@@ -196,7 +188,7 @@ class _MeasuringViewState extends State<_MeasuringView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                ko ? '공간의 소리를 분석하고 있습니다...' : 'Listening to your room...',
+                ko ? '공간의 소리를 이해하고 있습니다...' : 'TUNAI is understanding your room...',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 26,
@@ -309,7 +301,7 @@ class _ResultView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
               child: _BigButton(
-                label: ko ? '내 공간에 맞게 최적화' : 'Optimize My Sound',
+                label: ko ? '어쿠스틱 튠 생성' : 'Create Acoustic Tune',
                 onTap: onOptimize,
               ),
             ),
@@ -319,7 +311,7 @@ class _ResultView extends StatelessWidget {
                 onTap: onReMeasure,
                 child: Center(
                   child: Text(
-                    ko ? '다시 측정' : 'Measure again',
+                    ko ? '다시 공간 스캔' : 'Scan again',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.3),
                       fontSize: 13,
@@ -377,7 +369,7 @@ class _MeasureButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _BigButton(
-      label: ko ? '측정 시작' : 'Start Measurement',
+      label: ko ? '공간 스캔 시작' : 'Start Room Scan',
       onTap: onTap,
     );
   }
@@ -421,15 +413,12 @@ class _LocationPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(installLocationProvider);
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
     return SectionCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Text('🏠', style: TextStyle(fontSize: 14)),
-          SizedBox(width: 6),
-          Text('설치 위치를 먼저 선택하세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1)),
-        ]),
-        const SizedBox(height: 2),
-        const Text('방이 Driver보다 중요합니다', style: TextStyle(color: Colors.white38, fontSize: 11)),
+        const Text('스피커가 놓인 공간을 알려주세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 0.5)),
+        const SizedBox(height: 4),
+        const Text('TUNAI가 이 정보를 바탕으로 소리를 분석합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
         const SizedBox(height: 12),
         ...InstallLocation.values.map((loc) {
           final isSelected = selected == loc;
@@ -447,7 +436,7 @@ class _LocationPicker extends ConsumerWidget {
                 Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                     color: isSelected ? Colors.white : Colors.white24, size: 16),
                 const SizedBox(width: 10),
-                Text(loc.label, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontSize: 13)),
+                Text(ko ? loc.label : loc.labelEn, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontSize: 13)),
               ]),
             ),
           );
