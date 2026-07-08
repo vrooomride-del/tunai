@@ -55,7 +55,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (ok) {
       await ref.read(soundProfileStoreProvider.notifier).markApplied(profile.id);
       messenger.showSnackBar(SnackBar(
-        content: Text(ko ? '"${profile.name}" 적용 완료.' : '"${profile.name}" applied.'),
+        content: Text(ko ? '사운드 프로파일이 안전하게 적용되었습니다.' : 'Sound Profile applied safely.'),
         backgroundColor: const Color(0xFF1A1A1A),
       ));
     } else {
@@ -236,20 +236,24 @@ class _ProfileCard extends StatelessWidget {
                   style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
                 ),
               ),
-              if (applied) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF69F0AE).withValues(alpha: 0.15),
-                    border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.4)),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    ko ? '적용됨' : 'Applied',
-                    style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF69F0AE).withValues(alpha: applied ? 0.15 : 0.07),
+                  border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: applied ? 0.4 : 0.2)),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  applied
+                      ? (ko ? '적용됨 · 검증됨' : 'Applied · Verified')
+                      : (ko ? '검증됨' : 'Verified'),
+                  style: TextStyle(
+                    color: const Color(0xFF69F0AE).withValues(alpha: applied ? 1.0 : 0.6),
+                    fontSize: 9,
+                    letterSpacing: 1,
                   ),
                 ),
-              ],
+              ),
               const SizedBox(width: 6),
               Icon(Icons.more_horiz, color: Colors.white.withValues(alpha: 0.25), size: 18),
             ]),
@@ -266,6 +270,28 @@ class _ProfileCard extends StatelessWidget {
             ]),
             if (!applied) ...[
               const SizedBox(height: 12),
+              // Safety verification note
+              Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
+                  border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.18)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.verified_outlined, color: Color(0xFF69F0AE), size: 13),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      ko
+                          ? '이 프로파일은 TUNAI 스피커에서 안전하게 재생될 수 있도록 확인되었습니다.'
+                          : 'This profile has been checked for safe playback on your TUNAI speaker.',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 10, height: 1.4),
+                    ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 8),
               GestureDetector(
                 onTap: onApply,
                 child: Container(

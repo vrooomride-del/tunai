@@ -6,6 +6,7 @@ import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../core/sound_profile_store.dart';
 import '../../main.dart' show currentTabIndexProvider;
+import '../health/speaker_health_screen.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
@@ -255,6 +256,24 @@ class _CurrentProfileSection extends ConsumerWidget {
             _MetaChipListen(text: 'Score ${profile.soundScore}'),
           ],
         ]),
+        const SizedBox(height: 12),
+        const Divider(color: Colors.white10, height: 1),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()),
+          ),
+          child: Row(children: [
+            Icon(Icons.health_and_safety_outlined, color: const Color(0xFF69F0AE).withValues(alpha: 0.6), size: 13),
+            const SizedBox(width: 6),
+            Text(
+              ko ? '시스템 상태: 정상' : 'System Health: Normal',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11, letterSpacing: 0.5),
+            ),
+            const Spacer(),
+            Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.2), size: 14),
+          ]),
+        ),
       ]),
     );
   }

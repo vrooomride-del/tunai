@@ -33,7 +33,7 @@ class MoreScreen extends ConsumerWidget {
                   _MenuItem(label: 'FINE TUNE', description: 'Acoustic Tune 위에 취향을 더합니다.',
                       icon: Icons.tune,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FineTuneScreen()))),
-                  _MenuItem(label: 'SYSTEM HEALTH', description: 'DSP Load · Amplifier · Limiter 상태',
+                  _MenuItem(label: 'SYSTEM HEALTH', description: 'Speaker Protection · Volume Safety · Sound Profile',
                       icon: Icons.health_and_safety_outlined,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()))),
                   _MenuItem(label: 'COMMUNITY', description: '프리셋 공유 · 다운로드',
