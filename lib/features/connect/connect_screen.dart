@@ -5,9 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../ble/ble_controller.dart';
-import '../../core/onboarding_storage.dart';
 import '../../core/tone_generator.dart';
-import '../../shared/widgets.dart';
 
 /// CONNECT 탭 — 스피커 BLE 스캔/연결만 담당.
 /// 연결 성공 시 [onConnected]로 MEASURE 탭 자동 전환을 요청한다.
@@ -20,37 +18,9 @@ class ConnectScreen extends ConsumerStatefulWidget {
 }
 
 class _ConnectScreenState extends ConsumerState<ConnectScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWelcome());
-  }
+  bool _isKo(BuildContext ctx) =>
+      Localizations.localeOf(ctx).languageCode == 'ko';
 
-  Future<void> _maybeShowWelcome() async {
-    final seen = await OnboardingStorage.hasSeenWelcome();
-    if (seen || !mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Welcome to TUNAI', style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: const Text(
-          "Let's make your speaker sound amazing.",
-          style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('시작하기', style: TextStyle(color: Colors.white70)),
-          ),
-        ],
-      ),
-    );
-    await OnboardingStorage.markWelcomeSeen();
-  }
-
-  /// 연결 성공 직후 테스트 톤(1kHz, 1초) 재생 → "들리나요?" 확인.
-  /// YES면 MEASURE로 이동, NO면 트러블슈팅 안내 후 재시도/건너뛰기.
   Future<void> _runTestToneFlow() async {
     final proceed = await showDialog<bool>(
       context: context,
@@ -63,6 +33,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   @override
   Widget build(BuildContext context) {
     final bState = ref.watch(bleProvider);
+    final ko = _isKo(context);
 
     ref.listen<BleState>(bleProvider, (prev, next) {
       if (next.connection == BleConnectionState.bluetoothOff &&
@@ -80,230 +51,376 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         bState.connection == BleConnectionState.connecting;
     final isConnected = bState.connection == BleConnectionState.connected;
     final notFound = bState.connection == BleConnectionState.notFound;
-    // 스캔을 한번이라도 시작했는지 — 이 시점부터 단계별 체크리스트를 보여준다
-    final showSteps = bState.connection != BleConnectionState.disconnected &&
-        bState.connection != BleConnectionState.bluetoothOff;
+    final isIdle = bState.connection == BleConnectionState.disconnected;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
-        child: Column(
-          children: [
-            const TunaiTopBar(subtitle: 'CONNECT'),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SectionCard(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Row(children: [
-                          Expanded(child: Text(bState.message.isEmpty ? 'TUNAI 스피커를 검색합니다.' : bState.message,
-                              style: const TextStyle(color: Colors.white60, fontSize: 14, height: 1.5))),
-                          const SizedBox(width: 16),
-                          OutlineButton(
-                            label: isConnected ? 'DISCONNECT' : isScanning ? 'SCANNING...' : 'SCAN',
-                            loading: isScanning,
-                            onTap: isScanning ? null : isConnected
-                                ? () => ref.read(bleProvider.notifier).disconnect()
-                                : () => ref.read(bleProvider.notifier).scanAndConnect(),
+        child: isConnected
+            ? _ConnectedView(
+                deviceName: bState.deviceName,
+                onStartMeasure: widget.onConnected,
+                ko: ko,
+              )
+            : Column(
+                children: [
+                  // ── 상단 헤더 ─────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ko
+                              ? 'TUNAI 스피커를 찾고 있습니다'
+                              : 'Looking for your TUNAI speaker',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w300,
+                            height: 1.35,
+                            letterSpacing: -0.2,
                           ),
-                        ]),
-
-                        if (showSteps && !isConnected) ...[
-                          const SizedBox(height: 12),
-                          _ConnectSteps(state: bState.connection),
-                        ],
-
-                        // ADAU1466 탐지 배너 — PEQ/XO 주소 청감검증 진행 중
-                        if (bState.detectedBoard == DetectedBoard.adau1466) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white24),
-                              borderRadius: BorderRadius.circular(4),
-                              color: Colors.white.withValues(alpha: 0.03),
-                            ),
-                            child: const Row(children: [
-                              Icon(Icons.check_circle_outline, color: Colors.white54, size: 14),
-                              SizedBox(width: 8),
-                              Expanded(child: Text(
-                                'ADAU1466 보드 연결됨. Gain/Delay 검증 완료 — PEQ/XO 주소 청감검증 진행 중.',
-                                style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
-                              )),
-                            ]),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          ko
+                              ? '스피커 전원이 켜져 있고 가까이에 있는지 확인해주세요.\n연결이 완료되면 TUNAI가 당신의 공간을 학습합니다.'
+                              : 'Make sure your speaker is powered on and nearby.\nOnce connected, TUNAI will learn your room.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 14,
+                            height: 1.65,
                           ),
-                        ],
-
-                        // 미식별 보드 배너
-                        if (isConnected && bState.detectedBoard == DetectedBoard.unknown) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Row(children: [
-                              Icon(Icons.help_outline, color: Colors.white38, size: 14),
-                              SizedBox(width: 8),
-                              Expanded(child: Text(
-                                '보드를 자동으로 식별하지 못했습니다. ADVANCED에서 보드 종류를 직접 선택해 주세요.',
-                                style: TextStyle(color: Colors.white38, fontSize: 10, height: 1.5),
-                              )),
-                            ]),
-                          ),
-                        ],
-                      ]),
+                        ),
+                      ],
                     ),
+                  ),
 
-                    if (notFound) ...[
-                      const SizedBox(height: 16),
-                      _ScanFailureGuide(onRetry: () => ref.read(bleProvider.notifier).scanAndConnect()),
-                    ],
+                  const SizedBox(height: 48),
 
-                    if (isConnected) ...[
-                      const SizedBox(height: 16),
-                      _ConnectedInfoCard(
-                        deviceName: bState.deviceName,
-                        onStartAiSetup: widget.onConnected,
+                  // ── 스캔 상태 ─────────────────────────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (isScanning) ...[
+                            _ScanningAnimation(
+                              message: bState.message.isEmpty
+                                  ? (ko ? '검색 중...' : 'Scanning...')
+                                  : bState.message,
+                            ),
+                          ],
+
+                          if (notFound) ...[
+                            _ScanFailureGuide(
+                              ko: ko,
+                              onRetry: () =>
+                                  ref.read(bleProvider.notifier).scanAndConnect(),
+                            ),
+                          ],
+
+                          if (bState.detectedBoard == DetectedBoard.adau1466) ...[
+                            const SizedBox(height: 24),
+                            const _BoardBanner(
+                              text: 'ADAU1466 보드 연결됨. Gain/Delay 검증 완료 — PEQ/XO 주소 청감검증 진행 중.',
+                              color: Colors.white24,
+                              icon: Icons.check_circle_outline,
+                            ),
+                          ],
+
+                          if (isConnected &&
+                              bState.detectedBoard == DetectedBoard.unknown) ...[
+                            const SizedBox(height: 24),
+                            const _BoardBanner(
+                              text: '보드를 자동으로 식별하지 못했습니다. ADVANCED에서 보드 종류를 직접 선택해 주세요.',
+                              color: Colors.white12,
+                              icon: Icons.help_outline,
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+
+                  // ── 하단 버튼 ─────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+                    child: Column(
+                      children: [
+                        if (isScanning)
+                          _FullWidthButton(
+                            label: ko ? '검색 중...' : 'Scanning...',
+                            filled: false,
+                            onTap: null,
+                          )
+                        else if (isIdle || notFound)
+                          _FullWidthButton(
+                            label: ko ? '스캔 시작' : 'Start Scan',
+                            onTap: () =>
+                                ref.read(bleProvider.notifier).scanAndConnect(),
+                          ),
+                        if (isScanning || !isIdle) ...[
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: () =>
+                                ref.read(bleProvider.notifier).disconnect(),
+                            child: Text(
+                              ko ? '취소' : 'Cancel',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                fontSize: 13,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
-/// CONNECT 진행상태 체크리스트 — Bluetooth ON / Speaker Found / Connecting / Connected
-class _ConnectSteps extends StatelessWidget {
-  final BleConnectionState state;
-  const _ConnectSteps({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final active = state == BleConnectionState.scanning ||
-        state == BleConnectionState.found ||
-        state == BleConnectionState.connecting;
-
-    final steps = <(String, bool)>[
-      ('Bluetooth ON', state != BleConnectionState.bluetoothOff),
-      ('Speaker Found', state == BleConnectionState.found ||
-          state == BleConnectionState.connecting ||
-          state == BleConnectionState.connected),
-      ('Connecting...', state == BleConnectionState.connecting ||
-          state == BleConnectionState.connected),
-      ('Connected', state == BleConnectionState.connected),
-    ];
-    final currentIdx = steps.indexWhere((s) => !s.$2);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < steps.length; i++)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: steps[i].$2
-                    ? const Icon(Icons.check_circle, color: Colors.greenAccent, size: 16)
-                    : (active && i == currentIdx)
-                        ? const Padding(
-                            padding: EdgeInsets.all(2),
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
-                          )
-                        : const Icon(Icons.circle_outlined, color: Colors.white24, size: 14),
-              ),
-              const SizedBox(width: 8),
-              Text(steps[i].$1,
-                  style: TextStyle(
-                      color: steps[i].$2 || (active && i == currentIdx) ? Colors.white70 : Colors.white24,
-                      fontSize: 12)),
-            ]),
-          ),
-      ],
-    );
-  }
-}
-
-/// 연결 완료 후 확장 정보 카드 — 기기명 / Ready 상태 / AI Setup 시작 버튼
-/// (Firmware 버전: 현재 BLE로 읽는 경로가 없어 생략 — fff1 특성 페이로드 확인 후 추가 예정)
-class _ConnectedInfoCard extends StatelessWidget {
+// ── Connected 전체화면 뷰 ─────────────────────────────────────────────────────
+class _ConnectedView extends StatelessWidget {
   final String? deviceName;
-  final VoidCallback onStartAiSetup;
-  const _ConnectedInfoCard({required this.deviceName, required this.onStartAiSetup});
+  final VoidCallback onStartMeasure;
+  final bool ko;
+  const _ConnectedView(
+      {required this.deviceName, required this.onStartMeasure, required this.ko});
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(
-            width: 40, height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(20)),
-            child: const Icon(Icons.speaker, color: Colors.white70, size: 18),
+    final name = deviceName ?? 'TUNAI ONE';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 연결 상태 인디케이터
+          Row(children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF69F0AE),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              ko ? '연결됨' : 'Connected',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 12,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 28),
+
+          // 타이틀
+          Text(
+            ko ? '$name이 연결되었습니다.' : '$name is connected.',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w300,
+              height: 1.35,
+              letterSpacing: -0.2,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(deviceName ?? 'TUNAI 스피커', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 2),
-              const Row(children: [
-                Icon(Icons.check_circle, color: Colors.greenAccent, size: 12),
-                SizedBox(width: 4),
-                Text('Ready', style: TextStyle(color: Colors.greenAccent, fontSize: 11, letterSpacing: 1)),
-              ]),
-            ]),
+          const SizedBox(height: 20),
+          Text(
+            ko
+                ? '이제 당신의 공간을 알려주세요.'
+                : "Now let's teach it your room.",
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.45),
+              fontSize: 15,
+              height: 1.6,
+            ),
           ),
-        ]),
-        const SizedBox(height: 16),
-        OutlineButton(label: 'Start AI Setup', onTap: onStartAiSetup),
-      ]),
+
+          const Spacer(),
+
+          _FullWidthButton(
+            label: ko ? '공간 측정 시작' : 'Start Room Measurement',
+            onTap: onStartMeasure,
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// 검색 실패 가이드 — 일정 시간 스캔했는데도 못 찾았을 때 안내
-class _ScanFailureGuide extends StatelessWidget {
-  final VoidCallback onRetry;
-  const _ScanFailureGuide({required this.onRetry});
-
+// ── 스캔 중 애니메이션 ─────────────────────────────────────────────────────────
+class _ScanningAnimation extends StatefulWidget {
+  final String message;
+  const _ScanningAnimation({required this.message});
   @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text("Can't find your speaker?", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 10),
-        const _GuideTip(text: 'Turn on speaker — 스피커 전원이 켜져 있는지 확인하세요'),
-        const _GuideTip(text: 'Move closer — 스피커와 더 가까이서 시도해보세요'),
-        const SizedBox(height: 12),
-        OutlineButton(label: 'Setup New Speaker', onTap: onRetry),
-      ]),
-    );
-  }
+  State<_ScanningAnimation> createState() => _ScanningAnimationState();
 }
 
-class _GuideTip extends StatelessWidget {
-  final String text;
-  const _GuideTip({required this.text});
+class _ScanningAnimationState extends State<_ScanningAnimation>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat(reverse: true);
+    _fade = Tween<double>(begin: 0.2, end: 0.8).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('• ', style: TextStyle(color: Colors.white38, fontSize: 12)),
-        Expanded(child: Text(text, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4))),
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        FadeTransition(
+          opacity: _fade,
+          child: Row(children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              widget.message,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 13,
+                  letterSpacing: 0.3),
+            ),
+          ]),
+        ),
       ]),
+    );
+  }
+}
+
+// ── 검색 실패 가이드 ───────────────────────────────────────────────────────────
+class _ScanFailureGuide extends StatelessWidget {
+  final bool ko;
+  final VoidCallback onRetry;
+  const _ScanFailureGuide({required this.ko, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(
+        ko ? '스피커를 찾지 못했습니다' : "Can't find your speaker?",
+        style: const TextStyle(
+            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w400),
+      ),
+      const SizedBox(height: 16),
+      _Tip(ko ? '스피커 전원이 켜져 있는지 확인해주세요' : 'Turn on speaker and check the power cable'),
+      _Tip(ko ? '스피커와 더 가까이서 시도해보세요' : 'Move closer to your speaker'),
+      _Tip(ko ? '블루투스가 켜져 있는지 확인해주세요' : 'Make sure Bluetooth is enabled'),
+    ]);
+  }
+}
+
+class _Tip extends StatelessWidget {
+  final String text;
+  const _Tip(this.text);
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('— ', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13)),
+        Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 13,
+                    height: 1.5))),
+      ]),
+    );
+  }
+}
+
+// ── 보드 배너 ─────────────────────────────────────────────────────────────────
+class _BoardBanner extends StatelessWidget {
+  final String text;
+  final Color color;
+  final IconData icon;
+  const _BoardBanner({required this.text, required this.color, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Text(text,
+                style: TextStyle(color: color, fontSize: 11, height: 1.5))),
+      ]),
+    );
+  }
+}
+
+// ── 공용 버튼 ─────────────────────────────────────────────────────────────────
+class _FullWidthButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool filled;
+  const _FullWidthButton({required this.label, this.onTap, this.filled = true});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: filled && onTap != null ? Colors.white : Colors.transparent,
+          border: filled && onTap != null
+              ? null
+              : Border.all(color: Colors.white24),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: filled && onTap != null
+                ? Colors.black
+                : Colors.white.withValues(alpha: 0.4),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 1.5,
+          ),
+        ),
+      ),
     );
   }
 }

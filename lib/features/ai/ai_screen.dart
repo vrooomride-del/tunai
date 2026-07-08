@@ -10,53 +10,77 @@ import '../../core/speaker_profile.dart';
 import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
-import '../../shared/widgets.dart';
-import '../../shared/preset_bar.dart';
+import '../../shared/spectrum_chart.dart';
 
 /// AI 탭 — 측정 결과를 AI가 분석해 PEQ를 제안하고, 이유를 설명하고, APPLY 한다.
-/// "DSP를 조작하는 화면"이 아니라 "AI가 만든 결과를 확인하는 화면".
 class AiScreen extends ConsumerWidget {
   final VoidCallback onApplied;
   const AiScreen({super.key, required this.onApplied});
 
+  bool _isKo(BuildContext ctx) =>
+      Localizations.localeOf(ctx).languageCode == 'ko';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mState = ref.watch(measurementProvider);
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const TunaiTopBar(subtitle: 'AI'),
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
-            const SizedBox(height: 8),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: mState.peaks.isEmpty
-                    ? const _EmptyState()
-                    : _AiTunePanel(mState: mState, onApplied: onApplied),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    final ko = _isKo(context);
+
+    if (mState.peaks.isEmpty) {
+      return _AiEmptyState(ko: ko);
+    }
+
+    return _AiTunePanel(mState: mState, onApplied: onApplied, ko: ko);
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+class _AiEmptyState extends StatelessWidget {
+  final bool ko;
+  const _AiEmptyState({required this.ko});
   @override
   Widget build(BuildContext context) {
-    return const SectionCard(
-      child: Column(children: [
-        Icon(Icons.auto_awesome_outlined, color: Colors.white24, size: 32),
-        SizedBox(height: 10),
-        Text('아직 측정 데이터가 없습니다', style: TextStyle(color: Colors.white54, fontSize: 13)),
-        SizedBox(height: 4),
-        Text('MEASURE 탭에서 먼저 측정을 진행하세요', style: TextStyle(color: Colors.white24, fontSize: 11)),
-      ]),
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Spacer(flex: 2),
+              Text(
+                ko ? 'AI 최적화' : 'AI Optimization',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  fontSize: 12,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                ko ? '먼저 공간을 측정해주세요.' : 'Measure your room first.',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w300,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                ko
+                    ? 'MEASURE 탭에서 측정을 완료하면\nAI가 자동으로 공간을 분석합니다.'
+                    : 'Complete a measurement in the MEASURE tab,\nthen AI will analyze your room.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 14,
+                  height: 1.65,
+                ),
+              ),
+              const Spacer(flex: 3),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -64,7 +88,8 @@ class _EmptyState extends StatelessWidget {
 class _AiTunePanel extends ConsumerStatefulWidget {
   final MeasurementState mState;
   final VoidCallback onApplied;
-  const _AiTunePanel({required this.mState, required this.onApplied});
+  final bool ko;
+  const _AiTunePanel({required this.mState, required this.onApplied, required this.ko});
   @override
   ConsumerState<_AiTunePanel> createState() => _AiTunePanelState();
 }
@@ -80,7 +105,6 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
   String _selectedRef = 'Neutral';
 
   static const _refPresets = ['Warm', 'Neutral', 'Clear'];
-  static const _timelineSteps = ['Factory', 'Measure', 'AI', 'User Edit', 'AI Learn', 'Final'];
 
   @override
   void didUpdateWidget(_AiTunePanel oldWidget) {
@@ -214,6 +238,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
 
   @override
   Widget build(BuildContext context) {
+    final ko = widget.ko;
     final isConnected = ref.watch(bleProvider).connection == BleConnectionState.connected;
     final profile = ref.watch(systemProfileProvider);
     final maxBands = profile.maxPeqBands;
@@ -223,266 +248,660 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
       });
     }
     _lastProfileId = profile.id;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      TextField(
-        controller: _ctrl,
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-        minLines: 2,
-        maxLines: 4,
-        decoration: const InputDecoration(
-          labelText: 'AI에게 요청',
-          labelStyle: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1),
-          enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-          focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-      ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 6, runSpacing: 6,
-        children: ['저음 강조', '고음 감소', '보컬 선명', '전체 플랫', '자동 균형']
-            .map((q) => GestureDetector(
-              onTap: () { _ctrl.text = q; },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(20)),
-                child: Text(q, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              ),
-            )).toList(),
-      ),
-      const SizedBox(height: 8),
-      // ── Reference 프리셋 ───────────────────────────────────────────────────
-      Row(
-        children: _refPresets.map((r) {
-          final active = r == _selectedRef;
-          return Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(right: r == _refPresets.last ? 0 : 6),
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedRef = r),
-                child: Container(
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: active ? Colors.white : Colors.transparent,
-                    border: Border.all(color: active ? Colors.white : Colors.white24),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Center(child: Text(r.toUpperCase(),
-                      style: TextStyle(
-                          color: active ? Colors.black : Colors.white54,
-                          fontSize: 10, letterSpacing: 1.5,
-                          fontWeight: active ? FontWeight.w600 : FontWeight.w300))),
+
+    // ── AI 로딩 중 ──────────────────────────────────────────────────────────
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ko ? 'AI가 공간을 분석하고 있습니다...' : 'AI is analyzing your room...',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 24, fontWeight: FontWeight.w300, height: 1.4),
                 ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-      const SizedBox(height: 12),
-      // ── Computed Sound Score (측정 기반 pre-AI 추정) ──────────────────
-      if (_result == null && !_loading) ...[
-        _ComputedScoreRow(),
-        const SizedBox(height: 8),
-      ],
-      OutlineButton(
-        label: _loading ? 'AI 분석 중...' : 'AI 튜닝 요청',
-        loading: _loading,
-        enabled: widget.mState.peaks.isNotEmpty,
-        onTap: widget.mState.peaks.isEmpty ? null : _suggest,
-      ),
-      // ── AI Timeline ────────────────────────────────────────────────────────
-      const SizedBox(height: 16),
-      _AiTimeline(steps: _timelineSteps, currentStep: _result != null && !_result!.isError ? 2 : 0),
-      if (_result != null && !_result!.isError) ...[
-        if (_result!.soundScore != null) ...[
-          const SizedBox(height: 16),
-          _SoundScoreCard(result: _result!, previousScore: _previousScore),
-        ],
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
-            borderRadius: BorderRadius.circular(6),
-            color: Colors.amber.withValues(alpha: 0.04),
-          ),
-          child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('⚠️ ', style: TextStyle(fontSize: 12)),
-            Expanded(child: Text(
-              'PEQ 값 조정 시 트위터 채널 게인을 크게 올리지 마세요. '
-              '볼륨이 높은 상태에서 트위터가 손상될 수 있습니다.',
-              style: TextStyle(color: Colors.amber, fontSize: 12, height: 1.5),
-            )),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(6)),
-          child: Text(_result!.explanation, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.7)),
-        ),
-        const SizedBox(height: 12),
-        ..._result!.bands.take(maxBands).toList().asMap().entries.map((e) {
-          final idx = e.key;
-          final b = e.value;
-          final active = b['enabled'] != false;
-          final hz = b['frequency'] as num;
-          final db = b['gainDb'] as num;
-          final q  = b['q'] as num;
-          final reason = b['reason'] as String?;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                border: Border.all(color: active ? Colors.white24 : Colors.white12),
-                borderRadius: BorderRadius.circular(6),
-                color: active ? Colors.white.withValues(alpha: 0.02) : Colors.transparent,
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                SizedBox(
-                  width: 24,
-                  child: Text('${idx + 1}',
-                      style: TextStyle(color: active ? Colors.white38 : Colors.white12,
-                          fontSize: 11, fontFamily: 'monospace')),
+                const Spacer(),
+                const LinearProgressIndicator(
+                  backgroundColor: Colors.white12,
+                  color: Colors.white38,
+                  minHeight: 1.5,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 3,
-                  child: GestureDetector(
-                    onTap: () => _editBandHz(idx, hz),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${hz.toStringAsFixed(0)} Hz',
-                          style: TextStyle(color: active ? Colors.white : Colors.white38,
-                              fontSize: 16, fontWeight: FontWeight.w500)),
-                      const Text('FREQ', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
-                    ]),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: GestureDetector(
-                    onTap: () => _editBandDb(idx, db),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)} dB',
-                          style: TextStyle(
-                              color: active ? (db >= 0 ? Colors.white : Colors.white70) : Colors.white38,
-                              fontSize: 15, fontWeight: FontWeight.w500)),
-                      const Text('GAIN', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
-                    ]),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: GestureDetector(
-                    onTap: () => _editBandQ(idx, q),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Q ${q.toStringAsFixed(2)}',
-                          style: TextStyle(color: active ? Colors.white70 : Colors.white38, fontSize: 15)),
-                      const Text('Q', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1)),
-                    ]),
-                  ),
-                ),
-              ]),
-              if (reason != null && reason.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text('→ "$reason"',
-                    style: TextStyle(color: active ? Colors.white38 : Colors.white12, fontSize: 11, fontStyle: FontStyle.italic)),
+                const Spacer(flex: 3),
               ],
-              ]),
             ),
-          );
-        }),
-        const SizedBox(height: 12),
-        OutlineButton(
-          label: _applying ? 'SENDING...' : 'APPLY',
-          loading: _applying,
-          enabled: isConnected && !_applying,
-          onTap: isConnected ? _applyAll : null,
-        ),
-        if (!isConnected)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text('스피커 연결 후 적용 가능합니다', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
           ),
-      ],
-      if (_result != null && _result!.isError)
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Text(_result!.explanation, style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
         ),
-    ]);
+      );
+    }
+
+    // ── AI 완료 후 최적화 완료 화면 (Screen 9) ───────────────────────────────
+    if (_result != null && !_result!.isError) {
+      return _OptimizedView(
+        ko: ko,
+        result: _result!,
+        previousScore: _previousScore,
+        isConnected: isConnected,
+        applying: _applying,
+        maxBands: maxBands,
+        onApply: _applyAll,
+        onRerun: _suggest,
+        onEditHz: _editBandHz,
+        onEditDb: _editBandDb,
+        onEditQ: _editBandQ,
+        snap: ref.watch(spectrumSnapshotProvider),
+      );
+    }
+
+    // ── 에러 ─────────────────────────────────────────────────────────────────
+    if (_result != null && _result!.isError) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ko ? 'AI 오류' : 'AI Error',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12, letterSpacing: 2),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _result!.explanation,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 14, height: 1.5),
+                ),
+                const Spacer(),
+                _AiBigButton(label: ko ? '다시 시도' : 'Try Again', onTap: _suggest),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ── AI 요청 전 기본 화면 ─────────────────────────────────────────────────
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ko ? '공간에 맞게 최적화할 준비가\n됐습니다.' : 'Ready to optimize your sound\nfor this room.',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w300,
+                        height: 1.35,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _ComputedScoreRow(),
+                    const SizedBox(height: 32),
+                    // 요청 입력
+                    TextField(
+                      controller: _ctrl,
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: ko ? 'AI에게 요청 (선택)' : 'Request to AI (optional)',
+                        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                        enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white12)),
+                        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 6, runSpacing: 6,
+                      children: (ko
+                          ? ['저음 강조', '고음 감소', '보컬 선명', '전체 플랫', '자동 균형']
+                          : ['Warm bass', 'Less treble', 'Clear vocals', 'Flat', 'Auto'])
+                          .map((q) => GestureDetector(
+                            onTap: () => setState(() => _ctrl.text = q),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.white12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(q, style: TextStyle(color: Colors.white.withValues(alpha: 0.38), fontSize: 11)),
+                            ),
+                          )).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: _refPresets.map((r) {
+                        final active = r == _selectedRef;
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: r == _refPresets.last ? 0 : 6),
+                            child: GestureDetector(
+                              onTap: () => setState(() => _selectedRef = r),
+                              child: Container(
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: active ? Colors.white : Colors.transparent,
+                                  border: Border.all(color: active ? Colors.white : Colors.white24),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Center(
+                                  child: Text(r.toUpperCase(),
+                                      style: TextStyle(
+                                          color: active ? Colors.black : Colors.white54,
+                                          fontSize: 10, letterSpacing: 1.5,
+                                          fontWeight: active ? FontWeight.w600 : FontWeight.w300)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: _AiBigButton(
+                label: ko ? '내 공간에 맞게 최적화' : 'Optimize My Sound',
+                onTap: _suggest,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
-/// Sound Score + "AI says" 요약 — 밴드별 reason을 모아 사용자가 한눈에 이해하게 함
-class _SoundScoreCard extends StatelessWidget {
+// ── Screen 9: 최적화 완료 화면 ────────────────────────────────────────────────
+class _OptimizedView extends StatelessWidget {
+  final bool ko;
   final AiTuningResult result;
   final int? previousScore;
-  const _SoundScoreCard({required this.result, this.previousScore});
+  final bool isConnected;
+  final bool applying;
+  final int maxBands;
+  final VoidCallback onApply;
+  final VoidCallback onRerun;
+  final Function(int, num) onEditHz;
+  final Function(int, num) onEditDb;
+  final Function(int, num) onEditQ;
+  final SpectrumSnapshot snap;
+
+  const _OptimizedView({
+    required this.ko,
+    required this.result,
+    required this.previousScore,
+    required this.isConnected,
+    required this.applying,
+    required this.maxBands,
+    required this.onApply,
+    required this.onRerun,
+    required this.onEditHz,
+    required this.onEditDb,
+    required this.onEditQ,
+    required this.snap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // reason 문자열에 그 밴드의 주파수/게인을 붙여서 "왜"뿐 아니라 "어디를 얼마나"도
-    // 한눈에 보이게 함. 밴드마다 수치가 달라 자연히 중복 제거됨.
-    final reasons = result.bands
-        .where((b) => (b['reason'] as String?)?.isNotEmpty == true)
-        .map((b) {
-          final reason = b['reason'] as String;
-          final hz = (b['frequency'] as num).round();
-          final db = (b['gainDb'] as num).toDouble();
-          return '$reason — ${hz}Hz, ${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)}dB';
-        })
-        .toSet()
-        .toList();
-    final prev = previousScore;
     final score = result.soundScore;
-    final showDelta = prev != null && score != null;
-    final delta = showDelta ? score - prev : 0;
-    return SectionCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          const Text('Sound Score', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
-          const SizedBox(width: 10),
-          if (showDelta) ...[
-            Text('$prev', style: const TextStyle(color: Colors.white38, fontSize: 20, fontWeight: FontWeight.w300)),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Text('→', style: TextStyle(color: Colors.white38, fontSize: 18)),
+    final prev = previousScore;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 상태 레이블
+                    Row(children: [
+                      Container(
+                        width: 8, height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF69F0AE),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        ko ? '최적화 완료' : 'Optimized',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 11,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 20),
+
+                    // 타이틀
+                    Text(
+                      ko
+                          ? '이 공간에 맞는 소리로\n최적화되었습니다.'
+                          : 'Your sound is now optimized\nfor this room.',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w300,
+                        height: 1.35,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      ko
+                          ? 'TUNAI가 저역 부밍을 줄이고, 보컬 선명도를 높이고,\n스테레오 밸런스를 교정했습니다.'
+                          : 'TUNAI reduced bass boom, improved vocal clarity,\nand corrected stereo balance.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.45),
+                        fontSize: 14,
+                        height: 1.65,
+                      ),
+                    ),
+
+                    // Sound Score 변화
+                    if (score != null) ...[
+                      const SizedBox(height: 28),
+                      _ScoreDelta(score: score, previous: prev, ko: ko),
+                    ],
+
+                    // 설명 텍스트
+                    if (result.explanation.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        result.explanation,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 13,
+                          height: 1.7,
+                        ),
+                      ),
+                    ],
+
+                    // 밴드 목록 (축약형)
+                    const SizedBox(height: 20),
+                    ..._buildBandList(context),
+                  ],
+                ),
+              ),
             ),
-          ],
-          Text('$score', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
-          if (showDelta) ...[
-            const SizedBox(width: 6),
+
+            // 하단 버튼들
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('(${delta >= 0 ? '+' : ''}$delta)',
-                  style: TextStyle(color: delta >= 0 ? Colors.greenAccent : Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w500)),
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 12),
+              child: Row(children: [
+                Expanded(
+                  child: _AiBigButton(
+                    label: ko ? 'Before / After 듣기' : 'Hear Before / After',
+                    filled: false,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => _BeforeAfterView(ko: ko, snap: snap),
+                    )),
+                  ),
+                ),
+              ]),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: _AiBigButton(
+                label: applying
+                    ? (ko ? '적용 중...' : 'Applying...')
+                    : (ko ? '스피커에 적용' : 'Apply to Speaker'),
+                onTap: applying || !isConnected ? null : onApply,
+              ),
+            ),
+            if (!isConnected)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Center(
+                  child: Text(
+                    ko ? '스피커 연결 후 적용 가능합니다' : 'Connect speaker to apply',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11),
+                  ),
+                ),
+              ),
           ],
-          const SizedBox(width: 4),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 6),
-            child: Icon(Icons.arrow_upward, color: Colors.greenAccent, size: 14),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildBandList(BuildContext context) {
+    final bands = result.bands.take(maxBands).toList();
+    if (bands.isEmpty) return [];
+    return [
+      Text(
+        ko ? 'EQ 조정 내역 (탭하여 수정)' : 'EQ adjustments (tap to edit)',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.3),
+          fontSize: 11,
+          letterSpacing: 1,
+        ),
+      ),
+      const SizedBox(height: 10),
+      ...bands.asMap().entries.map((e) {
+        final idx = e.key;
+        final b = e.value;
+        final active = b['enabled'] != false;
+        final hz = b['frequency'] as num;
+        final db = b['gainDb'] as num;
+        final q  = b['q'] as num;
+        final reason = b['reason'] as String?;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GestureDetector(
+            onTap: () => onEditHz(idx, hz),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: active ? Colors.white12 : Colors.white.withValues(alpha: 0.05)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(children: [
+                Expanded(
+                  flex: 3,
+                  child: Text('${hz.toStringAsFixed(0)} Hz',
+                      style: TextStyle(
+                          color: active ? Colors.white : Colors.white38,
+                          fontSize: 14, fontWeight: FontWeight.w400)),
+                ),
+                GestureDetector(
+                  onTap: () => onEditDb(idx, db),
+                  child: Text('${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)} dB',
+                      style: TextStyle(
+                          color: active
+                              ? (db.abs() > 3
+                                  ? const Color(0xFFFF5252)
+                                  : Colors.white70)
+                              : Colors.white24,
+                          fontSize: 14)),
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: () => onEditQ(idx, q),
+                  child: Text('Q ${q.toStringAsFixed(1)}',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.3), fontSize: 12)),
+                ),
+                if (reason != null && reason.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Text(reason,
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ]),
+            ),
           ),
-        ]),
-        if (reasons.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          const Text('AI says:', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1)),
-          const SizedBox(height: 6),
-          ...reasons.map((r) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('✓ ', style: TextStyle(color: Colors.white54, fontSize: 12)),
-              Expanded(child: Text(r, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4))),
-            ]),
-          )),
+        );
+      }),
+    ];
+  }
+}
+
+// ── Score 변화 표시 ───────────────────────────────────────────────────────────
+class _ScoreDelta extends StatelessWidget {
+  final int score;
+  final int? previous;
+  final bool ko;
+  const _ScoreDelta({required this.score, this.previous, required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = previous != null ? score - previous! : null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(children: [
+        Text(
+          ko ? 'Sound Score' : 'Sound Score',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11, letterSpacing: 1.5),
+        ),
+        const Spacer(),
+        if (previous != null) ...[
+          Text('$previous',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 22, fontWeight: FontWeight.w300)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('→',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 18)),
+          ),
+        ],
+        Text('$score',
+            style: const TextStyle(
+                color: Colors.white, fontSize: 28, fontWeight: FontWeight.w300)),
+        if (delta != null) ...[
+          const SizedBox(width: 8),
+          Text('${delta >= 0 ? '+' : ''}$delta',
+              style: TextStyle(
+                  color: delta >= 0
+                      ? const Color(0xFF69F0AE)
+                      : const Color(0xFFFF5252),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
         ],
       ]),
     );
   }
 }
+
+// ── Screen 10: Before / After 화면 ───────────────────────────────────────────
+class _BeforeAfterView extends StatefulWidget {
+  final bool ko;
+  final SpectrumSnapshot snap;
+  const _BeforeAfterView({required this.ko, required this.snap});
+  @override
+  State<_BeforeAfterView> createState() => _BeforeAfterViewState();
+}
+
+class _BeforeAfterViewState extends State<_BeforeAfterView> {
+  bool _showOriginal = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final ko = widget.ko;
+    final snap = widget.snap;
+    final bins = _showOriginal ? snap.before : (snap.afterAi ?? snap.before);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 48, 32, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 뒤로가기
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Text(
+                  ko ? '← 뒤로' : '← Back',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              Text(
+                ko ? '차이를 들어보세요.' : 'Hear the difference.',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w300,
+                  height: 1.3,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                ko
+                    ? '원래 소리와 TUNAI 최적화 소리를 즉시 비교해보세요.'
+                    : 'Switch instantly between the original sound and the optimized sound.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 14,
+                  height: 1.65,
+                ),
+              ),
+
+              const Spacer(flex: 2),
+
+              // 토글
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _showOriginal = true),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: _showOriginal ? Colors.white : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          ko ? '원래 소리' : 'Original',
+                          style: TextStyle(
+                            color: _showOriginal ? Colors.black : Colors.white.withValues(alpha: 0.4),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _showOriginal = false),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: !_showOriginal ? Colors.white : Colors.transparent,
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          ko ? 'TUNAI 최적화' : 'TUNAI Optimized',
+                          style: TextStyle(
+                            color: !_showOriginal ? Colors.black : Colors.white.withValues(alpha: 0.4),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 스펙트럼 차트
+              if (bins != null && bins.isNotEmpty) ...[
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: SizedBox(
+                    key: ValueKey(_showOriginal),
+                    height: 200,
+                    child: SpectrumChart(bins: bins, peaks: const []),
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  height: 120,
+                  alignment: Alignment.center,
+                  child: Text(
+                    ko ? '측정 데이터가 없습니다' : 'No measurement data',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13),
+                  ),
+                ),
+              ],
+
+              const Spacer(flex: 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 공용 버튼 ─────────────────────────────────────────────────────────────────
+class _AiBigButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool filled;
+  const _AiBigButton({required this.label, this.onTap, this.filled = true});
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: filled && enabled ? Colors.white : Colors.transparent,
+          border: !(filled && enabled) ? Border.all(color: Colors.white24) : null,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: filled && enabled ? Colors.black : Colors.white.withValues(alpha: 0.45),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 /// 측정 스펙트럼 기반 클라이언트 측 Sound Score 미리보기 (AI 결과 전 표시)
 class _ComputedScoreRow extends ConsumerWidget {
@@ -509,65 +928,6 @@ class _ComputedScoreRow extends ConsumerWidget {
               overflow: TextOverflow.ellipsis),
         ),
       ]),
-    );
-  }
-}
-
-class _AiTimeline extends StatelessWidget {
-  final List<String> steps;
-  final int currentStep;
-
-  const _AiTimeline({required this.steps, required this.currentStep});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: steps.asMap().entries.map((e) {
-        final i = e.key;
-        final label = e.value;
-        final done = i <= currentStep;
-        final isLast = i == steps.length - 1;
-        return Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: done ? Colors.white : Colors.transparent,
-                        border: Border.all(
-                            color: done ? Colors.white : Colors.white24, width: 1),
-                      ),
-                      child: done
-                          ? const Icon(Icons.check, size: 10, color: Colors.black)
-                          : null,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(label,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: done ? Colors.white54 : Colors.white24,
-                            fontSize: 8,
-                            letterSpacing: 0.3)),
-                  ],
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    color: done && i < currentStep ? Colors.white38 : Colors.white12,
-                  ),
-                ),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 }

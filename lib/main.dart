@@ -2,20 +2,18 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'features/connect/connect_screen.dart';
 import 'features/measure/measure_screen.dart';
 import 'features/ai/ai_screen.dart';
 import 'features/listen/listen_screen.dart';
 import 'features/more/more_screen.dart';
-import 'features/device/device_screen.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'core/dsp_safety_notice.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   await Firebase.initializeApp();
-  await SharedPreferences.getInstance();
   FlutterNativeSplash.remove();
   runApp(const ProviderScope(child: TunaiApp()));
 }
@@ -51,7 +49,7 @@ class _OnboardingGate extends StatefulWidget {
 }
 
 class _OnboardingGateState extends State<_OnboardingGate> {
-  bool? _registered;
+  bool? _done;
 
   @override
   void initState() {
@@ -60,30 +58,15 @@ class _OnboardingGateState extends State<_OnboardingGate> {
   }
 
   Future<void> _check() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() => _registered = prefs.getString('registered_device') != null);
+    final done = await isOnboardingComplete();
+    setState(() => _done = done);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_registered == null) return const Scaffold(backgroundColor: Color(0xFF0A0A0A));
-    if (!_registered!) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
-        body: SafeArea(
-          child: Column(children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 48, 24, 24),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('TUNAI', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w200, letterSpacing: 8)),
-                SizedBox(height: 8),
-                Text('스피커를 등록하고 시작하세요', style: TextStyle(color: Colors.white38, fontSize: 13)),
-              ]),
-            ),
-            Expanded(child: DeviceScreen(onRegistered: () => setState(() => _registered = true))),
-          ]),
-        ),
-      );
+    if (_done == null) return const Scaffold(backgroundColor: Color(0xFF0A0A0A));
+    if (!_done!) {
+      return OnboardingScreen(onComplete: () => setState(() => _done = true));
     }
     return const RootScreen();
   }
