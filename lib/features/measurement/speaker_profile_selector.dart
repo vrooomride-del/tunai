@@ -102,7 +102,7 @@ class _SpeakerProfileSelectorState extends State<SpeakerProfileSelector> {
         children: [
           const Text('SPEAKER PROFILE', style: TextStyle(color: Colors.white70, fontSize: 11, letterSpacing: 3)),
           const SizedBox(height: 4),
-          const Text('T/S 파라미터를 선택하면 AI가 물리 제약을 반영해 튜닝합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+          const Text('스피커 특성을 선택하면 TUNAI가 최적 범위 안에서 소리를 조정합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
           const SizedBox(height: 20),
           _ModeCard(title: 'TUNAI One', subtitle: 'Fs 75Hz · Qts 0.38 · Xmax 4.5mm · 87dB', selected: _mode == SpeakerProfileMode.builtin, icon: Icons.speaker, onTap: () => setState(() => _mode = SpeakerProfileMode.builtin)),
           const SizedBox(height: 8),
@@ -252,7 +252,7 @@ class _ProfileInfo extends StatelessWidget {
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(6), color: Colors.white.withValues(alpha: 0.03)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('DSP 안전 범위 (자동 적용)', style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1.5)),
+      const Text('안전 재생 범위 (자동 적용)', style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1.5)),
       const SizedBox(height: 8),
       _InfoRow('HPF 권장', '${profile.recommendedHpfFreq.toStringAsFixed(0)} Hz'),
       _InfoRow('최대 저역 부스트', '${profile.maxBassBoostDb.toStringAsFixed(1)} dB'),

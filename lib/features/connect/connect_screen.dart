@@ -136,7 +136,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                           if (bState.detectedBoard == DetectedBoard.adau1466) ...[
                             const SizedBox(height: 24),
                             const _BoardBanner(
-                              text: 'ADAU1466 보드 연결됨. Gain/Delay 검증 완료 — PEQ/XO 주소 청감검증 진행 중.',
+                              text: 'TUNAI ONE 스피커 연결됨. 설정 검증 완료.',
                               color: Colors.white24,
                               icon: Icons.check_circle_outline,
                             ),
@@ -505,10 +505,10 @@ class _TestToneDialogState extends State<_TestToneDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
-      title: const Text('Test Tone', style: TextStyle(color: Colors.white, fontSize: 16)),
+      title: const Text('Sound Check', style: TextStyle(color: Colors.white, fontSize: 16)),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(
-          _playing ? '1kHz 테스트 톤 재생 중...' : '들리나요?',
+          _playing ? '소리를 재생하고 있습니다...' : '소리가 들리나요?',
           style: const TextStyle(color: Colors.white70, fontSize: 13),
         ),
         if (_playError != null) ...[

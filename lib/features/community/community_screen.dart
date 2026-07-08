@@ -224,12 +224,12 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
     if (ble.connection != BleConnectionState.connected) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(
-            '${preset['title']} 다운로드 완료\nDSP 적용: CONNECT 탭에서 연결 후 재시도'),
+            '${preset['title']} 다운로드 완료\n적용하려면 CONNECT 탭에서 스피커를 먼저 연결해주세요.'),
           duration: const Duration(seconds: 4)));
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${preset['title']} DSP 적용 중...')));
+        SnackBar(content: Text('${preset['title']} 적용 중...')));
     final success = await ref.read(bleProvider.notifier).sendPackets(packets);
     if (!context.mounted) return;
     // ignore: use_build_context_synchronously

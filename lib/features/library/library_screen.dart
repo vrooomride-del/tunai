@@ -94,6 +94,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
     if (name != null) {
       await ref.read(soundProfileStoreProvider.notifier).rename(profile.id, name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ko ? '프로파일 이름이 변경되었습니다.' : 'Profile renamed.'),
+          backgroundColor: const Color(0xFF1A1A1A),
+        ));
+      }
     }
   }
 
@@ -118,6 +124,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
     if (ok == true) {
       await ref.read(soundProfileStoreProvider.notifier).delete(profile.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ko ? '프로파일이 삭제되었습니다.' : 'Profile deleted.'),
+          backgroundColor: const Color(0xFF1A1A1A),
+        ));
+      }
     }
   }
 

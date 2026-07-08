@@ -247,8 +247,8 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     final ok = await ref.read(bleProvider.notifier).sendPackets(packets);
     if (mounted) setState(() => _applying = false);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('AI 추천 ${peaks.length}개 밴드 APPLY 완료'),
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('어쿠스틱 튠이 적용되었습니다.'),
     ));
     if (ok) {
       ref.read(spectrumSnapshotProvider.notifier).applyPeaks(peaks);
@@ -403,7 +403,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
                       minLines: 2,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        labelText: ko ? 'AI에게 요청 (선택)' : 'Request to AI (optional)',
+                        labelText: ko ? '추가 요청 사항 (선택)' : 'Custom request (optional)',
                         labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
                         enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white12)),
                         focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Colors.white38)),

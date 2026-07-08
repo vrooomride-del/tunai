@@ -65,6 +65,16 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'LISTEN'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
+              child: Builder(builder: (ctx) {
+                final ko = Localizations.localeOf(ctx).languageCode == 'ko';
+                return Text(
+                  ko ? '현재 사운드 프로파일로 들어보세요.' : 'Listen with your current Sound Profile.',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.5),
+                );
+              }),
+            ),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
             const SizedBox(height: 4),
             const _MasterVolumeSection(),

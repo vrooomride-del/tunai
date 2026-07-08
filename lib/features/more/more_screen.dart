@@ -27,6 +27,16 @@ class MoreScreen extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20, top: 4),
+                    child: Builder(builder: (ctx) {
+                      final ko = Localizations.localeOf(ctx).languageCode == 'ko';
+                      return Text(
+                        ko ? '프로파일, 시스템 상태, 설정을 관리합니다.' : 'Manage profiles, system health, and settings.',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12, height: 1.5),
+                      );
+                    }),
+                  ),
                   _MenuItem(label: 'PROFILE LIBRARY', description: 'Sound profiles for your rooms',
                       icon: Icons.library_music_outlined,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryScreen()))),
@@ -120,7 +130,7 @@ class _FactoryMenuItem extends StatelessWidget {
               Text('FACTORY MODE',
                   style: TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 1)),
               SizedBox(height: 2),
-              Text('Driver Gain · Mute · Delay · PEQ (PIN 보호)',
+              Text('고급 스피커 설정 (PIN 보호)',
                   style: TextStyle(color: Colors.white24, fontSize: 11)),
             ]),
           ),

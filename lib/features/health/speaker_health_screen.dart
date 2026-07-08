@@ -8,8 +8,8 @@ class SpeakerHealthScreen extends StatelessWidget {
     HealthCard(
       title: 'Speaker Protection',
       titleKo: '스피커 보호',
-      value: 'On',
-      valueKo: '켜짐',
+      value: 'Active',
+      valueKo: '보호 중',
       subtitle: 'Your speaker is protected while Sound Profiles are applied.',
       subtitleKo: '사운드 프로파일 적용 중에도 스피커가 보호됩니다.',
       icon: Icons.shield_outlined,
