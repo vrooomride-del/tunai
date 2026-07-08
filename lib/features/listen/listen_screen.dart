@@ -170,6 +170,29 @@ class _MasterVolumeSection extends ConsumerWidget {
               onChangeEnd: (v) => ctrl.setVolume(v),
             ),
           ),
+          // ── Test Tone ────────────────────────────────────────────────────
+          GestureDetector(
+            onTap: () {
+              // TODO: tone_generator.dart 연동 (1kHz sine)
+            },
+            child: Container(
+              height: 34,
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white24),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.music_note_outlined, color: Colors.white38, size: 14),
+                  SizedBox(width: 8),
+                  Text('1 kHz TEST TONE',
+                      style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1.5)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

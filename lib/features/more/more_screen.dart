@@ -7,6 +7,7 @@ import '../library/library_screen.dart';
 import '../health/speaker_health_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
+import 'factory_screen.dart';
 import '../../shared/widgets.dart';
 
 /// MORE 탭 — FINE TUNE / ADVANCED / COMMUNITY / LIBRARY / PROFILE 진입점 메뉴.
@@ -41,6 +42,9 @@ class MoreScreen extends ConsumerWidget {
                   _MenuItem(label: 'SPEAKER HEALTH', description: 'DSP Load · Amplifier · Limiter 상태',
                       icon: Icons.health_and_safety_outlined,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()))),
+                  const Divider(color: Colors.white12, height: 32),
+                  _FactoryMenuItem(),
+                  const SizedBox(height: 10),
                   const Divider(color: Colors.white12, height: 32),
                   _MenuItem(
                     label: auth.isLoggedIn ? (auth.nickname ?? 'MY PROFILE') : 'LOGIN',
@@ -93,5 +97,86 @@ class _MenuItem extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+
+/// FACTORY MODE 항목 — PIN 입력 후 FactoryScreen으로 이동
+class _FactoryMenuItem extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showPinDialog(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+            border: Border.all(color: Colors.white12),
+            borderRadius: BorderRadius.circular(8)),
+        child: const Row(children: [
+          Icon(Icons.settings_suggest_outlined, color: Colors.white24, size: 20),
+          SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('FACTORY MODE',
+                  style: TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 1)),
+              SizedBox(height: 2),
+              Text('Driver Gain · Mute · Delay · PEQ (PIN 보호)',
+                  style: TextStyle(color: Colors.white24, fontSize: 11)),
+            ]),
+          ),
+          Icon(Icons.lock_outline, color: Colors.white24, size: 16),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _showPinDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Factory 모드',
+            style: TextStyle(color: Colors.white, fontSize: 15)),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'PIN 입력',
+            hintStyle: TextStyle(color: Colors.white38),
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white70)),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소',
+                  style: TextStyle(color: Colors.white38))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('확인',
+                  style: TextStyle(color: Colors.white70))),
+        ],
+      ),
+    );
+    if (ok == true && controller.text == '1234') {
+      if (!context.mounted) return;
+      Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const FactoryScreen()));
+    } else if (ok == true) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('PIN이 올바르지 않습니다'),
+            backgroundColor: Color(0xFF1A1A1A)),
+      );
+    }
   }
 }

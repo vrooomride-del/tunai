@@ -76,6 +76,10 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
   SystemProfileId? _lastProfileId;
   bool _autoRequested = false;
+  String _selectedRef = 'Neutral';
+
+  static const _refPresets = ['Warm', 'Neutral', 'Clear'];
+  static const _timelineSteps = ['Factory', 'Measure', 'AI', 'User Edit', 'AI Learn', 'Final'];
 
   @override
   void didUpdateWidget(_AiTunePanel oldWidget) {
@@ -161,9 +165,10 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     final previousScore = _result?.soundScore;
     setState(() { _loading = true; _result = null; });
     final location = ref.read(installLocationProvider);
+    final refHint = _selectedRef != 'Neutral' ? ' Reference: $_selectedRef.' : '';
     final result = await AiTuningService.suggest(
       peaks: widget.mState.peaks,
-      userRequest: _ctrl.text,
+      userRequest: _ctrl.text + refHint,
       speakerProfile: ref.read(speakerProfileProvider),
       location: location?.promptKey,
     );
@@ -240,6 +245,34 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
               ),
             )).toList(),
       ),
+      const SizedBox(height: 8),
+      // ── Reference 프리셋 ───────────────────────────────────────────────────
+      Row(
+        children: _refPresets.map((r) {
+          final active = r == _selectedRef;
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: r == _refPresets.last ? 0 : 6),
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedRef = r),
+                child: Container(
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: active ? Colors.white : Colors.transparent,
+                    border: Border.all(color: active ? Colors.white : Colors.white24),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Center(child: Text(r.toUpperCase(),
+                      style: TextStyle(
+                          color: active ? Colors.black : Colors.white54,
+                          fontSize: 10, letterSpacing: 1.5,
+                          fontWeight: active ? FontWeight.w600 : FontWeight.w300))),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
       const SizedBox(height: 12),
       OutlineButton(
         label: _loading ? 'AI 분석 중...' : 'AI 튜닝 요청',
@@ -247,6 +280,9 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
         enabled: widget.mState.peaks.isNotEmpty,
         onTap: widget.mState.peaks.isEmpty ? null : _suggest,
       ),
+      // ── AI Timeline ────────────────────────────────────────────────────────
+      const SizedBox(height: 16),
+      _AiTimeline(steps: _timelineSteps, currentStep: _result != null && !_result!.isError ? 2 : 0),
       if (_result != null && !_result!.isError) ...[
         if (_result!.soundScore != null) ...[
           const SizedBox(height: 16),
@@ -434,6 +470,65 @@ class _SoundScoreCard extends StatelessWidget {
           )),
         ],
       ]),
+    );
+  }
+}
+
+class _AiTimeline extends StatelessWidget {
+  final List<String> steps;
+  final int currentStep;
+
+  const _AiTimeline({required this.steps, required this.currentStep});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: steps.asMap().entries.map((e) {
+        final i = e.key;
+        final label = e.value;
+        final done = i <= currentStep;
+        final isLast = i == steps.length - 1;
+        return Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: done ? Colors.white : Colors.transparent,
+                        border: Border.all(
+                            color: done ? Colors.white : Colors.white24, width: 1),
+                      ),
+                      child: done
+                          ? const Icon(Icons.check, size: 10, color: Colors.black)
+                          : null,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: done ? Colors.white54 : Colors.white24,
+                            fontSize: 8,
+                            letterSpacing: 0.3)),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    color: done && i < currentStep ? Colors.white38 : Colors.white12,
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }
