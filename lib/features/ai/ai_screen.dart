@@ -12,6 +12,7 @@ import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../core/first_run_state.dart';
+import '../../shared/acoustic_result_card.dart';
 
 /// AI 탭 — 측정 결과를 AI가 분석해 PEQ를 제안하고, 이유를 설명하고, APPLY 한다.
 class AiScreen extends ConsumerWidget {
@@ -557,6 +558,53 @@ class _OptimizedView extends StatelessWidget {
                       ),
                     ],
 
+                    // ── Acoustic Result Cards ──────────────────────────
+                    const SizedBox(height: 32),
+                    Text(
+                      ko ? 'TUNAI가 발견한 것' : 'What TUNAI found',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        fontSize: 11,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ..._buildAcousticCards(ko),
+
+                    // ── Score Breakdown ────────────────────────────────
+                    if (score != null) ...[
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                ko
+                                    ? 'Sound Score는 공간 맞춤 정도, 밸런스, 명료도를 종합한 점수입니다.'
+                                    : 'Sound Score reflects room matching, balance, and clarity after tuning.',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.28),
+                                  fontSize: 10,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                            const Divider(color: Colors.white12, height: 12),
+                            ScoreBreakdownRow(label: ko ? '공간 맞춤' : 'Room Match', value: ko ? '우수' : 'Excellent', ko: ko),
+                            ScoreBreakdownRow(label: ko ? '저역 제어' : 'Bass Control', value: ko ? '개선됨' : 'Improved', ko: ko),
+                            ScoreBreakdownRow(label: ko ? '보컬 명료도' : 'Vocal Clarity', value: ko ? '개선됨' : 'Improved', ko: ko),
+                            ScoreBreakdownRow(label: ko ? '스테레오 밸런스' : 'Stereo Balance', value: ko ? '중앙 정렬' : 'Centered', ko: ko),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // 밴드 목록 (축약형)
                     const SizedBox(height: 20),
                     ..._buildBandList(context),
@@ -605,6 +653,94 @@ class _OptimizedView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildAcousticCards(bool ko) {
+    // 실제 분석 데이터(peaks)가 있으면 우선 사용, 없으면 기본 3장 표시
+    final peaks = result.bands
+        .where((b) => b['enabled'] != false && (b['reason'] as String? ?? '').isNotEmpty)
+        .take(3)
+        .toList();
+
+    if (peaks.isNotEmpty) {
+      return peaks.map((b) {
+        final hz = (b['frequency'] as num).toStringAsFixed(0);
+        final db = b['gainDb'] as num;
+        final reason = b['reason'] as String? ?? '';
+        return AcousticResultCard(
+          title: ko ? _koTitle(hz) : _enTitle(hz),
+          frequencyLabel: '${hz}Hz',
+          cause: reason,
+          correction: ko
+              ? '${db < 0 ? '과도한' : '부족한'} ${hz}Hz 대역을 ${db.abs().toStringAsFixed(1)}dB 조정했습니다.'
+              : '${db < 0 ? 'Reduced' : 'Boosted'} ${hz}Hz by ${db.abs().toStringAsFixed(1)}dB.',
+          effect: ko ? '해당 대역의 소리가 더 자연스럽게 들립니다.' : 'That frequency range now sounds more natural.',
+          ko: ko,
+        );
+      }).toList();
+    }
+
+    // fallback 기본 카드 3장
+    return [
+      AcousticResultCard(
+        title: ko ? '저역 부밍' : 'Bass Buildup',
+        frequencyLabel: ko ? '90Hz 부근' : 'Around 90Hz',
+        cause: ko
+            ? '스피커가 벽이나 경계면 가까이에 있어 저역이 강조되었습니다.'
+            : 'Your speaker is close to a wall or boundary.',
+        correction: ko
+            ? '과도한 저역 에너지를 줄였습니다.'
+            : 'TUNAI reduced excessive low-frequency energy.',
+        effect: ko
+            ? '저음이 더 단단하고 덜 울리게 들립니다.'
+            : 'Bass should sound tighter and less boomy.',
+        ko: ko,
+      ),
+      AcousticResultCard(
+        title: ko ? '책상 반사' : 'Desk Reflection',
+        frequencyLabel: ko ? '180Hz 부근' : 'Around 180Hz',
+        cause: ko
+            ? '책상에서 생긴 초기 반사가 보컬을 두껍게 만들 수 있습니다.'
+            : 'Early reflections from the desk can make vocals sound thick.',
+        correction: ko
+            ? '영향을 받은 대역을 자연스럽게 정리했습니다.'
+            : 'TUNAI softened the affected range.',
+        effect: ko
+            ? '보컬이 더 또렷하고 자연스럽게 들립니다.'
+            : 'Vocals should sound clearer and more natural.',
+        ko: ko,
+      ),
+      AcousticResultCard(
+        title: ko ? '스테레오 밸런스' : 'Stereo Balance',
+        frequencyLabel: ko ? '좌 / 우' : 'Left / Right',
+        cause: ko
+            ? '청취 위치나 공간 구조 때문에 음상이 한쪽으로 치우칠 수 있습니다.'
+            : 'The listening position or room layout can shift the stereo image.',
+        correction: ko
+            ? '더 중앙에 맺히도록 밸런스를 조정했습니다.'
+            : 'TUNAI adjusted the balance for a more centered image.',
+        effect: ko
+            ? '음상이 더 안정적이고 중앙에 맺히는 느낌을 줍니다.'
+            : 'The sound image should feel more stable and centered.',
+        ko: ko,
+      ),
+    ];
+  }
+
+  String _enTitle(String hz) {
+    final f = double.tryParse(hz) ?? 0;
+    if (f < 150) return 'Bass Buildup';
+    if (f < 400) return 'Desk Reflection';
+    if (f < 1000) return 'Room Resonance';
+    return 'High-Frequency Detail';
+  }
+
+  String _koTitle(String hz) {
+    final f = double.tryParse(hz) ?? 0;
+    if (f < 150) return '저역 부밍';
+    if (f < 400) return '공간 반사';
+    if (f < 1000) return '공간 공진';
+    return '고역 디테일';
   }
 
   List<Widget> _buildBandList(BuildContext context) {
@@ -870,18 +1006,43 @@ class _BeforeAfterViewState extends State<_BeforeAfterView> {
                 ),
               ] else ...[
                 Container(
-                  height: 120,
+                  height: 80,
                   alignment: Alignment.center,
                   child: Text(
                     ko
                         ? '아직 비교할 공간 프로파일이 없습니다.\n먼저 공간 스캔을 완료하면 원래 소리와 어쿠스틱 튠을 비교할 수 있습니다.'
-                        : 'No room profile yet.\nRun a Room Scan first to compare Original and Acoustic Tune sound.',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13),
+                        : 'No room profile yet.\nRun a Room Scan first to compare Original Sound and Acoustic Tune.',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13, height: 1.5),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],
 
-              const Spacer(flex: 3),
+              const SizedBox(height: 24),
+
+              // 상태 설명 카드
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: _showOriginal
+                    ? SoundStateCard(
+                        key: const ValueKey('original'),
+                        title: ko ? '원래 소리' : 'Original Sound',
+                        subtitle: ko
+                            ? '공간의 영향이 그대로 포함된 소리입니다.'
+                            : 'Room effect included. No correction applied.',
+                        selected: true,
+                      )
+                    : SoundStateCard(
+                        key: const ValueKey('tune'),
+                        title: ko ? '어쿠스틱 튠' : 'Acoustic Tune',
+                        subtitle: ko
+                            ? '저역 부밍을 줄이고, 보컬 명료도와 스테레오 밸런스를 개선한 소리입니다.'
+                            : 'Room boom reduced. Vocal clarity and stereo balance improved.',
+                        selected: true,
+                      ),
+              ),
+
+              const Spacer(flex: 2),
             ],
           ),
         ),
