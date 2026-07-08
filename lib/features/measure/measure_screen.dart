@@ -7,7 +7,6 @@ import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
-import '../../shared/preset_bar.dart';
 
 /// MEASURE 탭 — 공간 측정 UX.
 /// 측정 완료 시 [onMeasured]로 AI 탭 자동 전환을 요청한다.
@@ -59,7 +58,7 @@ class MeasureScreen extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // ADVANCED 기능용 PresetBar + 위치 선택은 스크롤 영역에
+
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -68,7 +67,7 @@ class MeasureScreen extends ConsumerWidget {
                   children: [
                     const SizedBox(height: 48),
                     Text(
-                      ko ? 'TUNAI가 당신의 공간을 들어봅니다.' : 'Let TUNAI listen to your room.',
+                      ko ? 'TUNAI가 당신의 공간을 배웁니다.' : 'Let TUNAI learn your room.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -109,10 +108,6 @@ class MeasureScreen extends ConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 40),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 0),
-                      child: PresetBar(),
-                    ),
                   ],
                 ),
               ),
@@ -418,7 +413,7 @@ class _LocationPicker extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('스피커가 놓인 공간을 알려주세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 0.5)),
         const SizedBox(height: 4),
-        const Text('TUNAI가 이 정보를 바탕으로 소리를 분석합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+        const Text('이 정보는 공간에 맞는 사운드를 준비하는 데 사용됩니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
         const SizedBox(height: 12),
         ...InstallLocation.values.map((loc) {
           final isSelected = selected == loc;

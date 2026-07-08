@@ -49,7 +49,7 @@ class MoreScreen extends ConsumerWidget {
                   _MenuItem(label: 'COMMUNITY', description: '프리셋 공유 · 다운로드',
                       icon: Icons.people_outline,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen()))),
-                  _MenuItem(label: 'ADVANCED', description: '스피커 전용 고급 설정',
+                  _MenuItem(label: 'TUNAI PRO', description: 'Advanced tuning — coming soon',
                       icon: Icons.settings_input_component_outlined,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdvancedScreen()))),
                   const Divider(color: Colors.white12, height: 32),
@@ -182,10 +182,20 @@ class _FactoryMenuItem extends StatelessWidget {
           MaterialPageRoute(builder: (_) => const FactoryScreen()));
     } else if (ok == true) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('PIN이 올바르지 않습니다'),
-            backgroundColor: Color(0xFF1A1A1A)),
+      // Show error in a new dialog scoped to Factory Mode — avoid bleeding into other screens
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Factory 모드', style: TextStyle(color: Colors.white, fontSize: 15)),
+          content: const Text('PIN이 올바르지 않습니다.', style: TextStyle(color: Colors.white60, fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('확인', style: TextStyle(color: Colors.white70)),
+            ),
+          ],
+        ),
       );
     }
   }

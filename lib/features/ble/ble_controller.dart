@@ -230,12 +230,11 @@ class BleController extends StateNotifier<BleState> {
         case DetectedBoard.icp5Adau1701:
           // ADAU1701 확정 → systemProfile 자동 선택
           _ref.read(systemProfileProvider.notifier).state = kTunaiOneSystemProfile;
-          connMsg = '연결됨: ${device.advName} · ADAU1701 자동 선택됨';
+          connMsg = '연결됨: ${device.advName}';
         case DetectedBoard.adau1466:
-          // ADAU1466 탐지 — 아직 미지원, 프로파일은 건드리지 않음
-          connMsg = '연결됨: ${device.advName} · ADAU1466 (지원 준비 중)';
+          connMsg = '연결됨: ${device.advName}';
         case DetectedBoard.unknown:
-          connMsg = '연결됨: ${device.advName} · 보드 미식별 — 수동 선택 필요';
+          connMsg = '연결됨: ${device.advName}';
       }
       // ──────────────────────────────────────────────────────────────────────
 

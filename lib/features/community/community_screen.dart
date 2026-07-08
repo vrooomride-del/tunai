@@ -695,8 +695,11 @@ class _BoardTab extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('게시글이 없습니다.',
+                          const Text('아직 게시글이 없습니다.',
                               style: TextStyle(color: Colors.white38, fontSize: 13)),
+                          const SizedBox(height: 6),
+                          const Text('로그인 후 첫 글을 작성해보세요.',
+                              style: TextStyle(color: Colors.white24, fontSize: 11)),
                           const SizedBox(height: 16),
                           GestureDetector(
                             onTap: onWrite,

@@ -54,8 +54,8 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'Good sound should be a result,\nnot a setting.',
     titleKo: '좋은 소리는 설정이 아니라\n결과여야 합니다.',
-    subtitleEn: 'No complex setup. TUNAI listens to your room and creates a sound profile for where you actually listen.',
-    subtitleKo: '복잡한 설정 없이, TUNAI가 공간을 듣고 실제 청취 위치에 맞는 사운드 프로파일을 만듭니다.',
+    subtitleEn: 'TUNAI adapts to your space automatically — great sound is the starting point, not something you work toward.',
+    subtitleKo: 'TUNAI는 공간에 자동으로 맞춰집니다. 좋은 소리는 출발점이지, 복잡한 과정의 결과가 아닙니다.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),

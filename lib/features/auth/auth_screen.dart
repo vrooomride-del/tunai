@@ -32,12 +32,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 28,
                       fontWeight: FontWeight.w200, letterSpacing: 10)),
               const SizedBox(height: 8),
-              Text(_isLogin ? 'SIGN IN' : 'CREATE ACCOUNT',
+              Text(_isLogin ? '로그인' : '계정 만들기',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 4)),
               const SizedBox(height: 16),
               const Text(
-                'Save your room profiles, sync presets,\nand access TUNAI Cloud.',
+                '공간 프로파일을 저장하고,\nTUNAI 클라우드와 동기화합니다.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white24, fontSize: 12, height: 1.6),
               ),
@@ -78,7 +78,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: auth.isLoading
                         ? const SizedBox(width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white38))
-                        : Text(_isLogin ? 'SIGN IN' : 'CREATE ACCOUNT',
+                        : Text(_isLogin ? '로그인' : '계정 만들기',
                             style: const TextStyle(color: Colors.white, fontSize: 12, letterSpacing: 3)),
                   ),
                 ),
@@ -157,7 +157,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               GestureDetector(
                 onTap: () => setState(() => _isLogin = !_isLogin),
                 child: Text(
-                  _isLogin ? '계정이 없으신가요?  CREATE ACCOUNT' : '이미 계정이 있으신가요?  SIGN IN',
+                  _isLogin ? '계정이 없으신가요?  계정 만들기' : '이미 계정이 있으신가요?  로그인',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
@@ -167,7 +167,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 onTap: () => Navigator.of(context).pop(),
                 child: const Center(
                   child: Text(
-                    'Continue without login',
+                    '로그인 없이 계속',
                     style: TextStyle(color: Colors.white24, fontSize: 12, decoration: TextDecoration.underline),
                   ),
                 ),
