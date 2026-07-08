@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
+import '../../core/sound_profile_store.dart';
 import '../../main.dart' show currentTabIndexProvider;
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
@@ -73,6 +74,8 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                 child: !hasBefore
                     ? const _EmptyState()
                     : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const _CurrentProfileSection(),
+                        const SizedBox(height: 16),
                         _AbToggle(
                           showAfter: _showAfter,
                           loop: _loop,
@@ -173,6 +176,102 @@ class _MasterVolumeSection extends ConsumerWidget {
       ),
     );
   }
+}
+
+// ── Current Profile ──────────────────────────────────────────────────────────
+
+class _CurrentProfileSection extends ConsumerWidget {
+  const _CurrentProfileSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(appliedProfileProvider);
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+
+    if (profile == null) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            ko ? '사운드 프로파일' : 'Sound Profile',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            ko ? '적용된 사운드 프로파일이 없습니다.' : 'No Sound Profile applied.',
+            style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w300),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ko ? '공간 스캔으로 어쿠스틱 튠을 만들어 저장해보세요.' : 'Run a Room Scan to create your Acoustic Tune.',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5),
+          ),
+        ]),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        border: Border.all(color: Colors.white24),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(
+            ko ? '현재 사운드 프로파일' : 'Current Sound Profile',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
+              border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.35)),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              ko ? '적용됨' : 'Room Matched',
+              style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Text(
+          profile.name,
+          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
+          if (profile.soundScore != null) ...[
+            const SizedBox(width: 8),
+            _MetaChipListen(text: 'Score ${profile.soundScore}'),
+          ],
+        ]),
+      ]),
+    );
+  }
+}
+
+class _MetaChipListen extends StatelessWidget {
+  final String text;
+  const _MetaChipListen({required this.text});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 10, letterSpacing: 0.5)),
+      );
 }
 
 class _EmptyState extends StatelessWidget {

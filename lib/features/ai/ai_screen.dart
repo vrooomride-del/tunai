@@ -12,6 +12,7 @@ import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../core/first_run_state.dart';
+import '../../core/sound_profile_store.dart';
 import '../../shared/acoustic_result_card.dart';
 
 /// AI 탭 — 측정 결과를 AI가 분석해 PEQ를 제안하고, 이유를 설명하고, APPLY 한다.
@@ -120,6 +121,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
   final _ctrl = TextEditingController(text: '자연스럽고 균형잡힌 소리로 튜닝해줘');
   SystemProfileId? _lastProfileId;
   bool _autoRequested = false;
+  String? _savedProfileId;  // 저장 완료된 profile id (null = 미저장)
   String _selectedRef = 'Neutral';
 
   static const _refPresets = ['Warm', 'Neutral', 'Clear'];
@@ -251,8 +253,31 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     if (ok) {
       ref.read(spectrumSnapshotProvider.notifier).applyPeaks(peaks);
       ref.read(acousticTuneAppliedProvider.notifier).state = true;
+      // 저장된 프로파일이 있으면 Applied 상태 업데이트
+      if (_savedProfileId != null) {
+        ref.read(soundProfileStoreProvider.notifier).markApplied(_savedProfileId!);
+      }
       widget.onApplied();
     }
+  }
+
+  Future<void> _saveProfile(String name) async {
+    if (_result == null) return;
+    final loc = ref.read(installLocationProvider);
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final profile = UiSoundProfile(
+      id: id,
+      name: name,
+      roomTypeLabel: loc?.label ?? '공간',
+      roomTypeLabelEn: loc?.labelEn ?? 'Room',
+      soundScore: _result!.soundScore,
+      createdAt: DateTime.now(),
+      isApplied: false,
+      bands: List<Map<String, dynamic>>.from(_result!.bands),
+      summary: _result!.explanation.isNotEmpty ? _result!.explanation : null,
+    );
+    await ref.read(soundProfileStoreProvider.notifier).add(profile);
+    if (mounted) setState(() => _savedProfileId = id);
   }
 
   @override
@@ -307,11 +332,14 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
         applying: _applying,
         maxBands: maxBands,
         onApply: _applyAll,
+        onSave: _saveProfile,
+        savedProfileId: _savedProfileId,
         onRerun: _suggest,
         onEditHz: _editBandHz,
         onEditDb: _editBandDb,
         onEditQ: _editBandQ,
         snap: ref.watch(spectrumSnapshotProvider),
+        installLocation: ref.watch(installLocationProvider),
       );
     }
 
@@ -456,11 +484,14 @@ class _OptimizedView extends StatelessWidget {
   final bool applying;
   final int maxBands;
   final VoidCallback onApply;
+  final Future<void> Function(String name) onSave;
+  final String? savedProfileId;
   final VoidCallback onRerun;
   final Function(int, num) onEditHz;
   final Function(int, num) onEditDb;
   final Function(int, num) onEditQ;
   final SpectrumSnapshot snap;
+  final InstallLocation? installLocation;
 
   const _OptimizedView({
     required this.ko,
@@ -470,11 +501,14 @@ class _OptimizedView extends StatelessWidget {
     required this.applying,
     required this.maxBands,
     required this.onApply,
+    required this.onSave,
+    required this.savedProfileId,
     required this.onRerun,
     required this.onEditHz,
     required this.onEditDb,
     required this.onEditQ,
     required this.snap,
+    required this.installLocation,
   });
 
   @override
@@ -639,7 +673,7 @@ class _OptimizedView extends StatelessWidget {
             ),
             if (!isConnected)
               Padding(
-                padding: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.only(bottom: 4),
                 child: Center(
                   child: Text(
                     ko
@@ -649,10 +683,99 @@ class _OptimizedView extends StatelessWidget {
                   ),
                 ),
               ),
+            // Save Sound Profile 버튼
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 4, 32, 28),
+              child: savedProfileId != null
+                  ? Center(
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.check_circle_outline, color: Colors.white.withValues(alpha: 0.4), size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          ko ? '사운드 프로파일이 저장되었습니다.' : 'Sound Profile saved.',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
+                        ),
+                      ]),
+                    )
+                  : GestureDetector(
+                      onTap: () => _showSaveDialog(context),
+                      child: Center(
+                        child: Text(
+                          ko ? '사운드 프로파일 저장' : 'Save Sound Profile',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 13,
+                            decoration: TextDecoration.underline,
+                            decorationColor: Colors.white.withValues(alpha: 0.25),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String _defaultProfileName(bool ko) {
+    if (installLocation == null) return ko ? '나의 어쿠스틱 튠' : 'My Acoustic Tune';
+    if (ko) {
+      return switch (installLocation!) {
+        InstallLocation.desk        => '책상 위 어쿠스틱 튠',
+        InstallLocation.livingRoom  => '거실 어쿠스틱 튠',
+        InstallLocation.nearWall    => '벽 가까이 어쿠스틱 튠',
+        InstallLocation.studio      => '스튜디오 어쿠스틱 튠',
+        InstallLocation.custom      => '나의 어쿠스틱 튠',
+      };
+    } else {
+      return switch (installLocation!) {
+        InstallLocation.desk        => 'Desk Acoustic Tune',
+        InstallLocation.livingRoom  => 'Living Room Acoustic Tune',
+        InstallLocation.nearWall    => 'Near Wall Acoustic Tune',
+        InstallLocation.studio      => 'Studio Acoustic Tune',
+        InstallLocation.custom      => 'My Acoustic Tune',
+      };
+    }
+  }
+
+  Future<void> _showSaveDialog(BuildContext context) async {
+    final ctrl = TextEditingController(text: _defaultProfileName(ko));
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          ko ? '사운드 프로파일 이름 지정' : 'Name your Sound Profile',
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () {
+              final n = ctrl.text.trim();
+              if (n.isNotEmpty) Navigator.pop(ctx, n);
+            },
+            child: Text(ko ? '저장' : 'Save', style: const TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      await onSave(name);
+    }
   }
 
   List<Widget> _buildAcousticCards(bool ko) {

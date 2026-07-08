@@ -1,178 +1,190 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/api_service.dart';
 import '../../core/audio_analyzer.dart';
-import '../../core/enclosure_hash.dart';
-import '../../core/my_tune_storage.dart';
-import '../../core/speaker_profile.dart';
+import '../../core/sound_profile_store.dart';
 import '../ble/ble_controller.dart';
 import '../dsp/dsp_compiler.dart';
-import '../community/community_screen.dart';
-import '../fine_tune/fine_tune_screen.dart';
-import '../fine_tune/taste_preset.dart';
-import '../../core/ai_tuning_service.dart';
 import '../../shared/widgets.dart';
 
-/// LIBRARY 탭 — Factory Presets / My Presets / Community Best.
 class LibraryScreen extends ConsumerStatefulWidget {
-  const LibraryScreen({super.key});
+  /// ROOM 탭(index 1)으로 이동하는 콜백 (optional — Library를 독립 push로 열 수도 있음)
+  final VoidCallback? onGoToRoomScan;
+  const LibraryScreen({super.key, this.onGoToRoomScan});
+
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  List<dynamic> _communityBest = [];
-  bool _loadingCommunity = true;
-  bool _matchMySpeaker = false;
+  bool _isKo(BuildContext ctx) =>
+      Localizations.localeOf(ctx).languageCode == 'ko';
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCommunity();
+  Future<void> _applyProfile(UiSoundProfile profile) async {
+    final ko = _isKo(context);
+    final isConnected = ref.read(bleProvider).connection == BleConnectionState.connected;
+    if (!isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ko ? 'CONNECT 탭에서 스피커를 먼저 연결해주세요.' : 'Connect your speaker first (CONNECT tab).'),
+          backgroundColor: const Color(0xFF1A1A1A),
+        ));
+      }
+      return;
+    }
+    if (profile.bands.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ko ? '이 프로파일에는 음향 데이터가 없습니다.' : 'No acoustic data in this profile.'),
+          backgroundColor: const Color(0xFF1A1A1A),
+        ));
+      }
+      return;
+    }
+    final peaks = profile.bands
+        .where((b) => b['enabled'] != false)
+        .map((b) => ResonancePeak(
+              frequency: (b['frequency'] as num).toDouble(),
+              gain: (b['gainDb'] as num).toDouble(),
+              q: (b['q'] as num).toDouble(),
+            ))
+        .toList();
+    final packets = DspCompiler.compileAll(peaks);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await ref.read(bleProvider.notifier).sendPackets(packets);
+    if (!mounted) return;
+    if (ok) {
+      await ref.read(soundProfileStoreProvider.notifier).markApplied(profile.id);
+      messenger.showSnackBar(SnackBar(
+        content: Text(ko ? '"${profile.name}" 적용 완료.' : '"${profile.name}" applied.'),
+        backgroundColor: const Color(0xFF1A1A1A),
+      ));
+    } else {
+      messenger.showSnackBar(SnackBar(
+        content: Text(ko ? '전송 실패 — BLE 연결 상태를 확인하세요.' : 'Send failed — check BLE connection.'),
+        backgroundColor: const Color(0xFF1A1A1A),
+      ));
+    }
   }
 
-  String? _myHash() {
-    final profile = ref.read(speakerProfileProvider);
-    if (profile == null) return null;
-    return EnclosureHash.fromProfile(
-      volumeL: profile.enclosureVolume,
-      portLengthMm: profile.portLength,
-      portDiamMm: profile.portDiameter,
+  Future<void> _renameProfile(UiSoundProfile profile) async {
+    final ko = _isKo(context);
+    final ctrl = TextEditingController(text: profile.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(ko ? '이름 변경' : 'Rename', style: const TextStyle(color: Colors.white, fontSize: 15)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38))),
+          TextButton(
+            onPressed: () { final n = ctrl.text.trim(); if (n.isNotEmpty) Navigator.pop(ctx, n); },
+            child: Text(ko ? '저장' : 'Save', style: const TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
     );
+    if (name != null) {
+      await ref.read(soundProfileStoreProvider.notifier).rename(profile.id, name);
+    }
   }
 
-  Future<void> _loadCommunity() async {
-    setState(() => _loadingCommunity = true);
-    final res = _matchMySpeaker
-        ? await ApiService.getPresets(hash: _myHash())
-        : await ApiService.getTrending();
-    if (!mounted) return;
-    setState(() {
-      _communityBest = (res['status'] == 'ok') ? (res['data'] ?? []).take(3).toList() : [];
-      _loadingCommunity = false;
-    });
+  Future<void> _deleteProfile(UiSoundProfile profile) async {
+    final ko = _isKo(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(ko ? '이 사운드 프로파일을 삭제할까요?' : 'Delete this Sound Profile?',
+            style: const TextStyle(color: Colors.white, fontSize: 15)),
+        content: Text(ko ? '이 작업은 되돌릴 수 없습니다.' : 'This cannot be undone.',
+            style: const TextStyle(color: Colors.white54, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(soundProfileStoreProvider.notifier).delete(profile.id);
+    }
   }
 
-  Future<void> _downloadAndApply(Map<String, dynamic> preset) async {
-    final fps = preset['fps_json'] as List?;
-    if (fps == null || fps.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('필터 데이터가 없는 프리셋입니다.')));
-      return;
-    }
-    final peaks = fps.map((f) => ResonancePeak(
-      frequency: (f['frequency'] ?? f['f'] ?? 1000).toDouble(),
-      gain: (f['gain'] ?? f['g'] ?? -6).toDouble(),
-      q: (f['q'] ?? 2.0).toDouble(),
-    )).toList();
-    final isConnected = ref.read(bleProvider).connection == BleConnectionState.connected;
-    if (!isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${preset['title']} — CONNECT 탭에서 연결 후 다시 시도하세요')));
-      return;
-    }
-    final packets = DspCompiler.compileAll(peaks);
-    final ok = await ref.read(bleProvider.notifier).sendPackets(packets);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '✓ ${preset['title']} 적용 완료' : '전송 실패 — BLE 연결 확인')));
-  }
-
-  Future<void> _applyMyTune() async {
-    final peaks = await MyTuneStorage.load();
-    if (peaks == null) return;
-    final isConnected = ref.read(bleProvider).connection == BleConnectionState.connected;
-    if (!isConnected) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CONNECT 탭에서 연결 후 다시 시도하세요')));
-      return;
-    }
-    final packets = DspCompiler.compileAll(peaks);
-    final ok = await ref.read(bleProvider.notifier).sendPackets(packets);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '✓ My Tune 적용 완료' : '전송 실패 — BLE 연결 확인')));
+  void _showActions(UiSoundProfile profile) {
+    final ko = _isKo(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          Container(width: 36, height: 3, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          _ActionTile(
+            icon: Icons.play_circle_outline,
+            label: ko ? '적용' : 'Apply',
+            onTap: () { Navigator.pop(ctx); _applyProfile(profile); },
+          ),
+          _ActionTile(
+            icon: Icons.drive_file_rename_outline,
+            label: ko ? '이름 변경' : 'Rename',
+            onTap: () { Navigator.pop(ctx); _renameProfile(profile); },
+          ),
+          _ActionTile(
+            icon: Icons.delete_outline,
+            label: ko ? '삭제' : 'Delete',
+            color: Colors.redAccent,
+            onTap: () { Navigator.pop(ctx); _deleteProfile(profile); },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final aiResult = ref.watch(lastAiResultProvider);
+    final ko = _isKo(context);
+    final profiles = ref.watch(soundProfileStoreProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Column(
           children: [
-            const TunaiTopBar(subtitle: 'LIBRARY'),
+            const TunaiTopBar(subtitle: 'PROFILE LIBRARY'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
                 children: [
-                  const _SectionTitle('📚 Factory Presets'),
-                  const SizedBox(height: 8),
-                  ...kTastePresets.map((p) => _LibraryRow(
-                        title: p.label,
-                        subtitle: p.description,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FineTuneScreen())),
-                      )),
-                  const SizedBox(height: 20),
-                  const _SectionTitle('My Presets'),
-                  const SizedBox(height: 8),
-                  if (aiResult != null)
-                    _LibraryRow(title: 'AI Tune', subtitle: '가장 최근 AI 튜닝 결과 · ${aiResult.bands.length}개 밴드',
-                        icon: Icons.auto_awesome_outlined, onTap: null),
-                  FutureBuilder<DateTime?>(
-                    future: MyTuneStorage.loadSavedAt(),
-                    builder: (context, snap) {
-                      if (!snap.hasData || snap.data == null) {
-                        if (aiResult == null) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Text('저장된 프리셋이 없습니다 — 상단 프리셋 바의 저장 버튼을 사용하세요',
-                                style: TextStyle(color: Colors.white24, fontSize: 11)),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }
-                      final savedAt = snap.data!;
-                      final label = '${savedAt.year}-${savedAt.month.toString().padLeft(2, '0')}-${savedAt.day.toString().padLeft(2, '0')}';
-                      return _LibraryRow(title: 'My Tune', subtitle: '저장한 날짜: $label',
-                          icon: Icons.bookmark_outline, onTap: _applyMyTune);
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  Row(children: [
-                    const Expanded(child: _SectionTitle('Community Best')),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _matchMySpeaker = !_matchMySpeaker);
-                        _loadCommunity();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _matchMySpeaker ? Colors.white : Colors.white12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text('내 스피커와 동일 규격',
-                            style: TextStyle(color: _matchMySpeaker ? Colors.white : Colors.white38, fontSize: 10)),
-                      ),
+                  if (profiles.isEmpty) ...[
+                    const SizedBox(height: 60),
+                    _EmptyLibraryState(ko: ko, onGoToRoomScan: widget.onGoToRoomScan),
+                  ] else ...[
+                    Text(
+                      ko ? '내 사운드 프로파일' : 'My Sound Profiles',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
                     ),
-                  ]),
-                  const SizedBox(height: 8),
-                  if (_loadingCommunity)
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white38)))
-                  else if (_communityBest.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text('표시할 프리셋이 없습니다', style: TextStyle(color: Colors.white24, fontSize: 11)),
-                    )
-                  else
-                    ..._communityBest.map((preset) => _CommunityRow(
-                          preset: preset,
-                          onDownload: () => _downloadAndApply(Map<String, dynamic>.from(preset)),
+                    const SizedBox(height: 12),
+                    ...profiles.reversed.map((p) => _ProfileCard(
+                          profile: p,
+                          ko: ko,
+                          onTap: () => _showActions(p),
+                          onApply: () => _applyProfile(p),
                         )),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen())),
-                      child: const Text('COMMUNITY 전체 보기 →', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1)),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -183,81 +195,182 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
-  @override
-  Widget build(BuildContext context) => Text(text, style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 2));
-}
+// ── Profile Card ─────────────────────────────────────────────────────────────
 
-class _LibraryRow extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _LibraryRow({required this.title, required this.subtitle, this.icon = Icons.music_note_outlined, this.onTap});
+class _ProfileCard extends StatelessWidget {
+  final UiSoundProfile profile;
+  final bool ko;
+  final VoidCallback onTap;
+  final VoidCallback onApply;
+  const _ProfileCard({required this.profile, required this.ko, required this.onTap, required this.onApply});
+
+  String _createdLabel(bool ko) {
+    final diff = DateTime.now().difference(profile.createdAt);
+    if (diff.inDays == 0) return ko ? '오늘' : 'Today';
+    if (diff.inDays == 1) return ko ? '어제' : 'Yesterday';
+    if (diff.inDays < 7) return ko ? '${diff.inDays}일 전' : '${diff.inDays}d ago';
+    return '${profile.createdAt.year}.${profile.createdAt.month.toString().padLeft(2,'0')}.${profile.createdAt.day.toString().padLeft(2,'0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final applied = profile.isApplied;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(8)),
-        child: Row(children: [
-          Icon(icon, color: Colors.white38, size: 16),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 1)),
-              const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: applied ? Colors.white.withValues(alpha: 0.04) : const Color(0xFF111111),
+          border: Border.all(color: applied ? Colors.white24 : Colors.white.withValues(alpha: 0.09)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 이름 + status pill
+            Row(children: [
+              Expanded(
+                child: Text(
+                  profile.name,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
+                ),
+              ),
+              if (applied) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF69F0AE).withValues(alpha: 0.15),
+                    border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.4)),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    ko ? '적용됨' : 'Applied',
+                    style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 6),
+              Icon(Icons.more_horiz, color: Colors.white.withValues(alpha: 0.25), size: 18),
             ]),
-          ),
-          if (onTap != null) const Icon(Icons.play_circle_outline, color: Colors.white24, size: 18),
-        ]),
+            const SizedBox(height: 10),
+            // 메타 정보
+            Row(children: [
+              _MetaChip(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
+              if (profile.soundScore != null) ...[
+                const SizedBox(width: 8),
+                _MetaChip(text: 'Score ${profile.soundScore}'),
+              ],
+              const SizedBox(width: 8),
+              _MetaChip(text: _createdLabel(ko)),
+            ]),
+            if (!applied) ...[
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: onApply,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    ko ? '적용' : 'Apply',
+                    style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1.2),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _CommunityRow extends StatelessWidget {
-  final Map<String, dynamic> preset;
-  final VoidCallback onDownload;
-  const _CommunityRow({required this.preset, required this.onDownload});
+class _MetaChip extends StatelessWidget {
+  final String text;
+  const _MetaChip({required this.text});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 10, letterSpacing: 0.5)),
+      );
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+  const _ActionTile({required this.icon, required this.label, required this.onTap, this.color});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(8)),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${preset['title'] ?? '제목 없음'}', style: const TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 1)),
-            const SizedBox(height: 4),
-            Row(children: [
-              const Icon(Icons.star, color: Colors.amber, size: 12),
-              const SizedBox(width: 2),
-              Text('${preset['likes'] ?? 0}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              const SizedBox(width: 10),
-              const Icon(Icons.download, color: Colors.white24, size: 12),
-              const SizedBox(width: 2),
-              Text('${preset['downloads'] ?? 0}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            ]),
-          ]),
+    final c = color ?? Colors.white70;
+    return ListTile(
+      leading: Icon(icon, color: c, size: 20),
+      title: Text(label, style: TextStyle(color: c, fontSize: 14)),
+      onTap: onTap,
+    );
+  }
+}
+
+// ── Empty State ──────────────────────────────────────────────────────────────
+
+class _EmptyLibraryState extends StatelessWidget {
+  final bool ko;
+  final VoidCallback? onGoToRoomScan;
+  const _EmptyLibraryState({required this.ko, this.onGoToRoomScan});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            Icon(Icons.library_music_outlined, color: Colors.white.withValues(alpha: 0.15), size: 40),
+            const SizedBox(height: 20),
+            Text(
+              ko ? '아직 저장된 사운드 프로파일이 없습니다.' : 'No Sound Profiles yet.',
+              style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w300),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              ko
+                  ? '공간 스캔으로 첫 어쿠스틱 튠을 만들어보세요.'
+                  : 'Create your first Acoustic Tune with a Room Scan.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+            if (onGoToRoomScan != null) ...[
+              const SizedBox(height: 28),
+              GestureDetector(
+                onTap: () { Navigator.of(context).pop(); onGoToRoomScan!(); },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    ko ? '공간 스캔 시작' : 'Start Room Scan',
+                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 1.3),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
-        GestureDetector(
-          onTap: onDownload,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(4)),
-            child: const Text('APPLY', style: TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1)),
-          ),
-        ),
-      ]),
+      ),
     );
   }
 }
