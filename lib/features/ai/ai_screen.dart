@@ -5,6 +5,7 @@ import '../ble/ble_controller.dart';
 import '../../core/ai_tuning_service.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/profiles/system_profile.dart';
+import '../../core/sound_score_calculator.dart';
 import '../../core/speaker_profile.dart';
 import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
@@ -166,11 +167,15 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     setState(() { _loading = true; _result = null; });
     final location = ref.read(installLocationProvider);
     final refHint = _selectedRef != 'Neutral' ? ' Reference: $_selectedRef.' : '';
+    final spectrum = ref.read(spectrumSnapshotProvider).before;
+    final score = ref.read(soundScoreProvider);
     final result = await AiTuningService.suggest(
       peaks: widget.mState.peaks,
       userRequest: _ctrl.text + refHint,
       speakerProfile: ref.read(speakerProfileProvider),
       location: location?.promptKey,
+      spectrum: spectrum,
+      soundScore: score,
     );
     if (mounted) setState(() { _loading = false; _result = result; _previousScore = previousScore; });
     if (!result.isError) ref.read(lastAiResultProvider.notifier).state = result;
@@ -274,6 +279,11 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
         }).toList(),
       ),
       const SizedBox(height: 12),
+      // ── Computed Sound Score (측정 기반 pre-AI 추정) ──────────────────
+      if (_result == null && !_loading) ...[
+        _ComputedScoreRow(),
+        const SizedBox(height: 8),
+      ],
       OutlineButton(
         label: _loading ? 'AI 분석 중...' : 'AI 튜닝 요청',
         loading: _loading,
@@ -469,6 +479,35 @@ class _SoundScoreCard extends StatelessWidget {
             ]),
           )),
         ],
+      ]),
+    );
+  }
+}
+
+/// 측정 스펙트럼 기반 클라이언트 측 Sound Score 미리보기 (AI 결과 전 표시)
+class _ComputedScoreRow extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final score = ref.watch(soundScoreProvider);
+    if (score == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(children: [
+        const Icon(Icons.analytics_outlined, color: Colors.white38, size: 14),
+        const SizedBox(width: 8),
+        Text('측정 Score: ${score.total}/100',
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(score.explanation,
+              style: const TextStyle(color: Colors.white24, fontSize: 10),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+        ),
       ]),
     );
   }
