@@ -9,7 +9,7 @@ extension PresetBarSelectionLabel on PresetBarSelection {
   String get label => switch (this) {
         PresetBarSelection.factory => 'Factory',
         PresetBarSelection.reference => 'Reference',
-        PresetBarSelection.aiTune => 'AI Tune',
+        PresetBarSelection.aiTune => 'Acoustic Tune',
         PresetBarSelection.myTune => 'My Tune',
         PresetBarSelection.nearWall => 'Near Wall',
         PresetBarSelection.desk => 'Desk',

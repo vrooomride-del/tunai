@@ -354,7 +354,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ko ? 'AI 오류' : 'AI Error',
+                  ko ? '분석 오류' : 'Analysis Error',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12, letterSpacing: 2),
                 ),
                 const SizedBox(height: 16),

@@ -257,8 +257,8 @@ class _ProfileCard extends StatelessWidget {
                 ),
                 child: Text(
                   applied
-                      ? (ko ? '적용됨 · 검증됨' : 'Applied · Verified')
-                      : (ko ? '검증됨' : 'Verified'),
+                      ? (ko ? '적용됨 · 안전 확인' : 'Active · Safe')
+                      : (ko ? '안전 확인' : 'Safe'),
                   style: TextStyle(
                     color: const Color(0xFF69F0AE).withValues(alpha: applied ? 1.0 : 0.6),
                     fontSize: 9,

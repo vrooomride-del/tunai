@@ -21,7 +21,7 @@ class AdvancedScreen extends ConsumerWidget {
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('TUNAI PRO', style: TextStyle(color: Colors.white, fontSize: 15, letterSpacing: 2)),
         content: const Text(
-          'Full PEQ, crossover, and driver controls are available in TUNAI PRO.\n\nComing Soon.',
+          'Advanced tuning controls are available in TUNAI PRO.\n\nComing Soon.',
           style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.6),
         ),
         actions: [
@@ -202,7 +202,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
     );
     setState(() => _showTsInput = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('T/S 파라미터 저장됨 — 크로스오버 ${(qts < 0.4 ? fs * 20 : qts < 0.7 ? fs * 28 : fs * 35).clamp(800, 6000).toStringAsFixed(0)}Hz 추천')),
+      const SnackBar(content: Text('스피커 특성이 저장되었습니다.')),
     );
   }
 
@@ -289,7 +289,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
           );
         }),
         const SizedBox(height: 4),
-        Text('${selected.channelCount}ch · 크로스오버 ${selected.crossoverPoints}개',
+        Text('${selected.channelCount}ch · ${selected.crossoverPoints}웨이',
             style: const TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
 
         if (sp != null && selected.crossoverPoints >= 1) ...[
@@ -424,7 +424,7 @@ class _SpeakerSelectPanelState extends ConsumerState<_SpeakerSelectPanel> {
                 border: Border.all(color: Colors.white),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Text('T/S 저장 → 크로스오버 자동 계산',
+              child: const Text('스피커 특성 저장 → 자동 최적화',
                   style: TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 1)),
             ),
           ),
@@ -597,7 +597,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
     setState(() => _sending = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('크로스오버 적용됨'),
+        content: Text('스피커 설정이 적용되었습니다.'),
         duration: Duration(seconds: 2),
       ));
     }
@@ -615,7 +615,7 @@ class _CrossoverCardState extends ConsumerState<_CrossoverCard> {
     return SectionCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Text('크로스오버', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
+          const Text('스피커 설정', style: TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
           const Spacer(),
           OutlineButton(
             label: _sending ? '전송 중...' : 'APPLY',
