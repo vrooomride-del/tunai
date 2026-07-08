@@ -9,6 +9,7 @@ import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
 import '../dsp/master_volume_controller.dart';
+import 'test_tone_controller.dart';
 
 /// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
 /// Loop를 자동 정지하기 위해 필요
@@ -118,6 +119,8 @@ class _MasterVolumeSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final vol = ref.watch(masterVolumeProvider);
     final ctrl = ref.read(masterVolumeProvider.notifier);
+    final toneIsPlaying = ref.watch(testToneProvider);
+    final toneCtrl = ref.read(testToneProvider.notifier);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -172,23 +175,37 @@ class _MasterVolumeSection extends ConsumerWidget {
           ),
           // ── Test Tone ────────────────────────────────────────────────────
           GestureDetector(
-            onTap: () {
-              // TODO: tone_generator.dart 연동 (1kHz sine)
-            },
+            onTap: toneCtrl.toggle,
             child: Container(
               height: 34,
               margin: const EdgeInsets.only(bottom: 4),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white24),
+                color: toneIsPlaying
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                border: Border.all(
+                    color: toneIsPlaying ? Colors.white54 : Colors.white24),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.music_note_outlined, color: Colors.white38, size: 14),
-                  SizedBox(width: 8),
-                  Text('1 kHz TEST TONE',
-                      style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1.5)),
+                  Icon(
+                    toneIsPlaying
+                        ? Icons.stop_circle_outlined
+                        : Icons.music_note_outlined,
+                    color: toneIsPlaying ? Colors.white70 : Colors.white38,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    toneIsPlaying ? '1 kHz STOP' : '1 kHz TEST TONE',
+                    style: TextStyle(
+                        color:
+                            toneIsPlaying ? Colors.white70 : Colors.white38,
+                        fontSize: 11,
+                        letterSpacing: 1.5),
+                  ),
                 ],
               ),
             ),
