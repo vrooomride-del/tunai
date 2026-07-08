@@ -114,9 +114,9 @@ class _RootScreenState extends ConsumerState<RootScreen> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      ConnectScreen(onConnected: () => _goTo(1)),
+      ConnectScreen(onConnected: () => _goTo(1), onGoTo: _goTo),
       MeasureScreen(onMeasured: () => _goTo(2)),
-      AiScreen(onApplied: () => _goTo(3)),
+      AiScreen(onApplied: () => _goTo(3), onGoTo: _goTo),
       const ListenScreen(),
       const MoreScreen(),
     ];

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 최초 1회 온보딩 완료 여부 키
-const _kOnboardingComplete = 'onboarding_complete';
+const _kOnboardingComplete = 'first_run_complete';
 
 Future<bool> isOnboardingComplete() async {
   final prefs = await SharedPreferences.getInstance();
@@ -44,32 +44,28 @@ class _OnboardingPage {
 
 const _pages = [
   _OnboardingPage(
-    titleEn: 'Your room changes sound.\nTUNAI understands it.',
+    titleEn: 'Your room changes sound.',
     titleKo: '당신의 공간은 소리를 바꿉니다.\nTUNAI는 그 공간을 이해합니다.',
-    subtitleEn:
-        'TUNAI analyzes your speaker, your room, and your listening position to create sound that fits where you actually listen.',
-    subtitleKo:
-        'TUNAI는 스피커, 공간, 청취 위치를 분석해 실제 듣는 환경에 맞는 소리를 만들어냅니다.',
-    btnEn: 'Get Started',
-    btnKo: '시작하기',
-  ),
-  _OnboardingPage(
-    titleEn: 'Good sound should be a result,\nnot a setting.',
-    titleKo: '좋은 소리는 설정이 아니라\n결과여야 합니다.',
-    subtitleEn:
-        'No complex EQ. No acoustic knowledge required.\nJust connect, measure, optimize, and listen.',
-    subtitleKo:
-        '복잡한 EQ 설정도, 음향 지식도 필요 없습니다.\n연결하고, 측정하고, 최적화하고, 들으세요.',
+    subtitleEn: 'TUNAI understands it.\n\nNo complex setup. TUNAI listens to your room and creates a sound profile for where you actually listen.',
+    subtitleKo: '복잡한 설정 없이, TUNAI가 공간을 듣고 실제 청취 위치에 맞는 사운드 프로파일을 만듭니다.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),
   _OnboardingPage(
-    titleEn: 'Connect.\nMeasure.\nOptimize.\nListen.',
-    titleKo: '연결하고.\n측정하고.\n최적화하고.\n듣습니다.',
-    subtitleEn: 'In a few minutes, TUNAI creates a sound profile for your room.',
+    titleEn: 'Good sound should be a result,\nnot a setting.',
+    titleKo: '좋은 소리는 설정이 아니라\n결과여야 합니다.',
+    subtitleEn: 'No complex setup. TUNAI listens to your room and creates a sound profile for where you actually listen.',
+    subtitleKo: '복잡한 설정 없이, TUNAI가 공간을 듣고 실제 청취 위치에 맞는 사운드 프로파일을 만듭니다.',
+    btnEn: 'Continue',
+    btnKo: '계속',
+  ),
+  _OnboardingPage(
+    titleEn: 'Connect. Room Scan.\nAcoustic Tune. Listen.',
+    titleKo: '연결하고. 공간 스캔하고.\n어쿠스틱 튠으로 듣습니다.',
+    subtitleEn: 'In a few minutes, TUNAI creates a sound profile matched to your room.',
     subtitleKo: '몇 분 안에 TUNAI가 당신의 공간에 맞는 사운드 프로파일을 완성합니다.',
-    btnEn: 'Find My Speaker',
-    btnKo: '내 스피커 찾기',
+    btnEn: 'Get Started',
+    btnKo: '시작하기',
   ),
 ];
 

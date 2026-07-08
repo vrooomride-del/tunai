@@ -11,11 +11,13 @@ import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../dsp/dsp_compiler.dart';
 import '../../shared/spectrum_chart.dart';
+import '../../core/first_run_state.dart';
 
 /// AI 탭 — 측정 결과를 AI가 분석해 PEQ를 제안하고, 이유를 설명하고, APPLY 한다.
 class AiScreen extends ConsumerWidget {
   final VoidCallback onApplied;
-  const AiScreen({super.key, required this.onApplied});
+  final void Function(int)? onGoTo;
+  const AiScreen({super.key, required this.onApplied, this.onGoTo});
 
   bool _isKo(BuildContext ctx) =>
       Localizations.localeOf(ctx).languageCode == 'ko';
@@ -26,7 +28,7 @@ class AiScreen extends ConsumerWidget {
     final ko = _isKo(context);
 
     if (mState.peaks.isEmpty) {
-      return _AiEmptyState(ko: ko);
+      return _AiEmptyState(ko: ko, onGoToRoom: onGoTo != null ? () => onGoTo!(1) : null);
     }
 
     return _AiTunePanel(mState: mState, onApplied: onApplied, ko: ko);
@@ -35,7 +37,8 @@ class AiScreen extends ConsumerWidget {
 
 class _AiEmptyState extends StatelessWidget {
   final bool ko;
-  const _AiEmptyState({required this.ko});
+  final VoidCallback? onGoToRoom;
+  const _AiEmptyState({required this.ko, this.onGoToRoom});
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,16 +51,7 @@ class _AiEmptyState extends StatelessWidget {
             children: [
               const Spacer(flex: 2),
               Text(
-                ko ? 'AI 최적화' : 'AI Optimization',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  fontSize: 12,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                ko ? '먼저 공간을 측정해주세요.' : 'Measure your room first.',
+                ko ? '아직 공간 프로파일이 없습니다.' : 'No room profile yet.',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -68,14 +62,37 @@ class _AiEmptyState extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 ko
-                    ? 'MEASURE 탭에서 측정을 완료하면\nAI가 자동으로 공간을 분석합니다.'
-                    : 'Complete a measurement in the MEASURE tab,\nthen AI will analyze your room.',
+                    ? '먼저 공간 스캔을 완료하면\n어쿠스틱 튠을 만들 수 있습니다.'
+                    : 'Run a Room Scan first to create\nyour Acoustic Tune.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.4),
                   fontSize: 14,
                   height: 1.65,
                 ),
               ),
+              const SizedBox(height: 36),
+              if (onGoToRoom != null)
+                GestureDetector(
+                  onTap: onGoToRoom,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      ko ? '공간 스캔 시작' : 'Start Room Scan',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
               const Spacer(flex: 3),
             ],
           ),
@@ -232,6 +249,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
     ));
     if (ok) {
       ref.read(spectrumSnapshotProvider.notifier).applyPeaks(peaks);
+      ref.read(acousticTuneAppliedProvider.notifier).state = true;
       widget.onApplied();
     }
   }
@@ -260,7 +278,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ko ? 'AI가 공간을 분석하고 있습니다...' : 'AI is analyzing your room...',
+                  ko ? '공간의 소리를 이해하고 있습니다...' : 'TUNAI is understanding your room...',
                   style: const TextStyle(
                       color: Colors.white, fontSize: 24, fontWeight: FontWeight.w300, height: 1.4),
                 ),
@@ -337,7 +355,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ko ? '공간에 맞게 최적화할 준비가\n됐습니다.' : 'Ready to optimize your sound\nfor this room.',
+                      ko ? '공간에 맞는 어쿠스틱 튠을\n만들 준비가 됐습니다.' : 'Ready to create your Acoustic Tune\nfor this room.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -417,7 +435,7 @@ class _AiTunePanelState extends ConsumerState<_AiTunePanel> {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _AiBigButton(
-                label: ko ? '내 공간에 맞게 최적화' : 'Optimize My Sound',
+                label: ko ? '어쿠스틱 튠 생성' : 'Create Acoustic Tune',
                 onTap: _suggest,
               ),
             ),
@@ -485,7 +503,7 @@ class _OptimizedView extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        ko ? '최적화 완료' : 'Optimized',
+                        ko ? 'Room Matched' : 'Room Matched',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 11,
@@ -498,8 +516,8 @@ class _OptimizedView extends StatelessWidget {
                     // 타이틀
                     Text(
                       ko
-                          ? '이 공간에 맞는 소리로\n최적화되었습니다.'
-                          : 'Your sound is now optimized\nfor this room.',
+                          ? '이 공간에 맞는 소리로\n조정되었습니다.'
+                          : 'Your sound is now matched\nto this room.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -511,8 +529,8 @@ class _OptimizedView extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                       ko
-                          ? 'TUNAI가 저역 부밍을 줄이고, 보컬 선명도를 높이고,\n스테레오 밸런스를 교정했습니다.'
-                          : 'TUNAI reduced bass boom, improved vocal clarity,\nand corrected stereo balance.',
+                          ? '공간에서 생긴 저역 부밍을 줄이고, 보컬 명료도와 스테레오 밸런스를 개선했습니다.'
+                          : 'TUNAI reduced room boom, improved vocal clarity, and balanced the stereo image.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.45),
                         fontSize: 14,
@@ -553,7 +571,7 @@ class _OptimizedView extends StatelessWidget {
               child: Row(children: [
                 Expanded(
                   child: _AiBigButton(
-                    label: ko ? 'Before / After 듣기' : 'Hear Before / After',
+                    label: ko ? 'Hear Before / After 듣기' : 'Hear Before / After',
                     filled: false,
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => _BeforeAfterView(ko: ko, snap: snap),
@@ -567,7 +585,7 @@ class _OptimizedView extends StatelessWidget {
               child: _AiBigButton(
                 label: applying
                     ? (ko ? '적용 중...' : 'Applying...')
-                    : (ko ? '스피커에 적용' : 'Apply to Speaker'),
+                    : (ko ? '사운드 프로파일 적용' : 'Apply Sound Profile'),
                 onTap: applying || !isConnected ? null : onApply,
               ),
             ),
@@ -576,7 +594,9 @@ class _OptimizedView extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Center(
                   child: Text(
-                    ko ? '스피커 연결 후 적용 가능합니다' : 'Connect speaker to apply',
+                    ko
+                        ? '이 사운드 프로파일을 적용하려면 TUNAI 스피커를 연결해주세요.'
+                        : 'Connect your TUNAI speaker to apply this Sound Profile.',
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11),
                   ),
                 ),
@@ -769,7 +789,7 @@ class _BeforeAfterViewState extends State<_BeforeAfterView> {
               const SizedBox(height: 12),
               Text(
                 ko
-                    ? '원래 소리와 TUNAI 최적화 소리를 즉시 비교해보세요.'
+                    ? '원래 소리와 어쿠스틱 튠을 즉시 비교해보세요.'
                     : 'Switch instantly between the original sound and the optimized sound.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.45),
@@ -799,7 +819,7 @@ class _BeforeAfterViewState extends State<_BeforeAfterView> {
                         ),
                         alignment: Alignment.center,
                         child: Text(
-                          ko ? '원래 소리' : 'Original',
+                          ko ? '원래 소리' : 'Original Sound',
                           style: TextStyle(
                             color: _showOriginal ? Colors.black : Colors.white.withValues(alpha: 0.4),
                             fontSize: 13,
@@ -822,7 +842,7 @@ class _BeforeAfterViewState extends State<_BeforeAfterView> {
                         ),
                         alignment: Alignment.center,
                         child: Text(
-                          ko ? 'TUNAI 최적화' : 'TUNAI Optimized',
+                          ko ? '어쿠스틱 튠' : 'Acoustic Tune',
                           style: TextStyle(
                             color: !_showOriginal ? Colors.black : Colors.white.withValues(alpha: 0.4),
                             fontSize: 13,
@@ -853,7 +873,9 @@ class _BeforeAfterViewState extends State<_BeforeAfterView> {
                   height: 120,
                   alignment: Alignment.center,
                   child: Text(
-                    ko ? '측정 데이터가 없습니다' : 'No measurement data',
+                    ko
+                        ? '아직 비교할 공간 프로파일이 없습니다.\n먼저 공간 스캔을 완료하면 원래 소리와 어쿠스틱 튠을 비교할 수 있습니다.'
+                        : 'No room profile yet.\nRun a Room Scan first to compare Original and Acoustic Tune sound.',
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13),
                   ),
                 ),

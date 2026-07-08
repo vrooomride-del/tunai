@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/dsp/transport/dsp_transport_provider.dart';
+import '../../core/first_run_state.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../shared/widgets.dart';
 import 'dsp_unlock_flags.dart';
@@ -129,6 +131,41 @@ class FactoryScreen extends ConsumerWidget {
                         ),
                       ),
                     ],
+
+                    // ── Debug: Reset First Run ─────────────────────────────
+                    const SizedBox(height: 32),
+                    const Divider(color: Colors.white12),
+                    const SizedBox(height: 12),
+                    const Text('DEBUG',
+                        style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 3)),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove('first_run_complete');
+                        ref.read(acousticTuneAppliedProvider.notifier).state = false;
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('First-run reset. Restart the app to see onboarding.'),
+                            backgroundColor: Color(0xFF1A1A1A),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Row(children: [
+                          Icon(Icons.restart_alt, color: Colors.white24, size: 14),
+                          SizedBox(width: 10),
+                          Text('Reset Onboarding / First-Run',
+                              style: TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)),
+                        ]),
+                      ),
+                    ),
                   ],
                 ),
               ),

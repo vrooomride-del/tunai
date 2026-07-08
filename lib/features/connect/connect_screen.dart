@@ -6,12 +6,14 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../ble/ble_controller.dart';
 import '../../core/tone_generator.dart';
+import '../../shared/first_run_guide_card.dart';
 
 /// CONNECT 탭 — 스피커 BLE 스캔/연결만 담당.
 /// 연결 성공 시 [onConnected]로 MEASURE 탭 자동 전환을 요청한다.
 class ConnectScreen extends ConsumerStatefulWidget {
   final VoidCallback onConnected;
-  const ConnectScreen({super.key, required this.onConnected});
+  final void Function(int)? onGoTo;
+  const ConnectScreen({super.key, required this.onConnected, this.onGoTo});
 
   @override
   ConsumerState<ConnectScreen> createState() => _ConnectScreenState();
@@ -53,6 +55,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     final notFound = bState.connection == BleConnectionState.notFound;
     final isIdle = bState.connection == BleConnectionState.disconnected;
 
+    final goTo = widget.onGoTo ?? (_) {};
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -61,12 +65,19 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 deviceName: bState.deviceName,
                 onStartMeasure: widget.onConnected,
                 ko: ko,
+                onGoTo: goTo,
               )
             : Column(
                 children: [
+                  // ── 퍼스트런 안내 카드 ────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: FirstRunGuideCard(onGoTo: goTo),
+                  ),
+
                   // ── 상단 헤더 ─────────────────────────────────────
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 40, 32, 0),
+                    padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -192,14 +203,37 @@ class _ConnectedView extends StatelessWidget {
   final String? deviceName;
   final VoidCallback onStartMeasure;
   final bool ko;
+  final void Function(int) onGoTo;
   const _ConnectedView(
-      {required this.deviceName, required this.onStartMeasure, required this.ko});
+      {required this.deviceName, required this.onStartMeasure, required this.ko, required this.onGoTo});
 
   @override
   Widget build(BuildContext context) {
     final name = deviceName ?? 'TUNAI ONE';
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FirstRunGuideCard(onGoTo: onGoTo),
+          const SizedBox(height: 8),
+          _ConnectedBody(name: name, onStartMeasure: onStartMeasure, ko: ko),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConnectedBody extends StatelessWidget {
+  final String name;
+  final VoidCallback onStartMeasure;
+  final bool ko;
+  const _ConnectedBody({required this.name, required this.onStartMeasure, required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+      padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -240,7 +274,7 @@ class _ConnectedView extends StatelessWidget {
           Text(
             ko
                 ? '이제 당신의 공간을 알려주세요.'
-                : "Now let's teach it your room.",
+                : "Now let's create a sound profile for your room.",
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.45),
               fontSize: 15,
@@ -248,10 +282,10 @@ class _ConnectedView extends StatelessWidget {
             ),
           ),
 
-          const Spacer(),
+          const SizedBox(height: 32),
 
           _FullWidthButton(
-            label: ko ? '공간 측정 시작' : 'Start Room Measurement',
+            label: ko ? '공간 스캔 시작' : 'Start Room Scan',
             onTap: onStartMeasure,
           ),
         ],
