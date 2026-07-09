@@ -33,6 +33,24 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
   // Before/After 각각 이만큼 보여준 뒤 자동 전환 (요청: 1.5초씩)
   static const _loopInterval = Duration(milliseconds: 1500);
 
+  Future<void> _saveConsumerProfile(BuildContext context, WidgetRef ref) async {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final active = ref.read(activeConsumerProfileProvider);
+    if (active == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ko
+            ? '저장할 Sound Profile이 없습니다. 먼저 TUNE에서 Acoustic Tune을 만들어 주세요.'
+            : 'No Sound Profile to save. Create an Acoustic Tune in TUNE first.'),
+        duration: const Duration(seconds: 3),
+      ));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ko ? 'Sound Profile이 저장되었습니다.' : 'Sound Profile saved.'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
   void _setLoop(bool v) {
     setState(() => _loop = v);
     _timer?.cancel();
@@ -78,7 +96,10 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                 );
               }),
             ),
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: PresetBar(onSave: _saveConsumerProfile),
+            ),
             const SizedBox(height: 4),
             const _MasterVolumeSection(),
             const SizedBox(height: 4),

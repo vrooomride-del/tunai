@@ -16,7 +16,10 @@ import '../features/tune/preset_bar_provider.dart';
 /// 상단 프리셋 바 — [Factory] [My Tune] [AI Tune] [Near Wall] [Desk] [Studio]
 /// 기존 보드선택 칩 자리를 대체. MEASURE/AI/LISTEN/FINE TUNE 상단에 노출.
 class PresetBar extends ConsumerWidget {
-  const PresetBar({super.key});
+  /// Optional override for the bookmark/save button.
+  /// When provided, replaces the internal PRO tuning save logic.
+  final Future<void> Function(BuildContext context, WidgetRef ref)? onSave;
+  const PresetBar({super.key, this.onSave});
 
   List<ResonancePeak> _currentEffectivePeaks(WidgetRef ref) {
     final aiResult = ref.read(lastAiResultProvider);
@@ -191,7 +194,7 @@ class PresetBar extends ConsumerWidget {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: () => _save(context, ref),
+          onTap: () => onSave != null ? onSave!(context, ref) : _save(context, ref),
           child: Container(
             width: 40,
             height: 40,
