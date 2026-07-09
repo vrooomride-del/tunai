@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../core/sound_profile_store.dart';
+import '../../core/consumer_sound_profile.dart';
 import '../../main.dart' show currentTabIndexProvider;
 import '../health/speaker_health_screen.dart';
 import '../../shared/widgets.dart';
@@ -52,6 +53,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
     final snap = ref.watch(spectrumSnapshotProvider);
     final hasBefore = snap.before != null;
     final hasAfter = snap.afterAi != null;
+    final activeConsumer = ref.watch(activeConsumerProfileProvider);
 
     // 다른 탭으로 이동하면 Loop 자동 정지 — IndexedStack은 이 화면을 dispose하지
     // 않으므로 currentTabIndexProvider로 탭 이탈을 감지해야 한다.
@@ -82,9 +84,11 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: !hasBefore
-                    ? const _EmptyState()
-                    : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                child: !hasBefore && activeConsumer != null
+                    ? _ConsumerActiveView(profile: activeConsumer)
+                    : !hasBefore
+                        ? const _EmptyState()
+                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         const _CurrentProfileSection(),
                         const SizedBox(height: 16),
                         _AbToggle(
@@ -139,8 +143,11 @@ class _MasterVolumeSection extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Text('MASTER VOL',
-                  style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 3)),
+              Builder(builder: (ctx) {
+                final isKo = Localizations.localeOf(ctx).languageCode == 'ko';
+                return Text(isKo ? '마스터 볼륨' : 'MASTER VOL',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 3));
+              }),
               const SizedBox(width: 12),
               Text('${vol.toStringAsFixed(1)} dB',
                   style: const TextStyle(color: Colors.white70, fontSize: 11)),
@@ -307,17 +314,103 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
   Widget build(BuildContext context) {
-    return const SectionCard(
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    return SectionCard(
       child: Column(children: [
-        Icon(Icons.graphic_eq, color: Colors.white24, size: 32),
-        SizedBox(height: 12),
-        Text('No room profile yet.',
-            style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w300)),
-        SizedBox(height: 8),
-        Text('Run a Room Scan first, then create an Acoustic Tune.\nOriginal Sound and Acoustic Tune will appear here for comparison.',
-            style: TextStyle(color: Colors.white38, fontSize: 12, height: 1.6), textAlign: TextAlign.center),
+        const Icon(Icons.graphic_eq, color: Colors.white24, size: 32),
+        const SizedBox(height: 12),
+        Text(
+          ko ? '아직 사운드 프로파일이 없습니다.' : 'No Sound Profile yet.',
+          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w300),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          ko
+              ? 'Room Scan을 완료한 후 Acoustic Tune을 만들어보세요.\n원본 사운드와 Acoustic Tune을 여기서 비교할 수 있습니다.'
+              : 'Run a Room Scan first, then create an Acoustic Tune.\nOriginal Sound and Acoustic Tune will appear here for comparison.',
+          style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.6),
+          textAlign: TextAlign.center,
+        ),
       ]),
     );
+  }
+}
+
+// ── Consumer Sound Profile active view ───────────────────────────────────────
+
+class _ConsumerActiveView extends StatelessWidget {
+  final ConsumerSoundProfile profile;
+  const _ConsumerActiveView({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          border: Border.all(color: Colors.white24),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(
+              ko ? '현재 사운드 프로파일' : 'Current Sound Profile',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
+                border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.35)),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                ko ? '사용 중' : 'Active',
+                style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Text(profile.name,
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300)),
+          const SizedBox(height: 8),
+          Row(children: [
+            _MetaChipListen(text: profile.roomType),
+            const SizedBox(width: 8),
+            _MetaChipListen(text: ko ? '마이크: ${profile.micProfileName}' : 'Mic: ${profile.micProfileName}'),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 20),
+      Text(
+        ko ? '적용된 조정' : 'Applied adjustments',
+        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+      ),
+      const SizedBox(height: 12),
+      ...profile.resultCards.map((card) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 6, height: 6,
+                decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(card.label(ko: ko),
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w300)),
+          ]),
+          const SizedBox(height: 6),
+          Text(card.description(ko: ko),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5)),
+        ]),
+      )),
+    ]);
   }
 }
 
@@ -391,12 +484,13 @@ class _Legend extends StatelessWidget {
   const _Legend();
   @override
   Widget build(BuildContext context) {
-    return const Row(children: [
-      _LegendDot(color: Colors.white38, label: 'Original Sound'),
-      SizedBox(width: 16),
-      _LegendDot(color: Colors.greenAccent, label: 'Acoustic Tune'),
-      SizedBox(width: 16),
-      _LegendDot(color: Colors.lightBlueAccent, label: '현재'),
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    return Row(children: [
+      _LegendDot(color: Colors.white38, label: ko ? '원본 사운드' : 'Original Sound'),
+      const SizedBox(width: 16),
+      const _LegendDot(color: Colors.greenAccent, label: 'Acoustic Tune'),
+      const SizedBox(width: 16),
+      _LegendDot(color: Colors.lightBlueAccent, label: ko ? '현재' : 'Current'),
     ]);
   }
 }

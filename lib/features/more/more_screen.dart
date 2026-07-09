@@ -37,22 +37,34 @@ class MoreScreen extends ConsumerWidget {
                       );
                     }),
                   ),
-                  _MenuItem(label: 'PROFILE LIBRARY', description: 'Sound profiles for your rooms',
-                      icon: Icons.library_music_outlined,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryScreen()))),
-                  _MenuItem(label: 'FINE TUNE', description: 'Acoustic Tune 위에 취향을 더합니다.',
-                      icon: Icons.tune,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FineTuneScreen()))),
-                  _MenuItem(label: 'SYSTEM HEALTH', description: 'Speaker Protection · Volume Safety · Sound Profile',
-                      icon: Icons.health_and_safety_outlined,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()))),
-                  _MenuItem(label: 'COMMUNITY', description: '프리셋 공유 · 다운로드',
-                      icon: Icons.people_outline,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen()))),
+                  _MenuItem(
+                    label: 'PROFILE LIBRARY', labelKo: '프로파일 보관함',
+                    description: 'Sound profiles for your rooms', descriptionKo: '공간별 사운드 프로파일',
+                    icon: Icons.library_music_outlined,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryScreen())),
+                  ),
+                  _MenuItem(
+                    label: 'FINE TUNE', labelKo: '취향 조정',
+                    description: 'Add your personal touch to Acoustic Tune', descriptionKo: 'Acoustic Tune 위에 취향을 더합니다.',
+                    icon: Icons.tune,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FineTuneScreen())),
+                  ),
+                  _MenuItem(
+                    label: 'SYSTEM HEALTH', labelKo: '시스템 상태',
+                    description: 'Speaker protection · Volume safety', descriptionKo: '스피커 보호 · 볼륨 안전',
+                    icon: Icons.health_and_safety_outlined,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpeakerHealthScreen())),
+                  ),
+                  _MenuItem(
+                    label: 'COMMUNITY', labelKo: '커뮤니티',
+                    description: 'Share and discover sound profiles', descriptionKo: '프로파일 공유 · 탐색',
+                    icon: Icons.people_outline,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen())),
+                  ),
                   _TunaiProMenuItem(),
                   _MenuItem(
-                    label: 'ABOUT TUNAI',
-                    description: 'Our approach to room-matched sound',
+                    label: 'ABOUT TUNAI', labelKo: 'TUNAI 소개',
+                    description: 'Our approach to room-matched sound', descriptionKo: '공간 맞춤 소리에 대한 TUNAI의 철학',
                     icon: Icons.info_outline,
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutTunaiScreen())),
                   ),
@@ -84,13 +96,18 @@ class MoreScreen extends ConsumerWidget {
 
 class _MenuItem extends StatelessWidget {
   final String label;
+  final String? labelKo;
   final String description;
+  final String? descriptionKo;
   final IconData icon;
   final VoidCallback onTap;
-  const _MenuItem({required this.label, required this.description, required this.icon, required this.onTap});
+  const _MenuItem({required this.label, this.labelKo, required this.description, this.descriptionKo, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final displayLabel = ko && labelKo != null ? labelKo! : label;
+    final displayDesc = ko && descriptionKo != null ? descriptionKo! : description;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -102,9 +119,9 @@ class _MenuItem extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1)),
+              Text(displayLabel, style: const TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1)),
               const SizedBox(height: 2),
-              Text(description, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              Text(displayDesc, style: const TextStyle(color: Colors.white38, fontSize: 11)),
             ]),
           ),
           const Icon(Icons.chevron_right, color: Colors.white24, size: 18),

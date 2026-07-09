@@ -142,15 +142,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             ),
                           ],
 
-                          if (isConnected &&
-                              bState.detectedBoard == DetectedBoard.unknown) ...[
-                            const SizedBox(height: 24),
-                            const _BoardBanner(
-                              text: '보드를 자동으로 식별하지 못했습니다. ADVANCED에서 보드 종류를 직접 선택해 주세요.',
-                              color: Colors.white12,
-                              icon: Icons.help_outline,
-                            ),
-                          ],
                         ],
                       ),
                     ),

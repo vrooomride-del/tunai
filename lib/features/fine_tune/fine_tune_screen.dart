@@ -53,7 +53,9 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
     await ref.read(bleProvider.notifier).sendPackets(packets);
     if (mounted) setState(() => _applying = false);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${preset.label} 취향 APPLY 완료')));
+      final ko = Localizations.localeOf(context).languageCode == 'ko';
+      final name = ko ? preset.labelKo : preset.label;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ko ? '$name 취향 적용 완료' : '$name applied')));
     }
   }
 
@@ -61,6 +63,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
   Widget build(BuildContext context) {
     final selected = ref.watch(selectedTasteProvider);
     final isConnected = ref.watch(bleProvider).connection == BleConnectionState.connected;
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -96,7 +99,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
                         child: Row(children: [
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(preset.label,
+                              Text(ko ? preset.labelKo : preset.label,
                                   style: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 15, letterSpacing: 1)),
                               const SizedBox(height: 2),
                               Text(preset.description, style: const TextStyle(color: Colors.white38, fontSize: 12)),
@@ -109,7 +112,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
                   }),
                   const SizedBox(height: 16),
                   OutlineButton(
-                    label: _applying ? 'SENDING...' : 'APPLY',
+                    label: _applying ? (ko ? '적용 중...' : 'Sending...') : (ko ? '적용' : 'Apply'),
                     loading: _applying,
                     enabled: selected != null && isConnected && !_applying,
                     onTap: selected == null || !isConnected ? null : () => _apply(selected),

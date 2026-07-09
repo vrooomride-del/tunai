@@ -15,6 +15,16 @@ extension PresetBarSelectionLabel on PresetBarSelection {
         PresetBarSelection.desk => 'Desk',
         PresetBarSelection.studio => 'Studio',
       };
+
+  String get labelKo => switch (this) {
+        PresetBarSelection.factory => '기본',
+        PresetBarSelection.reference => 'Reference',
+        PresetBarSelection.aiTune => 'Acoustic Tune',
+        PresetBarSelection.myTune => 'My Tune',
+        PresetBarSelection.nearWall => '벽 가까이',
+        PresetBarSelection.desk => '책상 위',
+        PresetBarSelection.studio => 'Studio',
+      };
 }
 
 /// 배치 최적화 프리셋 — MEASURE의 위치 선택과 별개로, 측정 없이도 바로 적용 가능한 고정 EQ.

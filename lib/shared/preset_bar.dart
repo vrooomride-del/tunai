@@ -158,6 +158,7 @@ class PresetBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(presetBarSelectionProvider);
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
     return SizedBox(
       height: 40,
       child: Row(children: [
@@ -178,7 +179,7 @@ class PresetBar extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(20),
                       color: isSelected ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
                     ),
-                    child: Text(sel.label,
+                    child: Text(ko ? sel.labelKo : sel.label,
                         style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 1)),
                   ),
                 ),

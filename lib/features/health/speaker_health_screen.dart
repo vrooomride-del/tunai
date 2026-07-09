@@ -26,8 +26,8 @@ class SpeakerHealthScreen extends StatelessWidget {
     HealthCard(
       title: 'Sound Profile Safety',
       titleKo: '사운드 프로파일 안전성',
-      value: 'Verified',
-      valueKo: '검증됨',
+      value: 'Checked',
+      valueKo: '확인됨',
       subtitle: 'The current Sound Profile has been checked before playback.',
       subtitleKo: '현재 사운드 프로파일은 재생 전 안전성이 확인되었습니다.',
       icon: Icons.verified_outlined,
