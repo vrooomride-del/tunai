@@ -101,8 +101,13 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                         const SizedBox(height: 12),
                         SectionCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                            Text(_showAfter && hasAfter ? 'Acoustic Tune' : 'Original Sound',
-                                style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2)),
+                            Builder(builder: (ctx) {
+                              final ko = Localizations.localeOf(ctx).languageCode == 'ko';
+                              return Text(
+                                _showAfter && hasAfter ? 'Acoustic Tune' : (ko ? '기본 사운드' : 'Original Sound'),
+                                style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2),
+                              );
+                            }),
                             const SizedBox(height: 8),
                             SpectrumChart(
                               bins: (_showAfter && hasAfter ? snap.afterAi : snap.before) ?? const [],
@@ -427,7 +432,10 @@ class _AbToggle extends StatelessWidget {
     return Row(children: [
       Expanded(
         child: Row(children: [
-          Expanded(child: _AbButton(label: 'ORIGINAL SOUND', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false))),
+          Expanded(child: Builder(builder: (ctx) {
+            final ko = Localizations.localeOf(ctx).languageCode == 'ko';
+            return _AbButton(label: ko ? '기본 사운드' : 'ORIGINAL SOUND', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false));
+          })),
           const SizedBox(width: 8),
           Expanded(child: _AbButton(label: 'ACOUSTIC TUNE', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
         ]),

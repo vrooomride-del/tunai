@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,23 +62,24 @@ class FactoryScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'FACTORY'),
-            // Dev Simulation entry — hidden inside PIN-protected factory screen
-            GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DevSimulationScreen()),
+            // Dev Simulation — debug builds only, hidden behind PIN-protected factory screen
+            if (kDebugMode)
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DevSimulationScreen()),
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  color: const Color(0xFF080C10),
+                  child: const Row(children: [
+                    Icon(Icons.science_outlined, color: Color(0xFF4A9EFF), size: 14),
+                    SizedBox(width: 8),
+                    Text('Developer Simulation',
+                        style: TextStyle(color: Color(0xFF4A9EFF), fontSize: 11, letterSpacing: 1)),
+                  ]),
+                ),
               ),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                color: const Color(0xFF080C10),
-                child: const Row(children: [
-                  Icon(Icons.science_outlined, color: Color(0xFF4A9EFF), size: 14),
-                  SizedBox(width: 8),
-                  Text('Developer Simulation',
-                      style: TextStyle(color: Color(0xFF4A9EFF), fontSize: 11, letterSpacing: 1)),
-                ]),
-              ),
-            ),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

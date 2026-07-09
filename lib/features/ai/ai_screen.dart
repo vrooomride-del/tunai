@@ -348,7 +348,7 @@ class _StateE extends StatelessWidget {
                       Container(width: 8, height: 8,
                           decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
                       const SizedBox(width: 10),
-                      Text('Room Matched',
+                      Text(ko ? '공간 맞춤' : 'Room Matched',
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
                               fontSize: 11, letterSpacing: 1.5)),
                     ]),

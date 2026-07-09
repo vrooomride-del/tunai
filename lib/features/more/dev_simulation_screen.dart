@@ -1,6 +1,11 @@
 // ── Developer / QA Simulation Screen ─────────────────────────────────────────
 // Access: FACTORY MODE (PIN 1234) → "Developer Simulation" button.
 // NOT accessible from the normal consumer flow.
+// TODO(release): Guard the "Developer Simulation" entry in factory_screen.dart
+//   with `if (kDebugMode)` from 'dart:foundation' before any production release.
+//   Example in factory_screen.dart:
+//     import 'package:flutter/foundation.dart';
+//     if (kDebugMode) GestureDetector(onTap: ..., child: DevSimulation banner)
 // Simulates the full consumer state machine without real hardware:
 //   connected → roomSelected → roomScanCompleted
 //   → acousticTuneCreated → soundProfileActive → listenReady
