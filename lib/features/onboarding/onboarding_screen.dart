@@ -46,7 +46,7 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'Your room changes everything.',
     titleKo: '공간이 소리를 바꿉니다.',
-    subtitleEn: 'A speaker is not finished in the factory.\nIt becomes real in the room where you listen.',
+    subtitleEn: 'A speaker is not finished at the factory.\nIt becomes complete in the room where you listen.',
     subtitleKo: '스피커는 공장에서 끝나지 않습니다.\n당신이 듣는 방에서 다시 완성됩니다.',
     btnEn: 'Continue',
     btnKo: '계속',
@@ -54,15 +54,15 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'TUNAI learns your space.',
     titleKo: 'TUNAI가 공간을 이해합니다.',
-    subtitleEn: 'Room Scan helps TUNAI understand how sound behaves around your speaker and your listening position.',
-    subtitleKo: 'Room Scan은 스피커와 청취 위치 주변에서\n소리가 어떻게 달라지는지 파악합니다.',
+    subtitleEn: 'Room Scan listens to how sound behaves around your speaker and your listening position.',
+    subtitleKo: 'Room Scan은 스피커와 청취 위치 주변의\n소리 변화를 파악합니다.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),
   _OnboardingPage(
     titleEn: 'Better sound,\nwithout the complexity.',
     titleKo: '복잡한 설정 없이,\n더 좋은 소리.',
-    subtitleEn: 'Acoustic Tune creates a safe, room-matched sound profile so you can simply listen.',
+    subtitleEn: 'Acoustic Tune creates a safe, room-matched Sound Profile so you can simply listen.',
     subtitleKo: 'Acoustic Tune은 공간에 맞는 안전한 사운드 프로파일을 만들고,\n사용자는 그저 음악을 들으면 됩니다.',
     btnEn: 'Get Started',
     btnKo: '시작하기',

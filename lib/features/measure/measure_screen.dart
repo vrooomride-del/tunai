@@ -5,30 +5,49 @@ import '../ble/ble_controller.dart';
 import '../../core/speaker_profile.dart';
 import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
+import '../../core/mic_calibration_service.dart';
+import '../../core/room_scan_result.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 
-/// MEASURE 탭 — 공간 측정 UX.
-/// 측정 완료 시 [onMeasured]로 AI 탭 자동 전환을 요청한다.
-class MeasureScreen extends ConsumerWidget {
+/// ROOM 탭 — 공간 측정 UX.
+/// 측정 완료 시 [onMeasured]로 TUNE 탭 자동 전환을 요청한다.
+class MeasureScreen extends ConsumerStatefulWidget {
   final VoidCallback onMeasured;
   const MeasureScreen({super.key, required this.onMeasured});
+  @override
+  ConsumerState<MeasureScreen> createState() => _MeasureScreenState();
+}
 
-  bool _isKo(BuildContext ctx) =>
-      Localizations.localeOf(ctx).languageCode == 'ko';
+class _MeasureScreenState extends ConsumerState<MeasureScreen> {
+  // true = show Mic Check card before scan starts
+  bool _showMicCheck = false;
+
+  bool get _isKo => Localizations.localeOf(context).languageCode == 'ko';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final mState = ref.watch(measurementProvider);
     final bState = ref.watch(bleProvider);
-    final ko = _isKo(context);
+    final ko = _isKo;
 
     ref.listen<MeasurementState>(measurementProvider, (prev, next) {
       if (next.step == MeasurementStep.done && prev?.step != MeasurementStep.done) {
         if (next.scmsBins.isNotEmpty) {
           ref.read(spectrumSnapshotProvider.notifier).setBefore(next.scmsBins);
         }
-        onMeasured();
+        // Save consumer result cards
+        final location = ref.read(installLocationProvider);
+        final micAsync = ref.read(micCalibrationProfileProvider);
+        final micName = micAsync.valueOrNull?.profileName ?? 'Generic Phone Mic';
+        ref.read(roomScanResultProvider.notifier).saveResult(RoomScanResult(
+          roomType: location?.labelEn ?? 'Living Room',
+          micProfileName: micName,
+          completedAt: DateTime.now(),
+          confidence: 'Medium',
+          cards: kDefaultResultCards,
+        ));
+        widget.onMeasured();
       }
     });
 
@@ -37,28 +56,39 @@ class MeasureScreen extends ConsumerWidget {
         && step != MeasurementStep.done && step != MeasurementStep.error;
     final isConnected = bState.connection == BleConnectionState.connected;
 
-    // 측정 중 → 진행 화면
-    if (isRunning) {
-      return _MeasuringView(mState: mState, ko: ko);
-    }
+    if (isRunning) return _MeasuringView(mState: mState, ko: ko);
 
-    // 측정 완료 → 결과 화면 (onMeasured로 AI 탭 이동 전까지 잠깐 표시)
     if (step == MeasurementStep.done) {
       return _ResultView(
         mState: mState,
         ko: ko,
-        onOptimize: onMeasured,
-        onReMeasure: () => ref.read(measurementProvider.notifier).reset(),
+        onOptimize: widget.onMeasured,
+        onReMeasure: () {
+          ref.read(measurementProvider.notifier).reset();
+          setState(() => _showMicCheck = false);
+        },
       );
     }
 
-    // 측정 대기 → Ready 화면
+    // ── Ready state — show Mic Check or main ready screen ──────────────────
+    if (_showMicCheck) {
+      return _MicCheckView(
+        ko: ko,
+        onContinue: () {
+          setState(() => _showMicCheck = false);
+          ref.read(measurementProvider.notifier).startMeasurement(
+            speakerProfile: ref.read(speakerProfileProvider),
+          );
+        },
+        onBack: () => setState(() => _showMicCheck = false),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Column(
           children: [
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -89,42 +119,48 @@ class MeasureScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 40),
                     const _LocationPicker(),
+                    const SizedBox(height: 20),
+                    // Mic status card
+                    _MicStatusCard(ko: ko),
                     if (!isConnected) ...[
-                      const SizedBox(height: 20),
-                      Text(
-                        ko ? '스피커를 먼저 연결해주세요 (CONNECT 탭)' : 'Connect your speaker first (CONNECT tab)',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          fontSize: 12,
-                          letterSpacing: 0.5,
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white12),
+                          borderRadius: BorderRadius.circular(6),
                         ),
+                        child: Row(children: [
+                          const Icon(Icons.bluetooth_disabled, color: Colors.white24, size: 16),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              ko
+                                  ? '스피커를 먼저 연결해주세요 (CONNECT 탭)'
+                                  : 'Connect your speaker first (CONNECT tab)',
+                              style: const TextStyle(color: Colors.white38, fontSize: 12),
+                            ),
+                          ),
+                        ]),
                       ),
                     ],
                     if (step == MeasurementStep.error && mState.error != null) ...[
                       const SizedBox(height: 16),
-                      Text(
-                        mState.error!,
-                        style: const TextStyle(color: Color(0xFFFF5252), fontSize: 13, height: 1.5),
-                      ),
+                      Text(mState.error!,
+                          style: const TextStyle(color: Color(0xFFFF5252), fontSize: 13, height: 1.5)),
                     ],
                     const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
-
-            // ── 하단 버튼 ────────────────────────────────────────────
+            // ── 하단 버튼 ────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
-              child: _MeasureButton(
-                ko: ko,
-                isConnected: isConnected,
+              child: _BigButton(
+                label: ko ? '공간 스캔 시작' : 'Start Room Scan',
                 onTap: isConnected
-                    ? () => ref
-                        .read(measurementProvider.notifier)
-                        .startMeasurement(
-                          speakerProfile: ref.read(speakerProfileProvider),
-                        )
+                    ? () => setState(() => _showMicCheck = true)
                     : null,
               ),
             ),
@@ -135,7 +171,183 @@ class MeasureScreen extends ConsumerWidget {
   }
 }
 
-// ── 측정 진행 화면 (Screen 7) ─────────────────────────────────────────────────
+// ── Mic Check step ─────────────────────────────────────────────────────────────
+class _MicCheckView extends ConsumerWidget {
+  final bool ko;
+  final VoidCallback onContinue;
+  final VoidCallback onBack;
+  const _MicCheckView({required this.ko, required this.onContinue, required this.onBack});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final micAsync = ref.watch(micCalibrationProfileProvider);
+    final mic = micAsync.valueOrNull;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ko ? '휴대폰 마이크 확인' : 'Phone Mic Check',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w300,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    // Mic status
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          const Icon(Icons.mic, color: Colors.white54, size: 16),
+                          const SizedBox(width: 10),
+                          Text(
+                            mic != null
+                                ? mic.statusLabel(ko: ko)
+                                : (ko ? '마이크 확인 중...' : 'Checking microphone...'),
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ]),
+                        if (mic != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            mic.confidenceLabel(ko: ko),
+                            style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          ),
+                        ],
+                      ]),
+                    ),
+                    const SizedBox(height: 28),
+                    // Instructions
+                    _Instruction(
+                      icon: Icons.place_outlined,
+                      text: ko
+                          ? '휴대폰을 청취 위치에 놓아주세요.'
+                          : 'Place your phone at the listening position.',
+                    ),
+                    _Instruction(
+                      icon: Icons.back_hand_outlined,
+                      text: ko
+                          ? '마이크를 손으로 가리지 마세요.'
+                          : 'Keep the microphone uncovered.',
+                    ),
+                    _Instruction(
+                      icon: Icons.volume_off_outlined,
+                      text: ko
+                          ? '가능한 조용한 상태에서 진행해 주세요.'
+                          : 'Make the room as quiet as possible.',
+                    ),
+                    const SizedBox(height: 32),
+                    // Noise level placeholder
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.sensors, color: Colors.white24, size: 14),
+                        const SizedBox(width: 10),
+                        Text(
+                          ko ? '주변 소음 감지 — 준비 중' : 'Ambient noise detection — coming soon',
+                          style: const TextStyle(color: Colors.white24, fontSize: 11),
+                        ),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+              child: _BigButton(
+                label: ko ? '공간 스캔 시작' : 'Start Room Scan',
+                onTap: onContinue,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+              child: GestureDetector(
+                onTap: onBack,
+                child: Center(
+                  child: Text(
+                    ko ? '뒤로' : 'Back',
+                    style: const TextStyle(color: Colors.white30, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Instruction extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _Instruction({required this.icon, required this.text});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: Colors.white38, size: 16),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Text(text,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6), fontSize: 13, height: 1.5)),
+      ),
+    ]),
+  );
+}
+
+// ── Mic status compact card for the Ready screen ───────────────────────────────
+class _MicStatusCard extends ConsumerWidget {
+  final bool ko;
+  const _MicStatusCard({required this.ko});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final micAsync = ref.watch(micCalibrationProfileProvider);
+    return micAsync.when(
+      data: (mic) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(children: [
+          const Icon(Icons.mic, color: Colors.white38, size: 14),
+          const SizedBox(width: 10),
+          Expanded(child: Text(
+            mic.statusLabel(ko: ko),
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          )),
+        ]),
+      ),
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
+// ── 측정 진행 화면 ─────────────────────────────────────────────────────────────
 class _MeasuringView extends StatefulWidget {
   final MeasurementState mState;
   final bool ko;
@@ -230,8 +442,8 @@ class _MeasuringViewState extends State<_MeasuringView> {
   }
 }
 
-// ── 측정 결과 화면 (Screen 8) ─────────────────────────────────────────────────
-class _ResultView extends StatelessWidget {
+// ── 측정 결과 화면 ─────────────────────────────────────────────────────────────
+class _ResultView extends ConsumerWidget {
   final MeasurementState mState;
   final bool ko;
   final VoidCallback onOptimize;
@@ -244,21 +456,9 @@ class _ResultView extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final peaks = mState.peaks;
-    // placeholder 결과 카드 (peaks 없으면 기본 설명)
-    final findings = peaks.isNotEmpty
-        ? peaks
-            .take(3)
-            .map((p) => ko
-                ? '${p.frequency.toStringAsFixed(0)}Hz 부근 ${p.gain < 0 ? '딥' : '피크'} ${p.gain.toStringAsFixed(1)}dB 감지'
-                : '${p.gain < 0 ? 'Dip' : 'Peak'} of ${p.gain.toStringAsFixed(1)}dB near ${p.frequency.toStringAsFixed(0)}Hz')
-            .toList()
-        : [
-            ko ? '90Hz 부근 저역 부밍 감지' : 'Bass buildup near 90Hz',
-            ko ? '180Hz 부근 책상 반사 감지' : 'Desk reflection around 180Hz',
-            ko ? '좌우 밸런스 차이 감지' : 'Left/right balance difference',
-          ];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final result = ref.watch(roomScanResultProvider);
+    final cards = result?.cards ?? kDefaultResultCards;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -284,7 +484,8 @@ class _ResultView extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 36),
-                    ...findings.map((f) => _FindingCard(text: f)),
+                    // Consumer result cards — no DSP/PEQ/frequency graph
+                    ...cards.map((card) => _ResultCard(card: card, ko: ko)),
                     if (mState.scmsBins.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       SpectrumChart(bins: mState.scmsBins, peaks: mState.peaks),
@@ -322,54 +523,29 @@ class _ResultView extends StatelessWidget {
   }
 }
 
-class _FindingCard extends StatelessWidget {
-  final String text;
-  const _FindingCard({required this.text});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.white12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.5),
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13, height: 1.4),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-// ── 공용 위젯 ─────────────────────────────────────────────────────────────────
-class _MeasureButton extends StatelessWidget {
+class _ResultCard extends StatelessWidget {
+  final RoomScanResultCard card;
   final bool ko;
-  final bool isConnected;
-  final VoidCallback? onTap;
-  const _MeasureButton({required this.ko, required this.isConnected, this.onTap});
+  const _ResultCard({required this.card, required this.ko});
   @override
-  Widget build(BuildContext context) {
-    return _BigButton(
-      label: ko ? '공간 스캔 시작' : 'Start Room Scan',
-      onTap: onTap,
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    decoration: BoxDecoration(
+      border: Border.all(color: Colors.white12),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(card.label(ko: ko),
+          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w400)),
+      const SizedBox(height: 4),
+      Text(card.description(ko: ko),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12, height: 1.4)),
+    ]),
+  );
 }
 
+// ── 공용 위젯 ──────────────────────────────────────────────────────────────────
 class _BigButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
@@ -401,7 +577,6 @@ class _BigButton extends StatelessWidget {
   }
 }
 
-/// 🏠 설치 위치를 먼저 선택 — 방이 Driver보다 중요하다
 class _LocationPicker extends ConsumerWidget {
   const _LocationPicker();
 
@@ -411,9 +586,13 @@ class _LocationPicker extends ConsumerWidget {
     final ko = Localizations.localeOf(context).languageCode == 'ko';
     return SectionCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('스피커가 놓인 공간을 알려주세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 0.5)),
+        Text(
+          ko ? '스피커가 놓인 공간을 알려주세요' : 'Where is your speaker?',
+          style: const TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 0.5),
+        ),
         const SizedBox(height: 4),
-        const Text('이 정보는 공간에 맞는 사운드를 준비하는 데 사용됩니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+        const Text('이 정보는 공간에 맞는 사운드를 준비하는 데 사용됩니다.',
+            style: TextStyle(color: Colors.white38, fontSize: 11)),
         const SizedBox(height: 12),
         ...InstallLocation.values.map((loc) {
           final isSelected = selected == loc;
@@ -431,7 +610,9 @@ class _LocationPicker extends ConsumerWidget {
                 Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                     color: isSelected ? Colors.white : Colors.white24, size: 16),
                 const SizedBox(width: 10),
-                Text(ko ? loc.label : loc.labelEn, style: TextStyle(color: isSelected ? Colors.white : Colors.white60, fontSize: 13)),
+                Text(ko ? loc.label : loc.labelEn,
+                    style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.white60, fontSize: 13)),
               ]),
             ),
           );
@@ -454,4 +635,3 @@ class _LocationPicker extends ConsumerWidget {
     );
   }
 }
-

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../fine_tune/fine_tune_screen.dart';
-import '../advanced/advanced_screen.dart';
 import '../community/community_screen.dart';
 import '../library/library_screen.dart';
 import '../health/speaker_health_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_screen.dart';
 import 'factory_screen.dart';
+import 'about_tunai_screen.dart';
 import '../../shared/widgets.dart';
 
 /// MORE 탭 — FINE TUNE / ADVANCED / COMMUNITY / LIBRARY / PROFILE 진입점 메뉴.
@@ -49,9 +49,13 @@ class MoreScreen extends ConsumerWidget {
                   _MenuItem(label: 'COMMUNITY', description: '프리셋 공유 · 다운로드',
                       icon: Icons.people_outline,
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen()))),
-                  _MenuItem(label: 'TUNAI PRO', description: 'Advanced tuning — coming soon',
-                      icon: Icons.settings_input_component_outlined,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdvancedScreen()))),
+                  _TunaiProMenuItem(),
+                  _MenuItem(
+                    label: 'ABOUT TUNAI',
+                    description: 'Our approach to room-matched sound',
+                    icon: Icons.info_outline,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutTunaiScreen())),
+                  ),
                   const Divider(color: Colors.white12, height: 32),
                   _FactoryMenuItem(),
                   const SizedBox(height: 10),
@@ -110,6 +114,73 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
+
+/// TUNAI PRO — intentionally disabled "coming soon" menu item
+class _TunaiProMenuItem extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    return GestureDetector(
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('TUNAI PRO',
+              style: TextStyle(color: Colors.white, fontSize: 15, letterSpacing: 2)),
+          content: Text(
+            ko
+                ? 'TUNAI PRO는 추후 제공될 예정입니다.'
+                : 'TUNAI PRO will be available in a later release.',
+            style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.6),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('확인', style: TextStyle(color: Colors.white70)),
+            ),
+          ],
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(children: [
+          const Icon(Icons.settings_input_component_outlined, color: Colors.white24, size: 20),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Text('TUNAI PRO',
+                    style: TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 1)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white12),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    ko ? '준비 중' : 'coming soon',
+                    style: const TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 0.5),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 2),
+              Text(
+                ko ? '고급 음향 튜닝' : 'Advanced acoustic tuning',
+                style: const TextStyle(color: Colors.white24, fontSize: 11),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
 
 /// FACTORY MODE 항목 — PIN 입력 후 FactoryScreen으로 이동
 class _FactoryMenuItem extends StatelessWidget {
