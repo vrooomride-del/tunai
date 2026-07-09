@@ -187,12 +187,23 @@ class _Field extends StatelessWidget {
   final TextInputType? keyboardType;
   const _Field({required this.label, required this.controller, this.obscure = false, this.keyboardType});
 
+  String _displayLabel(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    if (!ko) return label;
+    return switch (label) {
+      'EMAIL' => '이메일',
+      'PASSWORD' => '비밀번호',
+      'NICKNAME' => '닉네임',
+      _ => label,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+        Text(_displayLabel(context), style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
         const SizedBox(height: 8),
         TextField(
           controller: controller,

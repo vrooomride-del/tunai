@@ -7,6 +7,7 @@ import '../../core/first_run_state.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../shared/widgets.dart';
 import 'dsp_unlock_flags.dart';
+import 'dev_simulation_screen.dart';
 
 // ── ADAU1466 주소 상수 (v0.8B Export18) ────────────────────────────────────
 const _kDriverGainAddrs = [0x3B8, 0x3BB, 0x3C4, 0x3CA, 0x3C7, 0x3CD];
@@ -60,6 +61,23 @@ class FactoryScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'FACTORY'),
+            // Dev Simulation entry — hidden inside PIN-protected factory screen
+            GestureDetector(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DevSimulationScreen()),
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                color: const Color(0xFF080C10),
+                child: const Row(children: [
+                  Icon(Icons.science_outlined, color: Color(0xFF4A9EFF), size: 14),
+                  SizedBox(width: 8),
+                  Text('Developer Simulation',
+                      style: TextStyle(color: Color(0xFF4A9EFF), fontSize: 11, letterSpacing: 1)),
+                ]),
+              ),
+            ),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
