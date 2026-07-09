@@ -260,7 +260,7 @@ class _CurrentProfileSection extends ConsumerWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              ko ? '적용됨' : 'Room Matched',
+              ko ? '공간 맞춤' : 'Room Matched',
               style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
             ),
           ),

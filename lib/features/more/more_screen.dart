@@ -203,6 +203,7 @@ class _TunaiProMenuItem extends StatelessWidget {
 class _FactoryMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
     return GestureDetector(
       onTap: () => _showPinDialog(context),
       child: Container(
@@ -210,19 +211,19 @@ class _FactoryMenuItem extends StatelessWidget {
         decoration: BoxDecoration(
             border: Border.all(color: Colors.white12),
             borderRadius: BorderRadius.circular(8)),
-        child: const Row(children: [
-          Icon(Icons.settings_suggest_outlined, color: Colors.white24, size: 20),
-          SizedBox(width: 14),
+        child: Row(children: [
+          const Icon(Icons.settings_suggest_outlined, color: Colors.white24, size: 20),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('FACTORY MODE',
-                  style: TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 1)),
-              SizedBox(height: 2),
-              Text('고급 스피커 설정 (PIN 보호)',
-                  style: TextStyle(color: Colors.white24, fontSize: 11)),
+              Text(ko ? '팩토리 모드' : 'FACTORY MODE',
+                  style: const TextStyle(color: Colors.white54, fontSize: 14, letterSpacing: 1)),
+              const SizedBox(height: 2),
+              Text(ko ? '고급 스피커 설정 (PIN 보호)' : 'Advanced speaker settings (PIN protected)',
+                  style: const TextStyle(color: Colors.white24, fontSize: 11)),
             ]),
           ),
-          Icon(Icons.lock_outline, color: Colors.white24, size: 16),
+          const Icon(Icons.lock_outline, color: Colors.white24, size: 16),
         ]),
       ),
     );

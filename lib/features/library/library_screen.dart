@@ -176,7 +176,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const TunaiTopBar(subtitle: 'PROFILE LIBRARY'),
+            TunaiTopBar(subtitle: ko ? '프로파일 보관함' : 'PROFILE LIBRARY'),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),

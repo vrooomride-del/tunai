@@ -69,7 +69,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const TunaiTopBar(subtitle: 'FINE TUNE'),
+            TunaiTopBar(subtitle: ko ? '취향 조정' : 'FINE TUNE'),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: PresetBar()),
             const SizedBox(height: 8),
             Expanded(

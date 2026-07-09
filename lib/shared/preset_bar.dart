@@ -180,6 +180,8 @@ class PresetBar extends ConsumerWidget {
                       color: isSelected ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
                     ),
                     child: Text(ko ? sel.labelKo : sel.label,
+                        overflow: TextOverflow.visible,
+                        softWrap: false,
                         style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 1)),
                   ),
                 ),
