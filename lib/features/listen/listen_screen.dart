@@ -386,9 +386,9 @@ class _ConsumerActiveView extends ConsumerWidget {
               style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300)),
           const SizedBox(height: 8),
           Row(children: [
-            _MetaChipListen(text: profile.roomType),
+            _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
             const SizedBox(width: 8),
-            _MetaChipListen(text: ko ? '마이크: ${profile.micProfileName}' : 'Mic: ${profile.micProfileName}'),
+            _MetaChipListen(text: ko ? '마이크: ${profile.micLabel(ko)}' : 'Mic: ${profile.micLabel(ko)}'),
           ]),
         ]),
       ),
@@ -432,7 +432,7 @@ class _ConsumerActiveView extends ConsumerWidget {
             Expanded(
               child: Text(
                 ko
-                    ? 'Sound Profile은 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                    ? 'Sound Profile이 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
                     : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
                 style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
               ),

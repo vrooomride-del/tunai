@@ -79,6 +79,29 @@ class ConsumerSoundProfile {
       );
 }
 
+// ── UI label helpers (stored values are English) ─────────────────────────────
+
+String roomTypeLabelKo(String roomType) => switch (roomType) {
+      'Living Room' => '거실',
+      'Desk' => '책상 위',
+      'Near Wall' => '벽 가까이',
+      'Studio' => '작업실',
+      'Custom' => '직접 설정',
+      _ => roomType,
+    };
+
+String micProfileLabelKo(String micProfileName) => switch (micProfileName) {
+      'Generic Phone Mic' => '기본 휴대폰 마이크',
+      _ => micProfileName,
+    };
+
+extension ConsumerSoundProfileLabels on ConsumerSoundProfile {
+  String get roomTypeLabel => roomTypeLabelKo(roomType);
+  String get roomTypeLabelEn => roomType;
+  String micLabel(bool ko) =>
+      ko ? micProfileLabelKo(micProfileName) : micProfileName;
+}
+
 const _kKey = 'tunai_consumer_sound_profiles';
 
 class ConsumerSoundProfileNotifier

@@ -281,7 +281,7 @@ class _ConsumerProfileCard extends StatelessWidget {
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            _MetaChip(text: profile.roomType),
+            _MetaChip(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
             const SizedBox(width: 8),
             _MetaChip(text: profile.confidence),
             const SizedBox(width: 8),

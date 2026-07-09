@@ -25,8 +25,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     await Future.delayed(const Duration(milliseconds: 2600));
     if (!mounted) return;
     final ko = _isKo;
-    final roomLabel = ko ? scan.roomType : scan.roomType;
-    final name = ko ? '$roomLabel Acoustic Tune' : '$roomLabel Acoustic Tune';
+    final roomLabel = ko ? roomTypeLabelKo(scan.roomType) : scan.roomType;
+    final name = '$roomLabel Acoustic Tune';
     final profile = ConsumerSoundProfile(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -273,9 +273,9 @@ class _ScanSummaryCard extends StatelessWidget {
                 fontSize: 10, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         Row(children: [
-          _ScanChip(text: scan.roomType),
+          _ScanChip(text: ko ? roomTypeLabelKo(scan.roomType) : scan.roomType),
           const SizedBox(width: 8),
-          _ScanChip(text: ko ? '마이크: ${scan.micProfileName}' : 'Mic: ${scan.micProfileName}'),
+          _ScanChip(text: ko ? '마이크: ${micProfileLabelKo(scan.micProfileName)}' : 'Mic: ${scan.micProfileName}'),
         ]),
       ]),
     );
@@ -575,7 +575,7 @@ class _ConnectionNotice extends StatelessWidget {
         Expanded(
           child: Text(
             ko
-                ? 'Sound Profile은 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                ? 'Sound Profile이 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
                 : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
             style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
           ),
