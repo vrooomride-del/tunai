@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/audio_analyzer.dart';
+import '../../core/consumer_sound_profile.dart';
 import '../../core/sound_profile_store.dart';
 import '../ble/ble_controller.dart';
 import '../dsp/dsp_compiler.dart';
@@ -170,6 +171,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget build(BuildContext context) {
     final ko = _isKo(context);
     final profiles = ref.watch(soundProfileStoreProvider);
+    final consumerProfiles = ref.watch(consumerSoundProfileProvider);
+
+    final hasAny = profiles.isNotEmpty || consumerProfiles.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -181,27 +185,130 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
                 children: [
-                  if (profiles.isEmpty) ...[
+                  if (!hasAny) ...[
                     const SizedBox(height: 60),
                     _EmptyLibraryState(ko: ko, onGoToRoomScan: widget.onGoToRoomScan),
                   ] else ...[
-                    Text(
-                      ko ? '내 사운드 프로파일' : 'My Sound Profiles',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
-                    ),
-                    const SizedBox(height: 12),
-                    ...profiles.reversed.map((p) => _ProfileCard(
-                          profile: p,
-                          ko: ko,
-                          onTap: () => _showActions(p),
-                          onApply: () => _applyProfile(p),
-                        )),
+                    // ── Consumer Sound Profiles (from Acoustic Tune flow) ──
+                    if (consumerProfiles.isNotEmpty) ...[
+                      Text(
+                        ko ? 'Acoustic Tune 프로파일' : 'Acoustic Tune Profiles',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 12),
+                      ...consumerProfiles.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                      if (profiles.isNotEmpty) const SizedBox(height: 20),
+                    ],
+                    // ── PRO Sound Profiles (from advanced tuning) ─────────
+                    if (profiles.isNotEmpty) ...[
+                      Text(
+                        ko ? '고급 사운드 프로파일' : 'Advanced Sound Profiles',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 12),
+                      ...profiles.reversed.map((p) => _ProfileCard(
+                            profile: p,
+                            ko: ko,
+                            onTap: () => _showActions(p),
+                            onApply: () => _applyProfile(p),
+                          )),
+                    ],
                   ],
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Consumer Profile Card ─────────────────────────────────────────────────────
+
+class _ConsumerProfileCard extends StatelessWidget {
+  final ConsumerSoundProfile profile;
+  final bool ko;
+  const _ConsumerProfileCard({required this.profile, required this.ko});
+
+  String _statusLabel(bool ko) {
+    switch (profile.status) {
+      case ConsumerProfileStatus.active:
+        return ko ? '사용 중' : 'Active';
+      case ConsumerProfileStatus.ready:
+        return ko ? '준비됨' : 'Ready';
+      case ConsumerProfileStatus.draft:
+        return ko ? '초안' : 'Draft';
+    }
+  }
+
+  Color get _statusColor => profile.status == ConsumerProfileStatus.active
+      ? const Color(0xFF69F0AE)
+      : Colors.white38;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: profile.isActive ? Colors.white.withValues(alpha: 0.04) : const Color(0xFF111111),
+        border: Border.all(color: profile.isActive ? Colors.white24 : Colors.white.withValues(alpha: 0.09)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                profile.name,
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _statusColor.withValues(alpha: 0.12),
+                border: Border.all(color: _statusColor.withValues(alpha: 0.35)),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _statusLabel(ko),
+                style: TextStyle(color: _statusColor, fontSize: 9, letterSpacing: 1),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            _MetaChip(text: profile.roomType),
+            const SizedBox(width: 8),
+            _MetaChip(text: profile.confidence),
+            const SizedBox(width: 8),
+            _MetaChip(text: ko ? 'Acoustic Tune' : 'Acoustic Tune'),
+          ]),
+          if (profile.resultCards.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...profile.resultCards.take(2).map((card) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(children: [
+                Container(width: 5, height: 5,
+                    decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Text(card.label(ko: ko),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+              ]),
+            )),
+            if (profile.resultCards.length > 2)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 13),
+                child: Text(
+                  ko ? '+${profile.resultCards.length - 2}개 더' : '+${profile.resultCards.length - 2} more',
+                  style: const TextStyle(color: Colors.white24, fontSize: 10),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }

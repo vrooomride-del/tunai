@@ -12,6 +12,7 @@ import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
 import '../dsp/master_volume_controller.dart';
+import '../ble/ble_controller.dart';
 /// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
 /// Loop를 자동 정지하기 위해 필요
 const _kListenTabIndex = 3;
@@ -343,13 +344,15 @@ class _EmptyState extends StatelessWidget {
 
 // ── Consumer Sound Profile active view ───────────────────────────────────────
 
-class _ConsumerActiveView extends StatelessWidget {
+class _ConsumerActiveView extends ConsumerWidget {
   final ConsumerSoundProfile profile;
   const _ConsumerActiveView({required this.profile});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final ble = ref.watch(bleProvider);
+    final isConnected = ble.connection == BleConnectionState.connected;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -415,6 +418,28 @@ class _ConsumerActiveView extends StatelessWidget {
               style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5)),
         ]),
       )),
+      if (!isConnected) ...[
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(children: [
+            const Icon(Icons.bluetooth_disabled, color: Colors.white24, size: 14),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                ko
+                    ? 'Sound Profile은 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                    : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
+                style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
+              ),
+            ),
+          ]),
+        ),
+      ],
     ]);
   }
 }

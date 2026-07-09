@@ -55,8 +55,9 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     final scan = ref.watch(roomScanResultProvider);
     final profiles = ref.watch(consumerSoundProfileProvider);
     final active = ref.watch(activeConsumerProfileProvider);
+    final isConnected = ble.connection == BleConnectionState.connected;
 
-    // State F — active profile exists
+    // State F — active profile exists (shown regardless of BLE connection)
     if (active != null) {
       return _StateF(ko: ko, profile: active, onGoListen: widget.onApplied,
           onReset: () async {
@@ -64,34 +65,45 @@ class _AiScreenState extends ConsumerState<AiScreen> {
           });
     }
 
-    // State A — not connected
-    if (ble.connection != BleConnectionState.connected) {
+    // State A — no BLE AND no scan data: show connection prompt.
+    // If scan already exists (e.g. from simulation), skip past State A.
+    if (!isConnected && scan == null) {
       return _StateA(ko: ko, onGoConnect: widget.onGoTo != null ? () => widget.onGoTo!(0) : null);
     }
 
-    // State B — no room scan
+    // State B — BLE connected but no scan yet
     if (scan == null) {
       return _StateB(ko: ko, onGoRoom: widget.onGoTo != null ? () => widget.onGoTo!(1) : null);
     }
 
-    // State D — creating
+    // State D — creating in progress
     if (_creating) {
       return _StateD(ko: ko);
     }
 
-    // State E — ready profile exists (not yet active)
+    // State E — ready profile exists (not yet active); visible even without BLE
     final ready = profiles.where((p) => p.status == ConsumerProfileStatus.ready).toList();
     if (ready.isNotEmpty) {
-      return _StateE(ko: ko, profile: ready.first, scan: scan,
-          onApply: () => _applyProfile(ready.first));
+      return _StateE(
+        ko: ko,
+        profile: ready.first,
+        scan: scan,
+        isConnected: isConnected,
+        onApply: () => _applyProfile(ready.first),
+      );
     }
 
-    // State C — room scan done, no profile yet
-    return _StateC(ko: ko, scan: scan, onCreate: () => _createTune(scan));
+    // State C — scan done, no profile yet; visible even without BLE
+    return _StateC(
+      ko: ko,
+      scan: scan,
+      isConnected: isConnected,
+      onCreate: () => _createTune(scan),
+    );
   }
 }
 
-// ── State A — No device ───────────────────────────────────────────────────────
+// ── State A — No device, no scan ─────────────────────────────────────────────
 
 class _StateA extends StatelessWidget {
   final bool ko;
@@ -181,7 +193,8 @@ class _StateC extends StatelessWidget {
   final bool ko;
   final RoomScanResult scan;
   final VoidCallback onCreate;
-  const _StateC({required this.ko, required this.scan, required this.onCreate});
+  final bool isConnected;
+  const _StateC({required this.ko, required this.scan, required this.onCreate, this.isConnected = true});
 
   @override
   Widget build(BuildContext context) {
@@ -219,6 +232,10 @@ class _StateC extends StatelessWidget {
                     ),
                     const SizedBox(height: 32),
                     _ScanSummaryCard(ko: ko, scan: scan),
+                    if (!isConnected) ...[
+                      const SizedBox(height: 16),
+                      _ConnectionNotice(ko: ko),
+                    ],
                   ],
                 ),
               ),
@@ -329,7 +346,9 @@ class _StateE extends StatelessWidget {
   final ConsumerSoundProfile profile;
   final RoomScanResult scan;
   final VoidCallback onApply;
-  const _StateE({required this.ko, required this.profile, required this.scan, required this.onApply});
+  final bool isConnected;
+  const _StateE({required this.ko, required this.profile, required this.scan,
+      required this.onApply, this.isConnected = true});
 
   @override
   Widget build(BuildContext context) {
@@ -376,6 +395,10 @@ class _StateE extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     ...profile.resultCards.map((card) => _ResultCard(card: card, ko: ko)),
+                    if (!isConnected) ...[
+                      const SizedBox(height: 16),
+                      _ConnectionNotice(ko: ko),
+                    ],
                   ],
                 ),
               ),
@@ -529,6 +552,36 @@ class _StateF extends StatelessWidget {
       ),
     );
     if (ok == true) onReset();
+  }
+}
+
+// ── Connection notice (no hardware) ──────────────────────────────────────────
+
+class _ConnectionNotice extends StatelessWidget {
+  final bool ko;
+  const _ConnectionNotice({required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(children: [
+        const Icon(Icons.bluetooth_disabled, color: Colors.white24, size: 14),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            ko
+                ? 'Sound Profile은 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
+            style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
+          ),
+        ),
+      ]),
+    );
   }
 }
 
