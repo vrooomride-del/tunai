@@ -134,11 +134,28 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             SpectrumChart(
                               bins: (_showAfter && hasAfter ? snap.afterAi : snap.before) ?? const [],
                               peaks: const [],
+                              showAxisLabels: false,
+                              showTechnicalLabel: false,
                             ),
                           ]),
                         ),
                         const SizedBox(height: 20),
-                        const Text('그래프 3색 오버레이', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 2)),
+                        Builder(builder: (ctx) {
+                          final ko = Localizations.localeOf(ctx).languageCode == 'ko';
+                          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              ko ? '소리의 변화' : 'Sound Comparison',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 2),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              ko
+                                  ? '원래 소리와 TUNAI Sound Profile을 비교해 보세요.'
+                                  : 'Compare the original sound with your TUNAI Sound Profile.',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11, height: 1.4),
+                            ),
+                          ]);
+                        }),
                         const SizedBox(height: 8),
                         SectionCard(child: _OverlayChart(snap: snap)),
                         const SizedBox(height: 8),
@@ -664,11 +681,11 @@ class _OverlayChart extends StatelessWidget {
       child: LineChart(LineChartData(
         backgroundColor: Colors.transparent,
         gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => const FlLine(color: Colors.white10, strokeWidth: 0.5)),
-        titlesData: FlTitlesData(
-          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 100, getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)))),
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 20, getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)))),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        titlesData: const FlTitlesData(
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: false),
         minX: 20, maxX: 500, minY: -60, maxY: 20,

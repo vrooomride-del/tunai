@@ -2,36 +2,92 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/audio_analyzer.dart';
 
-/// 20-500Hz 단일 스펙트럼 라인 차트 (기존 home_screen.dart의 _SpectrumChart 추출)
 class SpectrumChart extends StatelessWidget {
   final List<FrequencyBin> bins;
   final List<ResonancePeak> peaks;
-  const SpectrumChart({super.key, required this.bins, required this.peaks});
+  /// Set false in consumer-facing contexts to hide numeric axis labels.
+  final bool showAxisLabels;
+  /// Set false in consumer-facing contexts to hide the technical "Scms 20-500 Hz" label.
+  final bool showTechnicalLabel;
+
+  const SpectrumChart({
+    super.key,
+    required this.bins,
+    required this.peaks,
+    this.showAxisLabels = true,
+    this.showTechnicalLabel = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final displayBins = bins.where((b) => b.frequency >= 20 && b.frequency <= 500).toList();
     if (displayBins.isEmpty) return const SizedBox.shrink();
     final spots = displayBins.map((b) => FlSpot(b.frequency, b.magnitude.clamp(-60.0, 20.0))).toList();
+
+    const hiddenAxis = AxisTitles(sideTitles: SideTitles(showTitles: false));
+    final visibleBottomAxis = AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        interval: 100,
+        getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)),
+      ),
+    );
+    final visibleLeftAxis = AxisTitles(
+      sideTitles: SideTitles(
+        showTitles: true,
+        interval: 20,
+        getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)),
+      ),
+    );
+
     return SizedBox(
       height: 280,
       child: Stack(children: [
         LineChart(LineChartData(
           backgroundColor: Colors.transparent,
-          gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => const FlLine(color: Colors.white10, strokeWidth: 0.5)),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => const FlLine(color: Colors.white10, strokeWidth: 0.5),
+          ),
           titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 100, getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)))),
-            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 20, getTitlesWidget: (v, _) => Text('${v.toInt()}', style: const TextStyle(color: Colors.white24, fontSize: 9)))),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: showAxisLabels ? visibleBottomAxis : hiddenAxis,
+            leftTitles: showAxisLabels ? visibleLeftAxis : hiddenAxis,
+            topTitles: hiddenAxis,
+            rightTitles: hiddenAxis,
           ),
           borderData: FlBorderData(show: false),
           minX: 20, maxX: 500, minY: -60, maxY: 20,
-          lineBarsData: [LineChartBarData(spots: spots, isCurved: true, color: Colors.white60, barWidth: 1.2, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.white.withValues(alpha: 0.04)))],
-          extraLinesData: ExtraLinesData(verticalLines: peaks.map((p) => VerticalLine(x: p.frequency, color: Colors.redAccent.withValues(alpha: 0.5), strokeWidth: 1, dashArray: [3, 4],
-            label: VerticalLineLabel(show: true, labelResolver: (l) => p.frequency.toStringAsFixed(0), style: const TextStyle(color: Colors.redAccent, fontSize: 8)))).toList()),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              color: Colors.white60,
+              barWidth: 1.2,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: true, color: Colors.white.withValues(alpha: 0.04)),
+            ),
+          ],
+          extraLinesData: ExtraLinesData(
+            verticalLines: peaks.map((p) => VerticalLine(
+              x: p.frequency,
+              color: Colors.redAccent.withValues(alpha: 0.5),
+              strokeWidth: 1,
+              dashArray: [3, 4],
+              label: VerticalLineLabel(
+                show: true,
+                labelResolver: (l) => p.frequency.toStringAsFixed(0),
+                style: const TextStyle(color: Colors.redAccent, fontSize: 8),
+              ),
+            )).toList(),
+          ),
         )),
-        const Positioned(top: 0, left: 0, child: Text('Scms  20–500 Hz', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1))),
+        if (showTechnicalLabel)
+          const Positioned(
+            top: 0,
+            left: 0,
+            child: Text('Scms  20–500 Hz', style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1)),
+          ),
       ]),
     );
   }
