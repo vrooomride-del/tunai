@@ -278,4 +278,136 @@ class ProUsbiAdau1701Executor {
         gainLabel: '0 dB (restore)',
         operatorConfirmed: operatorConfirmed,
       );
+
+  // ── Advanced Debug section (Engineering / Factory UI only) ──────────────────
+  //
+  // Single-address experimental writes for address discovery: Output Channel
+  // Identify, Master Volume candidates, Mute candidates. Each write is gated
+  // by its own address allowlist (never the Phase 1 four-address set as a
+  // whole) so a bug here cannot widen what Phase 1 can touch, and vice versa.
+  // Same transport (I2C 0x68 via usbi_write_adau1701_param) — no SPI, no
+  // EEPROM, no Selfboot.
+
+  /// G2-DEBUG: address must be in the explicit allowlist passed by the
+  /// caller. Kept separate from G2 (Phase 1) by design.
+  _GuardResult _g2Debug(int address, Set<int> allowed) {
+    if (!allowed.contains(address)) {
+      return _GuardResult.fail(
+          'G2-DEBUG: Address 0x${address.toRadixString(16).toUpperCase()} '
+          'not in the allowed debug set');
+    }
+    return const _GuardResult.ok();
+  }
+
+  Future<Adau1701WriteResult> _writeDebugParam({
+    required int address,
+    required List<int> data,
+    required bool operatorConfirmed,
+    required Set<int> allowedAddresses,
+  }) async {
+    final now = DateTime.now();
+
+    for (final g in [
+      _g1Platform(),
+      _g2Debug(address, allowedAddresses),
+      _g3DataLength(data),
+      _g4Confirmed(operatorConfirmed),
+    ]) {
+      if (!g.passed) {
+        debugPrint('[ADAU1701][DEBUG] Guard blocked: ${g.reason}');
+        return Adau1701WriteResult(
+          address: address,
+          bytesWritten: data,
+          success: false,
+          error: g.reason,
+          timestamp: now,
+        );
+      }
+    }
+
+    debugPrint(
+        '[ADAU1701][DEBUG] WRITE I2C 0x${_i2cAddress.toRadixString(16).toUpperCase()} '
+        'param 0x${address.toRadixString(16).toUpperCase().padLeft(4, '0')} '
+        '= ${Adau1701PacketBuilder.toHex(data)}');
+
+    try {
+      await _channel.invokeMethod<void>('usbi_write_adau1701_param', {
+        'i2c_address': _i2cAddress,
+        'param_address': address,
+        'data': data,
+      });
+
+      debugPrint('[ADAU1701][DEBUG] WRITE OK');
+      return Adau1701WriteResult(
+        address: address,
+        bytesWritten: data,
+        success: true,
+        timestamp: now,
+      );
+    } on PlatformException catch (e) {
+      final msg = '${e.code}: ${e.message}';
+      debugPrint('[ADAU1701][DEBUG] WRITE FAIL: $msg');
+      return Adau1701WriteResult(
+        address: address,
+        bytesWritten: data,
+        success: false,
+        error: msg,
+        timestamp: now,
+      );
+    } catch (e) {
+      debugPrint('[ADAU1701][DEBUG] WRITE FAIL (unexpected): $e');
+      return Adau1701WriteResult(
+        address: address,
+        bytesWritten: data,
+        success: false,
+        error: e.toString(),
+        timestamp: now,
+      );
+    }
+  }
+
+  /// Output Channel Identify — write a single Phase 1 Default Gain address
+  /// alone (does not touch the other three). Reuses the Phase 1 allowlist
+  /// since these are the same four confirmed-safe addresses.
+  Future<Adau1701WriteResult> writeChannelIdentify({
+    required int address,
+    required List<int> gainBytes,
+    required bool operatorConfirmed,
+  }) =>
+      _writeDebugParam(
+        address: address,
+        data: gainBytes,
+        operatorConfirmed: operatorConfirmed,
+        allowedAddresses: Adau1701Jab4MiumaxAddressRegistry.phase1GainAddresses,
+      );
+
+  /// Master Volume Candidate Test — EXPERIMENTAL. 0x0006/0x0007 are
+  /// documented as ExtSWGainDB step parameters, not confirmed direct gain.
+  /// Do not assume behavior until Capture Window verification.
+  Future<Adau1701WriteResult> writeMasterVolumeCandidate({
+    required int address,
+    required List<int> bytes,
+    required bool operatorConfirmed,
+  }) =>
+      _writeDebugParam(
+        address: address,
+        data: bytes,
+        operatorConfirmed: operatorConfirmed,
+        allowedAddresses:
+            Adau1701Jab4MiumaxAddressRegistry.masterVolumeCandidateAddresses,
+      );
+
+  /// Mute Candidate Test — polarity UNVERIFIED. Writes a literal raw 4-byte
+  /// value; caller must not label it "mute on" / "mute off".
+  Future<Adau1701WriteResult> writeMuteCandidateRaw({
+    required int address,
+    required List<int> rawBytes,
+    required bool operatorConfirmed,
+  }) =>
+      _writeDebugParam(
+        address: address,
+        data: rawBytes,
+        operatorConfirmed: operatorConfirmed,
+        allowedAddresses: Adau1701Jab4MiumaxAddressRegistry.muteCandidateAddresses,
+      );
 }

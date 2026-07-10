@@ -86,6 +86,28 @@ class Adau1701Jab4MiumaxAddressRegistry {
   /// Mute0 — MuteSWSlewAlg1mute.  Polarity unverified.
   static const int mute0Candidate = 0x0327;
 
+  // ── Advanced Debug section — address allowlists ──────────────────────────
+  //
+  // These sets gate the Engineering Debug ("Advanced Debug") UI only. They
+  // are intentionally kept separate from `phase1GainAddresses` so a change
+  // to one allowlist can never silently widen the other.
+
+  /// Master Volume candidates — Experimental. Registry docs above note these
+  /// are ExtSWGainDB step params, not confirmed direct gain. Verify via
+  /// Capture Window before trusting behavior.
+  static const Set<int> masterVolumeCandidateAddresses = {
+    volumeVol2Step,
+    volumeVolStep,
+  };
+
+  /// Mute candidates — polarity unverified, values are literal (not implied
+  /// to mean "on"/"off").
+  static const Set<int> muteCandidateAddresses = {
+    mute1Candidate,
+    mute0Candidate,
+    mute0_2,
+  };
+
   // ── Known 5.23 fixed-point gain byte values ───────────────────────────────
   //
   // 5.23 FP: integer part in bits 31–23, fractional in bits 22–0.
@@ -103,6 +125,12 @@ class Adau1701Jab4MiumaxAddressRegistry {
   /// -60 dB.
   static const List<int> gainNeg60dB = [0x00, 0x00, 0x20, 0xC5];
 
+  /// -20 dB.  linear = 10^(-20/20) = 0.1 → 0.1 × 2^23 = 838860.8 → round
+  /// 838861 = 0x0CCCCD (verified against the same conversion that produces
+  /// the confirmed -40dB constant above). Used only by the Advanced Debug /
+  /// Output Channel Identify section (single-address writes).
+  static const List<int> gainNeg20dB = [0x00, 0x0C, 0xCC, 0xCD];
+
   /// Named presets for UI display.
   static const Map<String, List<int>> gainPresets = {
     '0 dB (restore)': gain0dB,
@@ -110,4 +138,16 @@ class Adau1701Jab4MiumaxAddressRegistry {
     '-50 dB': gainNeg50dB,
     '-60 dB': gainNeg60dB,
   };
+
+  // ── Mute candidate raw test values ────────────────────────────────────────
+  //
+  // Deliberately neutral names — do NOT rename these to "mute on/off". The
+  // operator must observe hardware behavior and record which value (if
+  // either) corresponds to mute.
+
+  /// Raw literal 0x00000000.
+  static const List<int> rawZero = [0x00, 0x00, 0x00, 0x00];
+
+  /// Raw literal 0x00800000 (1.0 in 5.23 FP).
+  static const List<int> rawOneFullScale = [0x00, 0x80, 0x00, 0x00];
 }

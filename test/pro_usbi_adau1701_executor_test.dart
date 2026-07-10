@@ -264,4 +264,99 @@ void main() {
       expect(result.failCount, result.writes.length);
     });
   });
+
+  // ── Advanced Debug section — address registry ──────────────────────────────
+
+  group('Advanced Debug — address allowlists', () {
+    test('masterVolumeCandidateAddresses contains exactly 0x0006 and 0x0007', () {
+      expect(
+        Adau1701Jab4MiumaxAddressRegistry.masterVolumeCandidateAddresses,
+        {0x0006, 0x0007},
+      );
+    });
+
+    test('muteCandidateAddresses contains exactly 0x0325, 0x0327, 0x000B', () {
+      expect(
+        Adau1701Jab4MiumaxAddressRegistry.muteCandidateAddresses,
+        {0x0325, 0x0327, 0x000B},
+      );
+    });
+
+    test('debug allowlists never overlap phase1GainAddresses', () {
+      const phase1 = Adau1701Jab4MiumaxAddressRegistry.phase1GainAddresses;
+      for (final addr in Adau1701Jab4MiumaxAddressRegistry.masterVolumeCandidateAddresses) {
+        expect(phase1.contains(addr), isFalse,
+            reason: '0x${addr.toRadixString(16)} (master volume candidate) '
+                'must not be in phase1GainAddresses');
+      }
+      for (final addr in Adau1701Jab4MiumaxAddressRegistry.muteCandidateAddresses) {
+        expect(phase1.contains(addr), isFalse,
+            reason: '0x${addr.toRadixString(16)} (mute candidate) '
+                'must not be in phase1GainAddresses');
+      }
+    });
+
+    test('gainNeg20dB is 00 0C CC CD', () {
+      expect(Adau1701Jab4MiumaxAddressRegistry.gainNeg20dB, [0x00, 0x0C, 0xCC, 0xCD]);
+    });
+
+    test('rawZero / rawOneFullScale are 4 bytes and distinct', () {
+      expect(Adau1701Jab4MiumaxAddressRegistry.rawZero, [0x00, 0x00, 0x00, 0x00]);
+      expect(Adau1701Jab4MiumaxAddressRegistry.rawOneFullScale, [0x00, 0x80, 0x00, 0x00]);
+      expect(
+        Adau1701Jab4MiumaxAddressRegistry.rawZero,
+        isNot(Adau1701Jab4MiumaxAddressRegistry.rawOneFullScale),
+      );
+    });
+  });
+
+  group('Advanced Debug — guard chain (G2-DEBUG)', () {
+    test('writeChannelIdentify accepts a single Phase 1 address', () async {
+      if (Platform.isWindows) return; // G1 blocks first, but must not be G2-DEBUG
+      const exec = ProUsbiAdau1701Executor();
+      final result = await exec.writeChannelIdentify(
+        address: Adau1701Jab4MiumaxAddressRegistry.defaultGain3ChA,
+        gainBytes: Adau1701Jab4MiumaxAddressRegistry.gainNeg20dB,
+        operatorConfirmed: true,
+      );
+      expect(result.success, isFalse); // non-Windows always fails
+      expect(result.error, contains('G1'),
+          reason: 'address is valid, so G1 (platform) must be the blocker, not G2-DEBUG');
+    });
+
+    test('writeMasterVolumeCandidate rejects an address outside its allowlist', () async {
+      const exec = ProUsbiAdau1701Executor();
+      final result = await exec.writeMasterVolumeCandidate(
+        address: Adau1701Jab4MiumaxAddressRegistry.defaultGain3ChA, // wrong allowlist
+        bytes: Adau1701Jab4MiumaxAddressRegistry.gainNeg20dB,
+        operatorConfirmed: true,
+      );
+      // On Windows this fails at G2-DEBUG; on other platforms G1 fires first.
+      // Either way the write must never succeed for a wrong-allowlist address.
+      expect(result.success, isFalse);
+      if (Platform.isWindows) expect(result.error, contains('G2-DEBUG'));
+    });
+
+    test('writeMuteCandidateRaw rejects an address outside its allowlist', () async {
+      const exec = ProUsbiAdau1701Executor();
+      final result = await exec.writeMuteCandidateRaw(
+        address: Adau1701Jab4MiumaxAddressRegistry.volumeVolStep, // wrong allowlist
+        rawBytes: Adau1701Jab4MiumaxAddressRegistry.rawZero,
+        operatorConfirmed: true,
+      );
+      expect(result.success, isFalse);
+      if (Platform.isWindows) expect(result.error, contains('G2-DEBUG'));
+    });
+
+    test('writeMuteCandidateRaw blocks when operatorConfirmed is false', () async {
+      const exec = ProUsbiAdau1701Executor();
+      final result = await exec.writeMuteCandidateRaw(
+        address: Adau1701Jab4MiumaxAddressRegistry.mute1Candidate,
+        rawBytes: Adau1701Jab4MiumaxAddressRegistry.rawZero,
+        operatorConfirmed: false,
+      );
+      expect(result.success, isFalse);
+      // Either G1 (non-Windows) or G4 fires — never actually reaches the channel.
+    });
+  });
 }

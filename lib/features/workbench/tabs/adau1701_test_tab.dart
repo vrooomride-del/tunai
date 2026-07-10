@@ -31,6 +31,13 @@ class _Adau1701TestTabState extends State<Adau1701TestTab> {
   Adau1701MultiWriteResult? _lastResult;
   final List<String> _log = []; // most recent first, max 200
 
+  // ── Advanced Debug section (Output Channel Identify / Master Volume
+  // candidates / Mute candidates) — collapsed by default, own confirmation
+  // gate, separate from the Phase 1 flow above. ─────────────────────────────
+  bool _debugExpanded = false;
+  bool _debugOperatorConfirmed = false;
+  bool _debugBusy = false;
+
   // ── Gain buttons ─────────────────────────────────────────────────────────────
 
   static const _buttons = [
@@ -68,6 +75,25 @@ class _Adau1701TestTabState extends State<Adau1701TestTab> {
       for (final r in result.writes) {
         _log.insert(0, r.logLine);
       }
+      while (_log.length > 200) { _log.removeLast(); }
+    });
+  }
+
+  // ── Advanced Debug write handler ───────────────────────────────────────────
+
+  bool get _canDebugWrite => _debugOperatorConfirmed && !_debugBusy;
+
+  Future<void> _debugWrite(
+      Future<Adau1701WriteResult> Function() action, String category) async {
+    setState(() => _debugBusy = true);
+    final r = await action();
+    final bytes = Adau1701PacketBuilder.toHex(r.bytesWritten);
+    final status = r.success ? 'OK' : 'FAIL: ${r.error}';
+    final line = '[ADAU1701_JAB4_MIUMAX_ORIGINAL][DEBUG][$category] '
+        'I2C 0x68 WRITE param ${r.addressHex} = $bytes $status';
+    setState(() {
+      _debugBusy = false;
+      _log.insert(0, line);
       while (_log.length > 200) { _log.removeLast(); }
     });
   }
@@ -179,6 +205,150 @@ class _Adau1701TestTabState extends State<Adau1701TestTab> {
                   ),
                 ),
               )),
+
+        // ── Advanced Debug (collapsed, engineering-only) ──────────────────────
+        const SizedBox(height: 32),
+        _DebugSectionToggle(
+          expanded: _debugExpanded,
+          onTap: () => setState(() => _debugExpanded = !_debugExpanded),
+        ),
+        if (_debugExpanded) ...[
+          const SizedBox(height: 12),
+          const _WarningBanner(
+            'EXPERIMENTAL — address discovery only, not for production use.\n'
+            'Values below are unconfirmed. I2C 0x68 write only. '
+            'EEPROM 0xA0 / Selfboot / ADAU1466 SPI are never used here.',
+          ),
+          const SizedBox(height: 16),
+
+          _ConfirmCheckbox(
+            value: _debugOperatorConfirmed,
+            onChanged: (v) => setState(() => _debugOperatorConfirmed = v ?? false),
+            label: 'Operator confirm — I understand these addresses are '
+                'unverified and will write directly to hardware.',
+          ),
+          const SizedBox(height: 20),
+
+          // ── 1. Output Channel Identify ──────────────────────────────────────
+          const _SectionHeader('Output Channel Identify'),
+          const SizedBox(height: 4),
+          const Text(
+            'Set ONE address at a time to -20 dB to identify which physical '
+            'output (Left Woofer / Left Tweeter / Right Woofer / Right '
+            'Tweeter) it maps to. Restore to 0 dB after each test.',
+            style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          ...const [
+            (addr: Adau1701Jab4MiumaxAddressRegistry.defaultGain3ChA, label: '0x0321'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.defaultGain3ChB, label: '0x0322'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.defaultGain1ChB, label: '0x0323'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.defaultGain1ChA, label: '0x0324'),
+          ].map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _IdentifyRow(
+                  addressLabel: e.label,
+                  enabled: _canDebugWrite,
+                  busy: _debugBusy,
+                  onSetTest: () => _debugWrite(
+                    () => _executor.writeChannelIdentify(
+                      address: e.addr,
+                      gainBytes: Adau1701Jab4MiumaxAddressRegistry.gainNeg20dB,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'CHANNEL_IDENTIFY',
+                  ),
+                  onRestore: () => _debugWrite(
+                    () => _executor.writeChannelIdentify(
+                      address: e.addr,
+                      gainBytes: Adau1701Jab4MiumaxAddressRegistry.gain0dB,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'CHANNEL_IDENTIFY',
+                  ),
+                ),
+              )),
+          const SizedBox(height: 24),
+
+          // ── 2. Master Volume Candidate Test ─────────────────────────────────
+          const _SectionHeader('Master Volume Candidate Test'),
+          const SizedBox(height: 4),
+          const Text(
+            'Experimental. 0x0006 / 0x0007 may be ExtSWGainDB step '
+            'parameters, not direct gain values — do not assume a plain '
+            '5.23 gain write behaves as expected until confirmed via '
+            'Capture Window.',
+            style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          ...const [
+            (addr: Adau1701Jab4MiumaxAddressRegistry.volumeVolStep, label: '0x0007 (Vol)'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.volumeVol2Step, label: '0x0006 (Vol_2)'),
+          ].map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _IdentifyRow(
+                  addressLabel: e.label,
+                  enabled: _canDebugWrite,
+                  busy: _debugBusy,
+                  onSetTest: () => _debugWrite(
+                    () => _executor.writeMasterVolumeCandidate(
+                      address: e.addr,
+                      bytes: Adau1701Jab4MiumaxAddressRegistry.gainNeg20dB,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'MASTER_VOL_CANDIDATE',
+                  ),
+                  onRestore: () => _debugWrite(
+                    () => _executor.writeMasterVolumeCandidate(
+                      address: e.addr,
+                      bytes: Adau1701Jab4MiumaxAddressRegistry.gain0dB,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'MASTER_VOL_CANDIDATE',
+                  ),
+                ),
+              )),
+          const SizedBox(height: 24),
+
+          // ── 3. Mute Candidate Test ───────────────────────────────────────────
+          const _SectionHeader('Mute Candidate Test'),
+          const SizedBox(height: 4),
+          const Text(
+            'Polarity is UNVERIFIED. Buttons write a literal raw value only '
+            '— neither is labeled "mute on/off". Observe the speaker and '
+            'record which value (if either) mutes output.',
+            style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          ...const [
+            (addr: Adau1701Jab4MiumaxAddressRegistry.mute1Candidate, label: '0x0325 (Mute1)'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.mute0Candidate, label: '0x0327 (Mute0)'),
+            (addr: Adau1701Jab4MiumaxAddressRegistry.mute0_2,       label: '0x000B (Mute0_2)'),
+          ].map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _MuteRow(
+                  addressLabel: e.label,
+                  enabled: _canDebugWrite,
+                  busy: _debugBusy,
+                  onWriteZero: () => _debugWrite(
+                    () => _executor.writeMuteCandidateRaw(
+                      address: e.addr,
+                      rawBytes: Adau1701Jab4MiumaxAddressRegistry.rawZero,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'MUTE_CANDIDATE',
+                  ),
+                  onWriteOne: () => _debugWrite(
+                    () => _executor.writeMuteCandidateRaw(
+                      address: e.addr,
+                      rawBytes: Adau1701Jab4MiumaxAddressRegistry.rawOneFullScale,
+                      operatorConfirmed: _debugOperatorConfirmed,
+                    ),
+                    'MUTE_CANDIDATE',
+                  ),
+                ),
+              )),
+        ],
 
         // ── Phase 2 preview ────────────────────────────────────────────────────
         const SizedBox(height: 32),
@@ -521,6 +691,173 @@ class _ResultCard extends StatelessWidget {
                 ),
               )),
         ],
+      ),
+    );
+  }
+}
+
+// ── Advanced Debug section widgets ────────────────────────────────────────────
+
+class _DebugSectionToggle extends StatelessWidget {
+  final bool expanded;
+  final VoidCallback onTap;
+  const _DebugSectionToggle({required this.expanded, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              expanded ? Icons.keyboard_arrow_down : Icons.chevron_right,
+              size: 18,
+              color: Colors.white38,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'ADVANCED DEBUG — Address Discovery (Experimental)',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                  letterSpacing: 1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Icon(Icons.science_outlined, size: 14, color: Colors.white24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Single-address test row used by Output Channel Identify and Master
+/// Volume Candidate Test — one "set test value" button, one "restore" button.
+class _IdentifyRow extends StatelessWidget {
+  final String addressLabel;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onSetTest;
+  final VoidCallback onRestore;
+
+  const _IdentifyRow({
+    required this.addressLabel,
+    required this.enabled,
+    required this.busy,
+    required this.onSetTest,
+    required this.onRestore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              addressLabel,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+            ),
+          ),
+          _DebugButton(label: '−20 dB', enabled: enabled, busy: busy, onTap: onSetTest),
+          const SizedBox(width: 8),
+          _DebugButton(label: 'Restore 0 dB', enabled: enabled, busy: busy, onTap: onRestore),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mute candidate test row — two neutral raw-value buttons, no on/off label.
+class _MuteRow extends StatelessWidget {
+  final String addressLabel;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onWriteZero;
+  final VoidCallback onWriteOne;
+
+  const _MuteRow({
+    required this.addressLabel,
+    required this.enabled,
+    required this.busy,
+    required this.onWriteZero,
+    required this.onWriteOne,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              addressLabel,
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+            ),
+          ),
+          _DebugButton(label: 'Write 0x00000000', enabled: enabled, busy: busy, onTap: onWriteZero),
+          const SizedBox(width: 8),
+          _DebugButton(label: 'Write 0x00800000', enabled: enabled, busy: busy, onTap: onWriteOne),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebugButton extends StatelessWidget {
+  final String label;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onTap;
+  const _DebugButton({
+    required this.label,
+    required this.enabled,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled ? 1.0 : 0.35,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white24),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white38),
+                )
+              : Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        ),
       ),
     );
   }
