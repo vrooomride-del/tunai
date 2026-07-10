@@ -87,6 +87,38 @@ void HandleUsbiMethod(
     // TODO(t4b-windows): WinUsb_Free + CloseHandle.
     NotImplemented(result, "usbi_close");
 
+  } else if (method == "usbi_write_adau1701_param") {
+    // ADAU1701 I2C parameter write — DIFFERENT from the ADAU1466 SPI methods above.
+    //
+    // This method writes one 4-byte parameter to the ADAU1701 via USBi → I2C.
+    // The ADAU1466 send_setup / send_body / read_ack packet format must NOT be
+    // reused here; the ADAU1701 uses I2C, not SPI.
+    //
+    // args: Flutter EncodableMap with:
+    //   "i2c_address"   (int) = 0x68 — DSP I2C address (7-bit device addr)
+    //   "param_address" (int) = 0x0000–0xFFFF — ADAU1701 parameter address
+    //   "data"          (List<int>) = 4 bytes, Big Endian, 5.23 fixed-point
+    //
+    // EEPROM I2C address 0xA0 must be refused:
+    //   if i2c_address == 0xA0: return Error("EEPROM_WRITE_BLOCKED", ...)
+    //
+    // TODO(adau1701-windows): Implement WinUSB → I2C write:
+    //   1. Retrieve device handle (open if not already open).
+    //   2. Validate: refuse i2c_address == 0xA0.
+    //   3. Build I2C write packet for USBi:
+    //      - I2C write address byte: (i2c_address << 1) | 0  = 0xD0 for 0x68
+    //      - Packet: [i2c_write_byte][param_addr_hi][param_addr_lo][d0][d1][d2][d3]
+    //      - Total 7 bytes of I2C payload
+    //   4. Issue USBi control transfer to start write:
+    //      - bmRequestType=0x40, bRequest=0x09 or per USBi host API
+    //      - Specify: I2C mode, 7 data bytes
+    //   5. Write the 7-byte I2C payload via WinUsb_WritePipe on bulk-out endpoint
+    //   6. Return void on success, PlatformException on failure.
+    //
+    // Note: USBi bulk endpoint numbers differ from the SPI (ADAU1466) setup.
+    //       Identify correct endpoint by device descriptor or empirically.
+    NotImplemented(result, "usbi_write_adau1701_param");
+
   } else {
     result->NotImplemented();
   }

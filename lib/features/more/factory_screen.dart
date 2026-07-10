@@ -9,6 +9,7 @@ import '../../core/profiles/system_profile.dart';
 import '../../shared/widgets.dart';
 import 'dsp_unlock_flags.dart';
 import 'dev_simulation_screen.dart';
+import '../workbench/workbench_screen.dart';
 
 // ── ADAU1466 주소 상수 (v0.8B Export18) ────────────────────────────────────
 const _kDriverGainAddrs = [0x3B8, 0x3BB, 0x3C4, 0x3CA, 0x3C7, 0x3CD];
@@ -151,6 +152,41 @@ class FactoryScreen extends ConsumerWidget {
                         ),
                       ),
                     ],
+
+                    // ── Engineering Workbench ──────────────────────────────
+                    const SizedBox(height: 24),
+                    const Divider(color: Colors.white12),
+                    const SizedBox(height: 12),
+                    const Text('ENGINEERING WORKBENCH',
+                        style: TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 3)),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const WorkbenchScreen()),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF2A4A2A)),
+                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFF0A150A),
+                        ),
+                        child: const Row(children: [
+                          Icon(Icons.usb_rounded, color: Colors.greenAccent, size: 16),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('USBi Hardware Write Test',
+                                  style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 0.5)),
+                              SizedBox(height: 2),
+                              Text('ADAU1701 JAB4 (Miumax original) · ADAU1466',
+                                  style: TextStyle(color: Colors.white38, fontSize: 10)),
+                            ]),
+                          ),
+                          Icon(Icons.chevron_right, color: Colors.white24, size: 16),
+                        ]),
+                      ),
+                    ),
 
                     // ── Debug: Reset First Run ─────────────────────────────
                     const SizedBox(height: 32),
