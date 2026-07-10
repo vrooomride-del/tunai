@@ -135,8 +135,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
                           if (bState.detectedBoard == DetectedBoard.adau1466) ...[
                             const SizedBox(height: 24),
-                            const _BoardBanner(
-                              text: 'TUNAI ONE 스피커 연결됨. 설정 검증 완료.',
+                            _BoardBanner(
+                              text: ko
+                                  ? 'TUNAI ONE이 준비되었습니다. 이제 Room Scan을 시작할 수 있습니다.'
+                                  : 'TUNAI ONE is ready. You can start Room Scan now.',
                               color: Colors.white24,
                               icon: Icons.check_circle_outline,
                             ),
@@ -494,25 +496,39 @@ class _TestToneDialogState extends State<_TestToneDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
     return AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
-      title: const Text('Sound Check', style: TextStyle(color: Colors.white, fontSize: 16)),
+      title: Text(
+        ko ? '소리 확인' : 'Sound Check',
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+      ),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(
-          _playing ? '소리를 재생하고 있습니다...' : '소리가 들리나요?',
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
+          _playing
+              ? (ko ? '처음 소리는 낮은 볼륨에서 시작됩니다.' : 'The first sound starts at a safe volume.')
+              : (ko ? '스피커에서 짧은 소리가 들리나요?' : 'Do you hear the test sound from your speaker?'),
+          style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
         ),
         if (_playError != null) ...[
           const SizedBox(height: 8),
-          Text('재생 오류: $_playError', style: const TextStyle(color: Colors.redAccent, fontSize: 11)),
+          Text(
+            ko ? '재생 오류: $_playError' : 'Playback error: $_playError',
+            style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+          ),
         ],
         if (_showTrouble) ...[
           const SizedBox(height: 12),
-          const Text('확인해보세요:', style: TextStyle(color: Colors.white38, fontSize: 11)),
+          Text(
+            ko ? '확인해보세요:' : 'Try these steps:',
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
+          ),
           const SizedBox(height: 6),
-          const Text(
-            '• 스피커 볼륨이 켜져 있는지 확인\n• 스피커 전원/연결 케이블 확인\n• 앰프 입력 소스가 맞는지 확인',
-            style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.6),
+          Text(
+            ko
+                ? '• 스피커 볼륨이 켜져 있는지 확인\n• 스피커 전원/연결 케이블 확인\n• 앰프 입력 소스가 맞는지 확인'
+                : '• Check that the speaker volume is on\n• Check speaker power and cables\n• Make sure the amplifier input is correct',
+            style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.6),
           ),
         ],
       ]),
@@ -520,10 +536,13 @@ class _TestToneDialogState extends State<_TestToneDialog> {
         if (_showTrouble)
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('건너뛰기', style: TextStyle(color: Colors.white24)),
+            child: Text(ko ? '건너뛰기' : 'Skip', style: const TextStyle(color: Colors.white24)),
           ),
         if (_showTrouble)
-          TextButton(onPressed: _play, child: const Text('다시 시도', style: TextStyle(color: Colors.white70))),
+          TextButton(
+            onPressed: _play,
+            child: Text(ko ? '다시 시도' : 'Try Again', style: const TextStyle(color: Colors.white70)),
+          ),
         if (!_playing) ...[
           TextButton(
             onPressed: () => setState(() => _showTrouble = true),

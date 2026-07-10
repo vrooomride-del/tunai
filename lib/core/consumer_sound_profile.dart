@@ -16,6 +16,9 @@ class ConsumerSoundProfile {
   final bool isActive;
   final ConsumerProfileStatus status;
   final List<RoomScanResultCard> resultCards;
+  // Consumer-friendly Sound Score — simulated estimate, not a technical measurement.
+  final int? soundScoreBefore;
+  final int? soundScoreAfter;
 
   const ConsumerSoundProfile({
     required this.id,
@@ -28,13 +31,22 @@ class ConsumerSoundProfile {
     required this.isActive,
     required this.status,
     required this.resultCards,
+    this.soundScoreBefore,
+    this.soundScoreAfter,
   });
+
+  int? get soundScoreImprovement {
+    if (soundScoreBefore == null || soundScoreAfter == null) return null;
+    return soundScoreAfter! - soundScoreBefore!;
+  }
 
   ConsumerSoundProfile copyWith({
     String? name,
     bool? isActive,
     ConsumerProfileStatus? status,
     DateTime? updatedAt,
+    int? soundScoreBefore,
+    int? soundScoreAfter,
   }) =>
       ConsumerSoundProfile(
         id: id,
@@ -47,6 +59,8 @@ class ConsumerSoundProfile {
         isActive: isActive ?? this.isActive,
         status: status ?? this.status,
         resultCards: resultCards,
+        soundScoreBefore: soundScoreBefore ?? this.soundScoreBefore,
+        soundScoreAfter: soundScoreAfter ?? this.soundScoreAfter,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +74,8 @@ class ConsumerSoundProfile {
         'isActive': isActive,
         'status': status.name,
         'resultCards': resultCards.map((c) => c.toJson()).toList(),
+        if (soundScoreBefore != null) 'soundScoreBefore': soundScoreBefore,
+        if (soundScoreAfter != null) 'soundScoreAfter': soundScoreAfter,
       };
 
   factory ConsumerSoundProfile.fromJson(Map<String, dynamic> j) =>
@@ -76,6 +92,8 @@ class ConsumerSoundProfile {
         resultCards: (j['resultCards'] as List)
             .map((c) => RoomScanResultCard.fromJson(c as Map<String, dynamic>))
             .toList(),
+        soundScoreBefore: j['soundScoreBefore'] as int?,
+        soundScoreAfter: j['soundScoreAfter'] as int?,
       );
 }
 

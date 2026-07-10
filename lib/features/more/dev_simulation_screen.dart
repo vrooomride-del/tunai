@@ -86,6 +86,8 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
         isActive: false,
         status: ConsumerProfileStatus.ready,
         resultCards: scan.cards,
+        soundScoreBefore: 82,
+        soundScoreAfter: 94,
       );
       await ref.read(consumerSoundProfileProvider.notifier).add(profile);
       final profiles = ref.read(consumerSoundProfileProvider);

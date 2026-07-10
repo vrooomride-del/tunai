@@ -433,6 +433,14 @@ class _ConsumerActiveView extends ConsumerWidget {
         ]),
       ),
       const SizedBox(height: 20),
+      if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
+        _ListenSoundScoreCard(
+          ko: ko,
+          before: profile.soundScoreBefore!,
+          after: profile.soundScoreAfter!,
+        ),
+        const SizedBox(height: 20),
+      ],
       Text(
         ko ? '적용된 조정' : 'Applied adjustments',
         style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
@@ -481,6 +489,55 @@ class _ConsumerActiveView extends ConsumerWidget {
         ),
       ],
     ]);
+  }
+}
+
+class _ListenSoundScoreCard extends StatelessWidget {
+  final bool ko;
+  final int before;
+  final int after;
+  const _ListenSoundScoreCard({required this.ko, required this.before, required this.after});
+
+  @override
+  Widget build(BuildContext context) {
+    final improvement = after - before;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
+        border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.18)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'Sound Score',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+          ),
+          const SizedBox(height: 6),
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text('$before', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 18, fontWeight: FontWeight.w300)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(Icons.arrow_forward, color: Colors.white.withValues(alpha: 0.25), size: 12),
+            ),
+            Text('$after', style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 22, fontWeight: FontWeight.w300)),
+          ]),
+        ]),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            '+$improvement',
+            style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ),
+      ]),
+    );
   }
 }
 

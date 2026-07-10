@@ -38,6 +38,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       isActive: false,
       status: ConsumerProfileStatus.ready,
       resultCards: scan.cards,
+      soundScoreBefore: 82,
+      soundScoreAfter: 94,
     );
     await ref.read(consumerSoundProfileProvider.notifier).add(profile);
     if (mounted) setState(() => _creating = false);
@@ -388,6 +390,14 @@ class _StateE extends StatelessWidget {
                           fontSize: 14, height: 1.65),
                     ),
                     const SizedBox(height: 32),
+                    if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
+                      _SoundScoreCard(
+                        ko: ko,
+                        before: profile.soundScoreBefore!,
+                        after: profile.soundScoreAfter!,
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                     Text(
                       ko ? 'TUNAI가 발견한 것' : 'What TUNAI found',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
@@ -492,6 +502,14 @@ class _StateF extends StatelessWidget {
                           fontSize: 14, height: 1.65),
                     ),
                     const SizedBox(height: 32),
+                    if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
+                      _SoundScoreCard(
+                        ko: ko,
+                        before: profile.soundScoreBefore!,
+                        after: profile.soundScoreAfter!,
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                     Text(
                       ko ? '적용된 조정' : 'Applied adjustments',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
@@ -580,6 +598,55 @@ class _ConnectionNotice extends StatelessWidget {
             style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
           ),
         ),
+      ]),
+    );
+  }
+}
+
+// ── Sound Score card ─────────────────────────────────────────────────────────
+
+class _SoundScoreCard extends StatelessWidget {
+  final bool ko;
+  final int before;
+  final int after;
+  const _SoundScoreCard({required this.ko, required this.before, required this.after});
+
+  @override
+  Widget build(BuildContext context) {
+    final improvement = after - before;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
+        border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          ko ? 'Sound Score' : 'Sound Score',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+        ),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text('$before', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 22, fontWeight: FontWeight.w300)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Icon(Icons.arrow_forward, color: Colors.white.withValues(alpha: 0.25), size: 14),
+          ),
+          Text('$after', style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 28, fontWeight: FontWeight.w300)),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '+$improvement',
+              style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ]),
       ]),
     );
   }

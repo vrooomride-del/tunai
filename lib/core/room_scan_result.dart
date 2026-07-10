@@ -35,36 +35,50 @@ class RoomScanResultCard {
   );
 }
 
-/// Placeholder result cards shown after every Room Scan.
-/// Content may be updated by the analysis engine in a future phase.
 const kDefaultResultCards = [
   RoomScanResultCard(
     id: 'balance',
     labelEn: 'Room Balance',
     labelKo: '공간 밸런스',
-    descriptionEn: 'Left and right listening balance adjusted for your position.',
-    descriptionKo: '청취 위치에 맞게 좌우 청취 균형이 조정되었습니다.',
+    descriptionEn:
+        'TUNAI checked how your room shapes the sound at your listening position.'
+        '\n→ The sound was refined for better overall balance.',
+    descriptionKo:
+        'TUNAI가 청취 위치에서 공간의 울림을 확인했습니다.'
+        '\n→ 더 균형 잡힌 소리로 정리했습니다.',
   ),
   RoomScanResultCard(
     id: 'bass',
     labelEn: 'Bass Control',
     labelKo: '저역 정리',
-    descriptionEn: 'Room reflections that affect bass have been identified.',
-    descriptionKo: '저역에 영향을 주는 공간 반사가 파악되었습니다.',
+    descriptionEn:
+        'Nearby surfaces can make bass feel heavier than intended.'
+        '\n→ Bass was tightened for a clearer, more controlled sound.',
+    descriptionKo:
+        '벽과 책상 주변의 영향으로 저역이 부풀 수 있습니다.'
+        '\n→ 저역이 더 단단하고 또렷하게 들리도록 정리했습니다.',
   ),
   RoomScanResultCard(
     id: 'voice',
-    labelEn: 'Voice Clarity',
+    labelEn: 'Vocal Clarity',
     labelKo: '보컬 선명도',
-    descriptionEn: 'Mid-range presence has been optimised for your room.',
-    descriptionKo: '공간에 맞게 중음역 선명도가 최적화되었습니다.',
+    descriptionEn:
+        'Room reflections can blur vocal presence.'
+        '\n→ Vocals were adjusted to sound more natural and focused.',
+    descriptionKo:
+        '보컬 대역이 공간 반사로 흐려질 수 있습니다.'
+        '\n→ 목소리가 더 자연스럽게 앞으로 나오도록 조정했습니다.',
   ),
   RoomScanResultCard(
     id: 'comfort',
     labelEn: 'Listening Comfort',
     labelKo: '청취 편안함',
-    descriptionEn: 'Harshness and fatigue factors identified in your space.',
-    descriptionKo: '공간의 피로감 요인이 파악되어 편안한 소리로 조정됩니다.',
+    descriptionEn:
+        'TUNAI checked the balance for longer listening.'
+        '\n→ The sound was refined to feel more comfortable over time.',
+    descriptionKo:
+        '오래 들을 때 피로감을 줄이는 방향을 확인했습니다.'
+        '\n→ 더 편안하게 들을 수 있도록 소리의 균형을 다듬었습니다.',
   ),
 ];
 
