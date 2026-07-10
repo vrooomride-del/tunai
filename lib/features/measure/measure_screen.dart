@@ -8,7 +8,6 @@ import '../../core/spectrum_snapshot.dart';
 import '../../core/mic_calibration_service.dart';
 import '../../core/room_scan_result.dart';
 import '../../shared/widgets.dart';
-import '../../shared/spectrum_chart.dart';
 
 /// ROOM 탭 — 공간 측정 UX.
 /// 측정 완료 시 [onMeasured]로 TUNE 탭 자동 전환을 요청한다.
@@ -484,12 +483,33 @@ class _ResultView extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 36),
-                    // Consumer result cards — no DSP/PEQ/frequency graph
+                    // Listening Environment Summary — consumer-safe, no Hz/dB/chart
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.check_circle_outline, color: Color(0xFF69F0AE), size: 14),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            ko
+                                ? 'TUNAI가 공간의 소리 특성을 정리했습니다.'
+                                : 'TUNAI summarized your room\'s sound characteristics.',
+                            style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      ko ? '청취 환경 요약' : 'Listening Environment Summary',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+                    ),
+                    const SizedBox(height: 10),
                     ...cards.map((card) => _ResultCard(card: card, ko: ko)),
-                    if (mState.scmsBins.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      SpectrumChart(bins: mState.scmsBins, peaks: mState.peaks),
-                    ],
                   ],
                 ),
               ),

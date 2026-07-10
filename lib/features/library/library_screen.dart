@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/audio_analyzer.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/sound_profile_store.dart';
-import '../ble/ble_controller.dart';
-import '../dsp/dsp_compiler.dart';
 import '../../shared/widgets.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -20,51 +17,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   bool _isKo(BuildContext ctx) =>
       Localizations.localeOf(ctx).languageCode == 'ko';
 
-  Future<void> _applyProfile(UiSoundProfile profile) async {
-    final ko = _isKo(context);
-    final isConnected = ref.read(bleProvider).connection == BleConnectionState.connected;
-    if (!isConnected) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ko ? 'CONNECT 탭에서 스피커를 먼저 연결해주세요.' : 'Connect your speaker first (CONNECT tab).'),
-          backgroundColor: const Color(0xFF1A1A1A),
-        ));
-      }
-      return;
-    }
-    if (profile.bands.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ko ? '이 프로파일에는 음향 데이터가 없습니다.' : 'No acoustic data in this profile.'),
-          backgroundColor: const Color(0xFF1A1A1A),
-        ));
-      }
-      return;
-    }
-    final peaks = profile.bands
-        .where((b) => b['enabled'] != false)
-        .map((b) => ResonancePeak(
-              frequency: (b['frequency'] as num).toDouble(),
-              gain: (b['gainDb'] as num).toDouble(),
-              q: (b['q'] as num).toDouble(),
-            ))
-        .toList();
-    final packets = DspCompiler.compileAll(peaks);
-    final messenger = ScaffoldMessenger.of(context);
-    final ok = await ref.read(bleProvider.notifier).sendPackets(packets);
-    if (!mounted) return;
-    if (ok) {
-      await ref.read(soundProfileStoreProvider.notifier).markApplied(profile.id);
-      messenger.showSnackBar(SnackBar(
-        content: Text(ko ? '사운드 프로파일이 안전하게 적용되었습니다.' : 'Sound Profile applied safely.'),
+  void _showProRedirect(bool ko) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-      ));
-    } else {
-      messenger.showSnackBar(SnackBar(
-        content: Text(ko ? '전송 실패 — BLE 연결 상태를 확인하세요.' : 'Send failed — check BLE connection.'),
-        backgroundColor: const Color(0xFF1A1A1A),
-      ));
-    }
+        title: Text(
+          ko ? 'TUNAI PRO에서 관리' : 'Manage in TUNAI PRO',
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+        ),
+        content: Text(
+          ko
+              ? '고급 프로파일은 TUNAI PRO에서 검토 후 적용할 수 있습니다.'
+              : 'Advanced profiles can be reviewed and applied in TUNAI PRO.',
+          style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(ko ? '확인' : 'OK',
+                style: const TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _renameProfile(UiSoundProfile profile) async {
@@ -146,9 +122,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           Container(width: 36, height: 3, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
           _ActionTile(
-            icon: Icons.play_circle_outline,
-            label: ko ? '적용' : 'Apply',
-            onTap: () { Navigator.pop(ctx); _applyProfile(profile); },
+            icon: Icons.open_in_new,
+            label: ko ? 'TUNAI PRO에서 관리' : 'Manage in TUNAI PRO',
+            onTap: () { Navigator.pop(ctx); _showProRedirect(ko); },
           ),
           _ActionTile(
             icon: Icons.drive_file_rename_outline,
@@ -210,7 +186,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             profile: p,
                             ko: ko,
                             onTap: () => _showActions(p),
-                            onApply: () => _applyProfile(p),
+                            onManageInPro: () => _showProRedirect(ko),
                           )),
                     ],
                   ],
@@ -320,8 +296,8 @@ class _ProfileCard extends StatelessWidget {
   final UiSoundProfile profile;
   final bool ko;
   final VoidCallback onTap;
-  final VoidCallback onApply;
-  const _ProfileCard({required this.profile, required this.ko, required this.onTap, required this.onApply});
+  final VoidCallback onManageInPro;
+  const _ProfileCard({required this.profile, required this.ko, required this.onTap, required this.onManageInPro});
 
   String _createdLabel(bool ko) {
     final diff = DateTime.now().difference(profile.createdAt);
@@ -387,47 +363,27 @@ class _ProfileCard extends StatelessWidget {
               const SizedBox(width: 8),
               _MetaChip(text: _createdLabel(ko)),
             ]),
-            if (!applied) ...[
-              const SizedBox(height: 12),
-              // Safety verification note
-              Container(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: onManageInPro,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
-                  border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.18)),
+                  border: Border.all(color: Colors.white24),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.verified_outlined, color: Color(0xFF69F0AE), size: 13),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      ko
-                          ? '이 프로파일은 TUNAI 스피커에서 안전하게 재생될 수 있도록 확인되었습니다.'
-                          : 'This profile has been checked for safe playback on your TUNAI speaker.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 10, height: 1.4),
-                    ),
+                alignment: Alignment.center,
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.open_in_new, color: Colors.white38, size: 12),
+                  const SizedBox(width: 6),
+                  Text(
+                    ko ? 'TUNAI PRO에서 관리' : 'Manage in TUNAI PRO',
+                    style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1.0),
                   ),
                 ]),
               ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: onApply,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white24),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    ko ? '적용' : 'Apply',
-                    style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1.2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ],
         ),
       ),

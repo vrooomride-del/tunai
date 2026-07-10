@@ -153,7 +153,15 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
   }
 }
 
-// ── Master Volume ─────────────────────────────────────────────
+// ── Listening Level ───────────────────────────────────────────
+
+// Maps internal dB value to consumer level label.
+// Internal range: -70 to 0 dB. Presets: -60 (Low), -50 (Comfortable), -40 (Lively).
+String _levelLabel(double db, {required bool ko}) {
+  if (db <= -55) return ko ? '낮게' : 'Low';
+  if (db <= -45) return ko ? '편안하게' : 'Comfortable';
+  return ko ? '크게' : 'Lively';
+}
 
 class _MasterVolumeSection extends ConsumerWidget {
   const _MasterVolumeSection();
@@ -163,62 +171,73 @@ class _MasterVolumeSection extends ConsumerWidget {
     final vol = ref.watch(masterVolumeProvider);
     final ctrl = ref.read(masterVolumeProvider.notifier);
 
+    // Preset dB values kept internal; labels shown to consumer.
+    const presets = [(-60.0, '낮게', 'Low'), (-50.0, '편안하게', 'Comfortable'), (-40.0, '크게', 'Lively')];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Builder(builder: (ctx) {
-                final isKo = Localizations.localeOf(ctx).languageCode == 'ko';
-                return Text(isKo ? '마스터 볼륨' : 'MASTER VOL',
-                    style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 3));
-              }),
-              const SizedBox(width: 12),
-              Text('${vol.toStringAsFixed(1)} dB',
-                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
-              const Spacer(),
-              for (final db in [-60.0, -50.0, -40.0]) ...[
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () => ctrl.setVolume(db),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                          color: vol == db ? Colors.white54 : Colors.white24, width: 0.5),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text('${db.toInt()}',
+      child: Builder(builder: (ctx) {
+        final isKo = Localizations.localeOf(ctx).languageCode == 'ko';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  isKo ? '듣기 음량' : 'Listening Level',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 2),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  isKo
+                      ? '현재 음량: ${_levelLabel(vol, ko: true)}'
+                      : 'Current level: ${_levelLabel(vol, ko: false)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                const Spacer(),
+                for (final (db, labelKo, labelEn) in presets) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => ctrl.setVolume(db),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                            color: vol == db ? Colors.white54 : Colors.white24, width: 0.5),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        isKo ? labelKo : labelEn,
                         style: TextStyle(
                           color: vol == db ? Colors.white70 : Colors.white38,
-                          fontSize: 10, letterSpacing: 1,
-                        )),
+                          fontSize: 10, letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 1.5,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              activeTrackColor: Colors.white54,
-              inactiveTrackColor: Colors.white12,
-              thumbColor: Colors.white,
-              overlayColor: Colors.white12,
             ),
-            child: Slider(
-              value: vol,
-              min: -70, max: 0,
-              onChanged: (v) => ctrl.updateUiOnly(v),
-              onChangeEnd: (v) => ctrl.setVolume(v),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 1.5,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: Colors.white54,
+                inactiveTrackColor: Colors.white12,
+                thumbColor: Colors.white,
+                overlayColor: Colors.white12,
+              ),
+              child: Slider(
+                value: vol,
+                min: -70, max: 0,
+                onChanged: (v) => ctrl.updateUiOnly(v),
+                onChangeEnd: (v) => ctrl.setVolume(v),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      }),
     );
   }
 }
