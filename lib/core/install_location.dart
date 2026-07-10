@@ -4,11 +4,19 @@ enum InstallLocation { desk, livingRoom, nearWall, studio, custom }
 
 extension InstallLocationLabel on InstallLocation {
   String get label => switch (this) {
-        InstallLocation.desk => '책상 (Desk)',
-        InstallLocation.livingRoom => '거실 (Living Room)',
-        InstallLocation.nearWall => '벽 근처 (Near Wall)',
-        InstallLocation.studio => '스튜디오 (Studio)',
-        InstallLocation.custom => '직접 입력 (Custom)',
+        InstallLocation.desk => '책상 위',
+        InstallLocation.livingRoom => '거실',
+        InstallLocation.nearWall => '벽 가까이',
+        InstallLocation.studio => '스튜디오 / 작업실',
+        InstallLocation.custom => '직접 설정',
+      };
+
+  String get labelEn => switch (this) {
+        InstallLocation.desk => 'Desk',
+        InstallLocation.livingRoom => 'Living Room',
+        InstallLocation.nearWall => 'Near Wall',
+        InstallLocation.studio => 'Studio',
+        InstallLocation.custom => 'Custom',
       };
 
   /// AI 프롬프트에 포함할 영문 위치 키
