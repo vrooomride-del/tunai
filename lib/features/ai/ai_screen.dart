@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ble/ble_controller.dart';
 import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
+import '../../shared/acoustic_timeline.dart';
 
 /// TUNE 탭 — Consumer Acoustic Tune 6-state flow.
 /// No DSP, no EQ, no PEQ, no frequency data exposed.
@@ -399,6 +400,11 @@ class _StateE extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                     ],
+                    AcousticTimeline(
+                      currentStep: AcousticTimelineStep.listen,
+                      ko: ko,
+                    ),
+                    const SizedBox(height: 28),
                     Text(
                       ko ? 'TUNAI가 발견한 것' : 'What TUNAI found',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
@@ -511,6 +517,11 @@ class _StateF extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                     ],
+                    AcousticTimeline(
+                      currentStep: AcousticTimelineStep.savedProfile,
+                      ko: ko,
+                    ),
+                    const SizedBox(height: 28),
                     Text(
                       ko ? '적용된 조정' : 'Applied adjustments',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.35),

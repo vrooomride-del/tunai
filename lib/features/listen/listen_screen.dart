@@ -11,6 +11,7 @@ import '../health/speaker_health_screen.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
+import '../../shared/acoustic_timeline.dart';
 import '../dsp/master_volume_controller.dart';
 import '../ble/ble_controller.dart';
 /// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
@@ -458,6 +459,11 @@ class _ConsumerActiveView extends ConsumerWidget {
         ),
         const SizedBox(height: 20),
       ],
+      AcousticTimeline(
+        currentStep: AcousticTimelineStep.savedProfile,
+        ko: ko,
+      ),
+      const SizedBox(height: 20),
       Text(
         ko ? '적용된 조정' : 'Applied adjustments',
         style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),

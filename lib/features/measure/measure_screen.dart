@@ -8,6 +8,7 @@ import '../../core/spectrum_snapshot.dart';
 import '../../core/mic_calibration_service.dart';
 import '../../core/room_scan_result.dart';
 import '../../shared/widgets.dart';
+import '../../shared/acoustic_timeline.dart';
 
 /// ROOM 탭 — 공간 측정 UX.
 /// 측정 완료 시 [onMeasured]로 TUNE 탭 자동 전환을 요청한다.
@@ -506,7 +507,12 @@ class _ResultView extends ConsumerWidget {
                         ),
                       ]),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                    AcousticTimeline(
+                      currentStep: AcousticTimelineStep.acousticTune,
+                      ko: ko,
+                    ),
+                    const SizedBox(height: 24),
                     Text(
                       ko ? '청취 환경 요약' : 'Listening Environment Summary',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
