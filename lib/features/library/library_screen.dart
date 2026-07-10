@@ -149,7 +149,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final profiles = ref.watch(soundProfileStoreProvider);
     final consumerProfiles = ref.watch(consumerSoundProfileProvider);
 
-    final hasAny = profiles.isNotEmpty || consumerProfiles.isNotEmpty;
+    // Group consumer profiles by taxonomy type
+    final tunaiTunes = consumerProfiles
+        .where((p) => p.profileType == ConsumerProfileType.tunaiTune)
+        .toList();
+    final myTunes = consumerProfiles
+        .where((p) => p.profileType == ConsumerProfileType.myTune)
+        .toList();
+    final roomProfiles = consumerProfiles
+        .where((p) => p.profileType == ConsumerProfileType.roomProfile)
+        .toList();
+    final references = consumerProfiles
+        .where((p) => p.profileType == ConsumerProfileType.reference)
+        .toList();
+    final hasUserProfiles = consumerProfiles.isNotEmpty || profiles.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -161,35 +174,56 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
                 children: [
-                  if (!hasAny) ...[
+                  // Empty state — shown when no user profiles saved yet
+                  if (!hasUserProfiles) ...[
                     const SizedBox(height: 60),
                     _EmptyLibraryState(ko: ko, onGoToRoomScan: widget.onGoToRoomScan),
-                  ] else ...[
-                    // ── Consumer Sound Profiles (from Acoustic Tune flow) ──
-                    if (consumerProfiles.isNotEmpty) ...[
-                      Text(
-                        ko ? 'Acoustic Tune 프로파일' : 'Acoustic Tune Profiles',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
-                      ),
-                      const SizedBox(height: 12),
-                      ...consumerProfiles.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
-                      if (profiles.isNotEmpty) const SizedBox(height: 20),
-                    ],
-                    // ── PRO Sound Profiles (from advanced tuning) ─────────
-                    if (profiles.isNotEmpty) ...[
-                      Text(
-                        ko ? '고급 사운드 프로파일' : 'Advanced Sound Profiles',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
-                      ),
-                      const SizedBox(height: 12),
-                      ...profiles.reversed.map((p) => _ProfileCard(
-                            profile: p,
-                            ko: ko,
-                            onTap: () => _showActions(p),
-                            onManageInPro: () => _showProRedirect(ko),
-                          )),
-                    ],
+                    const SizedBox(height: 40),
                   ],
+
+                  // ── TUNAI Tune ─────────────────────────────────────────
+                  if (tunaiTunes.isNotEmpty) ...[
+                    _SectionHeader(ko ? 'TUNAI Tune' : 'TUNAI Tune'),
+                    ...tunaiTunes.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── My Tune ────────────────────────────────────────────
+                  if (myTunes.isNotEmpty) ...[
+                    _SectionHeader(ko ? 'My Tune' : 'My Tune'),
+                    ...myTunes.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── Room Profile ───────────────────────────────────────
+                  if (roomProfiles.isNotEmpty) ...[
+                    _SectionHeader(ko ? '공간 프로파일' : 'Room Profile'),
+                    ...roomProfiles.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── Reference ──────────────────────────────────────────
+                  if (references.isNotEmpty) ...[
+                    _SectionHeader(ko ? '레퍼런스' : 'Reference'),
+                    ...references.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── PRO Sound Profiles (from advanced tuning) ──────────
+                  if (profiles.isNotEmpty) ...[
+                    _SectionHeader(ko ? '고급 사운드 프로파일' : 'Advanced Sound Profiles'),
+                    ...profiles.reversed.map((p) => _ProfileCard(
+                          profile: p,
+                          ko: ko,
+                          onTap: () => _showActions(p),
+                          onManageInPro: () => _showProRedirect(ko),
+                        )),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // ── Factory Sound — always shown as baseline reference ──
+                  _SectionHeader(ko ? 'Factory Sound' : 'Factory Sound'),
+                  _FactoryPlaceholderCard(ko: ko),
                 ],
               ),
             ),
@@ -261,7 +295,7 @@ class _ConsumerProfileCard extends StatelessWidget {
             const SizedBox(width: 8),
             _MetaChip(text: profile.confidence),
             const SizedBox(width: 8),
-            _MetaChip(text: ko ? 'Acoustic Tune' : 'Acoustic Tune'),
+            _MetaChip(text: profile.profileType.label(ko)),
           ]),
           if (profile.resultCards.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -391,6 +425,78 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
+// ── Section Header ────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.35),
+            fontSize: 11,
+            letterSpacing: 1.5,
+          ),
+        ),
+      );
+}
+
+// ── Factory Placeholder Card ──────────────────────────────────────────────────
+
+class _FactoryPlaceholderCard extends StatelessWidget {
+  final bool ko;
+  const _FactoryPlaceholderCard({required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                ko ? '기본 소리' : 'Default Sound',
+                style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w300),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Factory',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 9, letterSpacing: 1),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text(
+            ko
+                ? 'TUNAI 기기의 기본 사운드 설정입니다.\nAcoustic Tune 이전의 기준이 됩니다.'
+                : 'The original sound of your TUNAI device.\nThis is the baseline before any Acoustic Tune.',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.28), fontSize: 11, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MetaChip extends StatelessWidget {
   final String text;
   const _MetaChip({required this.text});
@@ -440,15 +546,15 @@ class _EmptyLibraryState extends StatelessWidget {
             Icon(Icons.library_music_outlined, color: Colors.white.withValues(alpha: 0.15), size: 40),
             const SizedBox(height: 20),
             Text(
-              ko ? '아직 저장된 사운드 프로파일이 없습니다.' : 'No Sound Profiles yet.',
+              ko ? '아직 저장된 Sound Profile이 없습니다.' : 'No Sound Profiles saved yet.',
               style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w300),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               ko
-                  ? '공간 스캔으로 첫 어쿠스틱 튠을 만들어보세요.'
-                  : 'Create your first Acoustic Tune with a Room Scan.',
+                  ? 'Room Scan과 Acoustic Tune을 완료하면\n이곳에 저장됩니다.'
+                  : 'Complete Room Scan and Acoustic Tune\nto save your first profile.',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13, height: 1.5),
               textAlign: TextAlign.center,
             ),

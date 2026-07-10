@@ -40,6 +40,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       resultCards: scan.cards,
       soundScoreBefore: 82,
       soundScoreAfter: 94,
+      profileType: ConsumerProfileType.tunaiTune,
     );
     await ref.read(consumerSoundProfileProvider.notifier).add(profile);
     if (mounted) setState(() => _creating = false);

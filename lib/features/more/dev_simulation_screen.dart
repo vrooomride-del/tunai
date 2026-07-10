@@ -88,6 +88,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
         resultCards: scan.cards,
         soundScoreBefore: 82,
         soundScoreAfter: 94,
+        profileType: ConsumerProfileType.tunaiTune,
       );
       await ref.read(consumerSoundProfileProvider.notifier).add(profile);
       final profiles = ref.read(consumerSoundProfileProvider);

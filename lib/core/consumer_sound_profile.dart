@@ -5,6 +5,45 @@ import 'room_scan_result.dart';
 
 enum ConsumerProfileStatus { draft, ready, active }
 
+/// Taxonomy tag for consumer sound profiles.
+/// Note: `factorySound` represents the device baseline (cannot use `factory` — Dart keyword).
+enum ConsumerProfileType {
+  tunaiTune,
+  myTune,
+  roomProfile,
+  reference,
+  factorySound;
+
+  String toJson() => name;
+
+  static ConsumerProfileType fromJson(String? s) => s == null
+      ? ConsumerProfileType.tunaiTune
+      : ConsumerProfileType.values.firstWhere(
+          (e) => e.name == s,
+          orElse: () => ConsumerProfileType.tunaiTune,
+        );
+}
+
+extension ConsumerProfileTypeLabels on ConsumerProfileType {
+  String label(bool ko) => ko ? _ko : _en;
+
+  String get _ko => switch (this) {
+        ConsumerProfileType.tunaiTune => 'TUNAI Tune',
+        ConsumerProfileType.myTune => 'My Tune',
+        ConsumerProfileType.roomProfile => '공간 프로파일',
+        ConsumerProfileType.reference => '레퍼런스',
+        ConsumerProfileType.factorySound => 'Factory Sound',
+      };
+
+  String get _en => switch (this) {
+        ConsumerProfileType.tunaiTune => 'TUNAI Tune',
+        ConsumerProfileType.myTune => 'My Tune',
+        ConsumerProfileType.roomProfile => 'Room Profile',
+        ConsumerProfileType.reference => 'Reference',
+        ConsumerProfileType.factorySound => 'Factory Sound',
+      };
+}
+
 class ConsumerSoundProfile {
   final String id;
   final String name;
@@ -19,6 +58,7 @@ class ConsumerSoundProfile {
   // Consumer-friendly Sound Score — simulated estimate, not a technical measurement.
   final int? soundScoreBefore;
   final int? soundScoreAfter;
+  final ConsumerProfileType profileType;
 
   const ConsumerSoundProfile({
     required this.id,
@@ -33,6 +73,7 @@ class ConsumerSoundProfile {
     required this.resultCards,
     this.soundScoreBefore,
     this.soundScoreAfter,
+    this.profileType = ConsumerProfileType.tunaiTune,
   });
 
   int? get soundScoreImprovement {
@@ -47,6 +88,7 @@ class ConsumerSoundProfile {
     DateTime? updatedAt,
     int? soundScoreBefore,
     int? soundScoreAfter,
+    ConsumerProfileType? profileType,
   }) =>
       ConsumerSoundProfile(
         id: id,
@@ -61,6 +103,7 @@ class ConsumerSoundProfile {
         resultCards: resultCards,
         soundScoreBefore: soundScoreBefore ?? this.soundScoreBefore,
         soundScoreAfter: soundScoreAfter ?? this.soundScoreAfter,
+        profileType: profileType ?? this.profileType,
       );
 
   Map<String, dynamic> toJson() => {
@@ -76,6 +119,7 @@ class ConsumerSoundProfile {
         'resultCards': resultCards.map((c) => c.toJson()).toList(),
         if (soundScoreBefore != null) 'soundScoreBefore': soundScoreBefore,
         if (soundScoreAfter != null) 'soundScoreAfter': soundScoreAfter,
+        'profileType': profileType.toJson(),
       };
 
   factory ConsumerSoundProfile.fromJson(Map<String, dynamic> j) =>
@@ -94,6 +138,7 @@ class ConsumerSoundProfile {
             .toList(),
         soundScoreBefore: j['soundScoreBefore'] as int?,
         soundScoreAfter: j['soundScoreAfter'] as int?,
+        profileType: ConsumerProfileType.fromJson(j['profileType'] as String?),
       );
 }
 
