@@ -188,8 +188,10 @@ class _TunaiProMenuItem extends StatelessWidget {
               ]),
               const SizedBox(height: 2),
               Text(
-                ko ? '고급 음향 튜닝' : 'Advanced acoustic tuning',
-                style: const TextStyle(color: Colors.white24, fontSize: 11),
+                ko
+                    ? '고급 프로파일 검토와 전문가 튜닝은 TUNAI PRO에서 사용할 수 있습니다.'
+                    : 'Advanced profile review and expert tuning are available in TUNAI PRO.',
+                style: const TextStyle(color: Colors.white24, fontSize: 11, height: 1.4),
               ),
             ]),
           ),

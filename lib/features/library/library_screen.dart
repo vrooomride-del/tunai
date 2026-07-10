@@ -224,6 +224,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   // ── Factory Sound — always shown as baseline reference ──
                   _SectionHeader(ko ? 'Factory Sound' : 'Factory Sound'),
                   _FactoryPlaceholderCard(ko: ko),
+
+                  // ── PRO Bridge info card ────────────────────────────────
+                  const SizedBox(height: 28),
+                  _ProBridgeCard(ko: ko),
                 ],
               ),
             ),
@@ -492,6 +496,87 @@ class _FactoryPlaceholderCard extends StatelessWidget {
             style: TextStyle(color: Colors.white.withValues(alpha: 0.28), fontSize: 11, height: 1.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── PRO Bridge Info Card ──────────────────────────────────────────────────────
+
+class _ProBridgeCard extends StatelessWidget {
+  final bool ko;
+  const _ProBridgeCard({required this.ko});
+
+  void _showDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'TUNAI PRO Bridge',
+          style: TextStyle(color: Colors.white, fontSize: 15, letterSpacing: 1),
+        ),
+        content: Text(
+          ko
+              ? '이 기능은 준비 중입니다.\n현재 Mobile에서는 Sound Profile을 저장하고 비교할 수 있으며, 고급 검토와 배포는 향후 TUNAI PRO 연동으로 제공됩니다.'
+              : 'This feature is coming soon.\nFor now, Mobile can save and compare Sound Profiles. Advanced review and deployment will be available later through TUNAI PRO.',
+          style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              ko ? '확인' : 'OK',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showDialog(context),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.swap_horiz_rounded, color: Colors.white24, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                ko ? 'TUNAI PRO와 함께 사용하기' : 'Use with TUNAI PRO',
+                style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w300),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(
+              ko
+                  ? 'Mobile에서 만든 Sound Profile은 나중에 TUNAI PRO에서 전문가 검토를 받을 수 있습니다.\n전문가가 다듬은 Reference Profile은 다시 Mobile에서 사용할 수 있습니다.'
+                  : 'Sound Profiles created on Mobile can later be reviewed in TUNAI PRO.\nExpert-refined Reference Profiles can be used again on Mobile.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.55),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                ko ? 'PRO 연동 준비 중' : 'PRO Bridge Coming Soon',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, letterSpacing: 0.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
