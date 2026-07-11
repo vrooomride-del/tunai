@@ -1,3 +1,9 @@
+# TUNAI Cloud backend secrets — never commit
+tunai_cloud/.env
+tunai_cloud/.venv/
+tunai_cloud/.pytest_cache/
+tunai_cloud/**/__pycache__/
+
 # Miscellaneous
 *.class
 *.log
@@ -43,3 +49,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Xcode SwiftPM generated workspace data
+ios/**/xcshareddata/swiftpm/
+macos/**/xcshareddata/swiftpm/

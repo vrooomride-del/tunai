@@ -1,0 +1,53 @@
+# TUNAI Cloud AI Orchestrator — systemd service unit
+# ─────────────────────────────────────────────────────────────────────────────
+# BEFORE USE: replace all <PLACEHOLDER> values.
+#
+# Install:
+#   sudo cp tunai-orchestrator.service.example /etc/systemd/system/tunai-orchestrator.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable tunai-orchestrator
+#   sudo systemctl start tunai-orchestrator
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=TUNAI Cloud AI Orchestrator
+After=network.target
+# If you use a local database later:
+# After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=<TUNAI_SERVICE_USER>
+Group=<TUNAI_SERVICE_GROUP>
+WorkingDirectory=/opt/tunai-cloud
+
+# Secrets are loaded from the .env file — never hardcode them here.
+EnvironmentFile=/opt/tunai-cloud/.env
+
+ExecStart=/opt/tunai-cloud/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8100 \
+    --workers 1 \
+    --log-level info
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# Resource limits — tune after confirming server capacity
+# See: systemctl show tunai-orchestrator (after start) to observe actual usage
+# LimitNOFILE=4096
+# MemoryMax=256M
+# CPUQuota=50%
+
+# Security hardening (Ubuntu 22.04+ compatible)
+# Uncomment after confirming service starts correctly without them.
+# NoNewPrivileges=yes
+# PrivateTmp=yes
+# ProtectSystem=strict
+# ReadWritePaths=/opt/tunai-cloud /var/log/tunai
+
+[Install]
+WantedBy=multi-user.target

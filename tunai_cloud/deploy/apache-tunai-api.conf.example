@@ -1,0 +1,61 @@
+# TUNAI Cloud — Apache reverse proxy configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUIRED MODULES:
+#   sudo a2enmod proxy
+#   sudo a2enmod proxy_http
+#   sudo a2enmod ssl
+#   sudo a2enmod headers
+#   sudo a2enmod rewrite
+#
+# BEFORE USE:
+#   - Replace <TUNAI_API_DOMAIN> with your actual subdomain (e.g. api.tunai.kr)
+#   - Replace SSL certificate paths with your actual Let's Encrypt paths
+#   - Run: sudo apachectl configtest   ← validate BEFORE reload
+#   - Run: sudo systemctl reload apache2
+#
+# DO NOT modify existing VirtualHost files. Create this as a new file:
+#   /etc/apache2/sites-available/tunai-api.conf
+#   sudo a2ensite tunai-api
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── HTTP → HTTPS redirect ─────────────────────────────────────────────────────
+<VirtualHost *:80>
+    ServerName <TUNAI_API_DOMAIN>
+
+    RewriteEngine On
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+</VirtualHost>
+
+# ── HTTPS ─────────────────────────────────────────────────────────────────────
+<VirtualHost *:443>
+    ServerName <TUNAI_API_DOMAIN>
+
+    # SSL — replace with your Let's Encrypt paths
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/<TUNAI_API_DOMAIN>/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/<TUNAI_API_DOMAIN>/privkey.pem
+
+    # Proxy to Uvicorn (never expose port 8100 through firewall)
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:8100/
+    ProxyPassReverse / http://127.0.0.1:8100/
+
+    # Pass real client IP to FastAPI
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Real-IP %{REMOTE_ADDR}s
+
+    # Request body size limit (adjust if needed — 1MB is generous for this API)
+    LimitRequestBody 1048576
+
+    # Minimal security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "no-referrer"
+
+    # Keep TUNAI API logs separate from other sites
+    ErrorLog  /var/log/apache2/tunai-api-error.log
+    CustomLog /var/log/apache2/tunai-api-access.log combined
+
+    # Health check — accessible without authentication
+    # (already handled by FastAPI /health endpoint)
+</VirtualHost>
