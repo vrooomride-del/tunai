@@ -4,13 +4,20 @@
 // ABSOLUTE RESTRICTIONS:
 //   - No EEPROM (addr 0xA0). No Selfboot. No WriteAll.
 //   - testWasActualWrite = true ONLY when transport.writeParameter() was called.
-//   - G1: BLE transport connected (not null).
-//   - G2: user confirmed.
-//   - G3: restore value confirmed.
-//   - G4: address != 0xA0 (EEPROM guard — permanently blocked).
-//   - G5: candidate isBlocked flag must be false.
-//   - BLE writeParameter returns void; success = no exception = PASS_ACK.
 //   - Restore always attempted after successful test write.
+//
+// Guards (in order):
+//   G1: BLE transport connected (not null)
+//   G2: user confirmed
+//   G3: restore value confirmed
+//   G4: address != 0xA0 (EEPROM — permanently blocked)
+//   G5: candidate isBlocked=false
+//   G6: writeShape == singleWordParameter (5-word/unsupported shapes cannot use this path)
+//   G7: firmwareConfirmed=true (operator confirmed device runs the expected firmware)
+//   G8: valueFormat != unknown AND formatConfirmed=true
+//
+// BLE writeParameter returns void. Success = no exception = PASS_ACK.
+// VERIFIED is NEVER set by executor — requires separate operator manual action.
 
 import 'dsp/transport/dsp_transport.dart';
 import 'adau1701_engineering_candidate.dart';
@@ -26,6 +33,10 @@ class Adau1701EngWriteRequest {
   final bool userConfirmed;
   final bool restoreValueConfirmed;
   final bool isBlocked;
+  final Adau1701WriteShape writeShape;
+  final bool firmwareConfirmed;
+  final bool formatConfirmed;
+  final Adau1701ValueFormat valueFormat;
 
   const Adau1701EngWriteRequest({
     required this.id,
@@ -36,6 +47,10 @@ class Adau1701EngWriteRequest {
     required this.userConfirmed,
     required this.restoreValueConfirmed,
     required this.isBlocked,
+    required this.writeShape,
+    required this.firmwareConfirmed,
+    required this.formatConfirmed,
+    required this.valueFormat,
   });
 }
 
@@ -67,7 +82,7 @@ class Adau1701EngWriteResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-List<int> _encodeValue32(int v) => [
+List<int> _encode32(int v) => [
       (v >> 24) & 0xFF,
       (v >> 16) & 0xFF,
       (v >> 8) & 0xFF,
@@ -77,7 +92,7 @@ List<int> _encodeValue32(int v) => [
 Adau1701EngWriteResult _blocked(
   String id,
   String error,
-  String transportDesc,
+  String desc,
   DateTime now,
 ) =>
     Adau1701EngWriteResult(
@@ -89,7 +104,7 @@ Adau1701EngWriteResult _blocked(
       error: error,
       resultStatus: Adau1701CandidateStatus.blocked,
       executedAt: now,
-      transportDesc: transportDesc,
+      transportDesc: desc,
     );
 
 // ── Executor ──────────────────────────────────────────────────────────────────
@@ -119,7 +134,7 @@ class Adau1701EngineeringExecutor {
       return _blocked(req.id, 'G3: Restore value not confirmed.', desc, now);
     }
 
-    // G4: EEPROM guard — address 0xA0 is the EEPROM I2C address, permanently blocked
+    // G4: EEPROM guard
     if (req.addressInt == 0xA0) {
       return _blocked(
           req.id,
@@ -128,14 +143,47 @@ class Adau1701EngineeringExecutor {
           now);
     }
 
-    // G5: Candidate blocked flag
+    // G5: Candidate isBlocked flag
     if (req.isBlocked) {
       return _blocked(req.id, 'G5: Candidate is blocked. Write disabled.', desc, now);
     }
 
+    // G6: Write shape must be singleWordParameter
+    if (req.writeShape != Adau1701WriteShape.singleWordParameter) {
+      return _blocked(
+          req.id,
+          'G6: WRITE_SHAPE_NOT_SUPPORTED. '
+          'This address requires ${req.writeShape.label} write; '
+          'only singleWordParameter is supported by this executor.',
+          desc,
+          now);
+    }
+
+    // G7: Firmware source must be confirmed
+    if (!req.firmwareConfirmed) {
+      return _blocked(
+          req.id,
+          'G7: FIRMWARE_SOURCE_NOT_CONFIRMED. '
+          'Operator must confirm the device is running the expected firmware '
+          'before writing this address.',
+          desc,
+          now);
+    }
+
+    // G8: Value format must be selected and confirmed
+    if (req.valueFormat == Adau1701ValueFormat.unknown || !req.formatConfirmed) {
+      return _blocked(
+          req.id,
+          'G8: FORMAT_NOT_CONFIRMED. '
+          'Value format is ${req.valueFormat.label}. '
+          'Operator must select a format (5.23/8.24/Raw32) and explicitly confirm it.',
+          desc,
+          now);
+    }
+
     // All guards passed — perform write+restore
-    final testBytes = _encodeValue32(req.testValue32);
-    final restoreBytes = _encodeValue32(req.restoreValue32);
+    final testBytes = _encode32(req.testValue32);
+    final restoreBytes = _encode32(req.restoreValue32);
 
     bool testWasActualWrite = false;
     bool restoreWasActualWrite = false;
@@ -148,7 +196,7 @@ class Adau1701EngineeringExecutor {
       testWasActualWrite = true;
       testWriteOk = true;
 
-      // Restore always attempted after test write
+      // Restore always attempted after successful test write
       await transport!.writeParameter(req.addressInt, restoreBytes);
       restoreWasActualWrite = true;
       restoreWriteOk = true;
