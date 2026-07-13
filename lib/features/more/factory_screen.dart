@@ -9,6 +9,7 @@ import '../../core/profiles/system_profile.dart';
 import '../../shared/widgets.dart';
 import 'dsp_unlock_flags.dart';
 import 'dev_simulation_screen.dart';
+import 'adau1701_engineering_console.dart';
 
 // ── ADAU1466 주소 상수 (v0.8B Export18) ────────────────────────────────────
 const _kDriverGainAddrs = [0x3B8, 0x3BB, 0x3C4, 0x3CA, 0x3C7, 0x3CD];
@@ -97,6 +98,11 @@ class FactoryScreen extends ConsumerWidget {
                   children: [
                     if (!isAdau1466) ...[
                       _Adau1701FactoryContent(),
+                      const SizedBox(height: 24),
+                      // ── Engineering Verification Console ────────────────
+                      const _SecLabel('ENGINEERING VERIFICATION'),
+                      const SizedBox(height: 8),
+                      const Adau1701EngineeringConsole(),
                       const SizedBox(height: 24),
                       const _SecLabel('DSP MAP'),
                       const SizedBox(height: 12),
