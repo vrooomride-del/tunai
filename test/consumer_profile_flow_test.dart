@@ -14,6 +14,7 @@ import 'package:tunai/features/ble/icp5_consumer_frame_codec.dart';
 import 'package:tunai/features/connect/connect_screen.dart';
 import 'package:tunai/features/listen/listen_screen.dart';
 import 'package:tunai/features/measure/measure_screen.dart';
+import 'package:tunai/features/more/more_screen.dart';
 import 'package:tunai/main.dart' show currentTabIndexProvider;
 
 final _scan = RoomScanResult(
@@ -178,6 +179,19 @@ void main() {
     expect(prefs.getString('tunai_consumer_sound_profiles'), isNull);
   });
 
+  testWidgets('MORE hides release placeholders and Factory engineering entry',
+      (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: MoreScreen())),
+    );
+    await tester.pump();
+    expect(find.text('COMMUNITY'), findsNothing);
+    expect(find.text('TUNAI PRO'), findsNothing);
+    expect(find.text('FACTORY MODE'), findsNothing);
+    expect(find.text('PROFILE LIBRARY'), findsOneWidget);
+    expect(find.text('FINE TUNE'), findsOneWidget);
+  });
+
   for (final locale in const [Locale('en'), Locale('ko')]) {
     testWidgets(
         'narrow device selector has no overflow (${locale.languageCode})',
@@ -198,6 +212,9 @@ void main() {
       await tester.pump();
       expect(find.byKey(const Key('consumer_ble_device_selector')),
           findsOneWidget);
+      expect(find.text('Nearby speaker'), findsOneWidget);
+      expect(find.textContaining('WONDOM'), findsNothing);
+      expect(find.textContaining('dBm'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

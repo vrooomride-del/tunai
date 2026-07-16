@@ -39,8 +39,6 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       isActive: false,
       status: ConsumerProfileStatus.ready,
       resultCards: scan.cards,
-      soundScoreBefore: 82,
-      soundScoreAfter: 94,
       profileType: ConsumerProfileType.tunaiTune,
     );
     await ref.read(consumerSoundProfileProvider.notifier).upsertAndActivate(profile);
@@ -231,8 +229,8 @@ class _StateC extends StatelessWidget {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? 'TUNAI가 공간 특성에 맞는 안전한 사운드 프로파일을 만듭니다.\n복잡한 설정 없이, 그저 좋은 소리를 들으면 됩니다.'
-                          : 'TUNAI creates a safe, room-matched Sound Profile.\nNo complex settings — just better sound.',
+                          ? '공장에서 완성된 기본 사운드의 성향은 유지하면서\n청취 위치와 공간의 울림에 맞게 소리를 정리합니다.'
+                          : 'TUNAI preserves the speaker’s factory-tuned character\nwhile adapting it to your room and listening position.',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14, height: 1.65),
                     ),

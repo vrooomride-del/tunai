@@ -109,8 +109,8 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen> {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? '평소 듣는 자리에 앉아 주세요.\n잠시 공간을 조용히 유지해 주세요.'
-                          : 'Sit where you usually listen.\nKeep the room quiet for a moment.',
+                          ? '휴대폰을 평소 듣는 위치에 놓아주세요.\n공간의 울림과 스피커 배치를 확인하는 동안 짧은 측정음이 재생될 수 있습니다.'
+                          : 'Place your phone at your normal listening position.\nA brief measurement sound may play while TUNAI learns the room and speaker placement.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.45),
                         fontSize: 14,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/profiles/system_profile.dart';
 import '../dsp/dsp_compiler.dart';
 import 'consumer_ble_service.dart';
+import 'consumer_product_identity.dart';
 
 enum BleConnectionState {
   disconnected,
@@ -17,6 +18,7 @@ enum BleConnectionState {
   bluetoothOff,
   permissionRequired,
   unsupported,
+  connectionLost,
 }
 
 enum DetectedBoard { icp5Adau1701, adau1466, unknown }
@@ -97,8 +99,11 @@ class BleController extends StateNotifier<BleState> {
 
   void _onServiceChanged() {
     final next = _service.state;
+    final wasConnected = state.connection == BleConnectionState.connected;
     final connection = switch (next.status) {
-      ConsumerBleStatus.disconnected => BleConnectionState.disconnected,
+      ConsumerBleStatus.disconnected => wasConnected
+          ? BleConnectionState.connectionLost
+          : BleConnectionState.disconnected,
       ConsumerBleStatus.bluetoothUnavailable => BleConnectionState.bluetoothOff,
       ConsumerBleStatus.permissionRequired =>
         BleConnectionState.permissionRequired,
@@ -117,7 +122,12 @@ class BleController extends StateNotifier<BleState> {
     }
     state = state.copyWith(
       connection: connection,
-      deviceName: next.connected ? next.connectedDeviceName : null,
+      deviceName: next.connected
+          ? ConsumerProductIdentity.fromPhysicalIdentity(
+              physicalDeviceName: next.connectedDeviceName ?? '',
+              supportedProfileValidated: true,
+            ).displayName
+          : null,
       detectedBoard: next.connected ? DetectedBoard.icp5Adau1701 : null,
       devices: next.devices,
       selectedDeviceIdentifier: next.selectedDevice?.identifier,

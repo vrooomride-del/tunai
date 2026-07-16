@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../ble/ble_controller.dart';
+import '../ble/consumer_product_identity.dart';
 import '../../core/tone_generator.dart';
 import '../../shared/first_run_guide_card.dart';
 import '../../core/consumer_input_source.dart';
@@ -58,7 +59,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     final hasSafeError = bState.connection == BleConnectionState.error ||
         bState.connection == BleConnectionState.permissionRequired ||
         bState.connection == BleConnectionState.bluetoothOff ||
-        bState.connection == BleConnectionState.unsupported;
+        bState.connection == BleConnectionState.unsupported ||
+        bState.connection == BleConnectionState.connectionLost;
 
     final goTo = widget.onGoTo ?? (_) {};
 
@@ -89,8 +91,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       children: [
                         Text(
                           ko
-                              ? 'TUNAI 스피커를 찾고 있습니다'
-                              : 'Looking for your TUNAI speaker',
+                              ? 'TUNAI ONE을 찾고 있습니다'
+                              : 'Looking for TUNAI ONE',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 26,
@@ -165,13 +167,17 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                     (device) => DropdownMenuItem<String>(
                                       value: device.identifier,
                                       child: Row(children: [
-                                        Expanded(child: Text(device.name,
+                                        Expanded(child: Text(
+                                          ConsumerProductIdentity.fromPhysicalIdentity(
+                                            physicalDeviceName: device.name,
+                                            supportedProfileValidated: false,
+                                          ).displayName,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                         )),
                                         if (device.rssi != null) ...[
                                           const SizedBox(width: 8),
-                                          Text('${device.rssi} dBm',
+                                          Text(ConsumerProductIdentity.signalQuality(device.rssi, ko: ko),
                                             maxLines: 1,
                                             style: const TextStyle(color: Colors.white54, fontSize: 12),
                                           ),
@@ -480,6 +486,8 @@ String _safeConnectionText(BleConnectionState state, {required bool ko}) =>
         ko ? '블루투스 권한이 필요합니다.' : 'Permission required',
       BleConnectionState.unsupported =>
         ko ? '지원되지 않는 기기입니다.' : 'Unsupported device',
+      BleConnectionState.connectionLost =>
+        ko ? 'TUNAI ONE과의 연결이 끊어졌습니다.' : 'Connection to TUNAI ONE was lost',
       _ => ko ? '연결에 실패했습니다.' : 'Connection failed',
     };
 

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
 import 'package:tunai/features/ble/consumer_ble_service.dart';
 import 'package:tunai/features/ble/icp5_consumer_frame_codec.dart';
+import 'package:tunai/features/ble/consumer_product_identity.dart';
 import 'package:tunai/features/connect/connect_screen.dart';
 
 List<int> _identity(String profile) {
@@ -135,6 +136,32 @@ ConsumerBleService _service(
     ConsumerBleService(driver: driver, handshakeTimeout: timeout);
 
 void main() {
+  test('Consumer identity confirms TUNAI ONE only after validation', () {
+    final candidate = ConsumerProductIdentity.fromPhysicalIdentity(
+      physicalDeviceName: 'WONDOM ICP5',
+      supportedProfileValidated: false,
+    );
+    expect(candidate.displayName, 'TUNAI ONE');
+    expect(candidate.isConfirmed, isFalse);
+
+    final confirmed = ConsumerProductIdentity.fromPhysicalIdentity(
+      physicalDeviceName: 'CH9143BLE2U',
+      supportedProfileValidated: true,
+    );
+    expect(confirmed.displayName, 'TUNAI ONE');
+    expect(confirmed.isConfirmed, isTrue);
+  });
+
+  test('unknown or unsupported candidates are not falsely branded', () {
+    final unknown = ConsumerProductIdentity.fromPhysicalIdentity(
+      physicalDeviceName: 'Other speaker',
+      supportedProfileValidated: false,
+    );
+    expect(unknown.displayName, 'Nearby speaker');
+    expect(unknown.isHighConfidenceCandidate, isFalse);
+    expect(unknown.isConfirmed, isFalse);
+  });
+
   test('capture-proven handshake request is byte-for-byte unchanged', () {
     expect(Icp5ConsumerFrameCodec.identificationRequest, [
       0x55,
@@ -304,6 +331,31 @@ void main() {
     service.dispose();
   });
 
+  test('unexpected disconnect becomes consumer-safe connection-lost state',
+      () async {
+    final connection = _FakeConnection();
+    final driver = _FakeDriver(
+      devices: [_device('icp5', 'WONDOM ICP5')],
+      connection: connection,
+    );
+    final service = _service(driver);
+    final container = ProviderContainer(overrides: [
+      consumerBleServiceProvider.overrideWithValue(service),
+    ]);
+    addTearDown(container.dispose);
+    container.read(bleProvider);
+    await service.scan();
+    await service.connect();
+    expect(container.read(bleProvider).deviceName, 'TUNAI ONE');
+
+    connection.disconnectUnexpectedly();
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(bleProvider).connection,
+        BleConnectionState.connectionLost);
+    expect(driver.connectCalls, 1);
+    expect(driver.scanCalls, 1);
+  });
+
   testWidgets('Consumer UI is safe and CONNECT can proceed to ROOM',
       (tester) async {
     final driver = _FakeDriver(
@@ -337,8 +389,10 @@ void main() {
     await tester.pump();
     expect(
         find.byKey(const Key('consumer_ble_device_selector')), findsOneWidget);
-    expect(find.text('WONDOM ICP5'), findsOneWidget);
-    expect(find.text('-42 dBm'), findsOneWidget);
+    expect(find.text('TUNAI ONE'), findsOneWidget);
+    expect(find.text('Strong signal'), findsOneWidget);
+    expect(find.text('WONDOM ICP5'), findsNothing);
+    expect(find.text('-42 dBm'), findsNothing);
 
     await tester.tap(find.byKey(const Key('consumer_ble_connect_button')));
     await tester.pump();
@@ -346,6 +400,7 @@ void main() {
     expect(driver.connectCalls, 1);
     expect(driver.scanCalls, 1);
     expect(find.text('DSP1701.100.00.01'), findsNothing);
+    expect(find.text('WONDOM ICP5'), findsNothing);
 
     final dialog = find.byType(AlertDialog);
     expect(dialog, findsOneWidget);
