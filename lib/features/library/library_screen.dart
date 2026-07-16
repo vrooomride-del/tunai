@@ -204,7 +204,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
                   // ── Reference ──────────────────────────────────────────
                   if (references.isNotEmpty) ...[
-                    _SectionHeader(ko ? '전문가 기준 프로파일' : 'Expert Reference'),
+                    _SectionHeader(ko ? '레퍼런스' : 'Reference'),
                     ...references.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
                     const SizedBox(height: 20),
                   ],
@@ -225,6 +225,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   _SectionHeader(ko ? 'Factory Sound' : 'Factory Sound'),
                   _FactoryPlaceholderCard(ko: ko),
 
+                  // ── PRO Bridge info card ────────────────────────────────
+                  const SizedBox(height: 28),
+                  _ProBridgeCard(ko: ko),
                 ],
               ),
             ),
@@ -338,7 +341,9 @@ class _ProfileCard extends StatelessWidget {
     final diff = DateTime.now().difference(profile.createdAt);
     if (diff.inDays == 0) return ko ? '오늘' : 'Today';
     if (diff.inDays == 1) return ko ? '어제' : 'Yesterday';
-    if (diff.inDays < 7) return ko ? '${diff.inDays}일 전' : '${diff.inDays}d ago';
+    if (diff.inDays < 7) {
+      return ko ? '${diff.inDays}일 전' : '${diff.inDays}d ago';
+    }
     return '${profile.createdAt.year}.${profile.createdAt.month.toString().padLeft(2,'0')}.${profile.createdAt.day.toString().padLeft(2,'0')}';
   }
 
@@ -468,7 +473,7 @@ class _FactoryPlaceholderCard extends StatelessWidget {
           Row(children: [
             Expanded(
               child: Text(
-                ko ? '공장에서 완성된 기본 사운드' : 'Factory Sound',
+                ko ? '기본 소리' : 'Default Sound',
                 style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w300),
               ),
             ),
@@ -488,11 +493,92 @@ class _FactoryPlaceholderCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             ko
-                ? 'TUNAI ONE의 기본 성향을 담은 변경할 수 없는 기준입니다.\nAcoustic Tune은 이 성향을 유지하며 공간에 맞게 조정됩니다.'
-                : 'The unmodified factory-tuned foundation of TUNAI ONE.\nAcoustic Tune preserves this character while adapting it to the room.',
+                ? 'TUNAI 기기의 기본 사운드 설정입니다.\nAcoustic Tune 이전의 기준이 됩니다.'
+                : 'The original sound of your TUNAI device.\nThis is the baseline before any Acoustic Tune.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.28), fontSize: 11, height: 1.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── PRO Bridge Info Card ──────────────────────────────────────────────────────
+
+class _ProBridgeCard extends StatelessWidget {
+  final bool ko;
+  const _ProBridgeCard({required this.ko});
+
+  void _showDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text(
+          'TUNAI PRO Bridge',
+          style: TextStyle(color: Colors.white, fontSize: 15, letterSpacing: 1),
+        ),
+        content: Text(
+          ko
+              ? '이 기능은 준비 중입니다.\n현재 Mobile에서는 Sound Profile을 저장하고 비교할 수 있으며, 고급 검토와 배포는 향후 TUNAI PRO 연동으로 제공됩니다.'
+              : 'This feature is coming soon.\nFor now, Mobile can save and compare Sound Profiles. Advanced review and deployment will be available later through TUNAI PRO.',
+          style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              ko ? '확인' : 'OK',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showDialog(context),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.swap_horiz_rounded, color: Colors.white24, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                ko ? 'TUNAI PRO와 함께 사용하기' : 'Use with TUNAI PRO',
+                style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w300),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(
+              ko
+                  ? 'Mobile에서 만든 Sound Profile은 나중에 TUNAI PRO에서 전문가 검토를 받을 수 있습니다.\n전문가가 다듬은 Reference Profile은 다시 Mobile에서 사용할 수 있습니다.'
+                  : 'Sound Profiles created on Mobile can later be reviewed in TUNAI PRO.\nExpert-refined Reference Profiles can be used again on Mobile.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.55),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                ko ? 'PRO 연동 준비 중' : 'PRO Bridge Coming Soon',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, letterSpacing: 0.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

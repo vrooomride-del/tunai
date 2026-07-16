@@ -14,7 +14,9 @@ import 'package:tunai/features/ble/icp5_consumer_frame_codec.dart';
 import 'package:tunai/features/connect/connect_screen.dart';
 import 'package:tunai/features/listen/listen_screen.dart';
 import 'package:tunai/features/measure/measure_screen.dart';
+import 'package:tunai/features/more/about_tunai_screen.dart';
 import 'package:tunai/features/more/more_screen.dart';
+import 'package:tunai/features/onboarding/onboarding_screen.dart';
 import 'package:tunai/main.dart' show currentTabIndexProvider;
 
 final _scan = RoomScanResult(
@@ -25,6 +27,8 @@ final _scan = RoomScanResult(
   cards: kDefaultResultCards,
 );
 final _created = DateTime.fromMillisecondsSinceEpoch(1000);
+
+void _noop() {}
 
 ConsumerSoundProfile _profile({String id = 'tune-1'}) => ConsumerSoundProfile(
       id: id,
@@ -179,17 +183,71 @@ void main() {
     expect(prefs.getString('tunai_consumer_sound_profiles'), isNull);
   });
 
-  testWidgets('MORE hides release placeholders and Factory engineering entry',
+  testWidgets('original onboarding and About TUNAI planning are restored',
+      (tester) async {
+    await tester.pumpWidget(_app(OnboardingScreen(onComplete: () {})));
+    expect(find.text('The audio paradigm is changing.'), findsOneWidget);
+    expect(
+      find.text(
+        'For too long,\nwe listened to sound locked inside the speaker.\n\nTUNAI opens that sound again\nfor your space and your taste.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Your speaker already has its sound.'),
+        findsNothing);
+
+    await tester.pumpWidget(_app(const AboutTunaiScreen()));
+    expect(find.text('About TUNAI'), findsOneWidget);
+    expect(find.text('TUNAI opens that sound again.'), findsOneWidget);
+    expect(find.textContaining('factory-tuned sound'), findsNothing);
+  });
+
+  testWidgets('original MORE navigation and approved entries are restored',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: MoreScreen())),
     );
     await tester.pump();
-    expect(find.text('COMMUNITY'), findsNothing);
-    expect(find.text('TUNAI PRO'), findsNothing);
-    expect(find.text('FACTORY MODE'), findsNothing);
+    expect(find.text('COMMUNITY'), findsOneWidget);
+    expect(find.text('TUNAI PRO'), findsOneWidget);
     expect(find.text('PROFILE LIBRARY'), findsOneWidget);
     expect(find.text('FINE TUNE'), findsOneWidget);
+    expect(find.text('ABOUT TUNAI'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('FACTORY MODE'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('FACTORY MODE'), findsOneWidget);
+  });
+
+  testWidgets('original ROOM and TUNE copy is restored', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(child: _app(const MeasureScreen(onMeasured: _noop))),
+    );
+    expect(
+        find.text(
+            'Sit where you usually listen.\nKeep the room quiet for a moment.'),
+        findsOneWidget);
+    expect(
+        find.textContaining(
+            'Place your phone at your normal listening position.'),
+        findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    final scanNotifier = RoomScanResultNotifier();
+    await scanNotifier.saveResult(_scan);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [roomScanResultProvider.overrideWith((ref) => scanNotifier)],
+      child: _app(AiScreen(onApplied: () {})),
+    ));
+    expect(
+      find.text(
+        'TUNAI creates a safe, room-matched Sound Profile.\nNo complex settings — just better sound.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('factory-tuned character'), findsNothing);
   });
 
   for (final locale in const [Locale('en'), Locale('ko')]) {

@@ -91,8 +91,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       children: [
                         Text(
                           ko
-                              ? 'TUNAI ONE을 찾고 있습니다'
-                              : 'Looking for TUNAI ONE',
+                              ? 'TUNAI 스피커를 찾고 있습니다'
+                              : 'Looking for your TUNAI speaker',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 26,

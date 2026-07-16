@@ -12,22 +12,22 @@ class AboutTunaiScreen extends StatelessWidget {
 
     final slides = [
       (
-        ko ? 'TUNAI ONE의 소리는\n공장에서 완성됩니다.' : 'TUNAI ONE begins with\na factory-tuned sound.',
+        ko ? '오디오의 패러다임이 바뀝니다.' : 'The audio paradigm is changing.',
         ko
-            ? '그 기본 성향은 변경의 대상이 아니라 기준입니다.\n\n달라지는 것은 공간의 울림과 배치,\n그리고 청취 위치입니다.'
-            : 'That original character is the foundation, not something to redesign.\n\nWhat changes is the room, placement,\nand listening position.',
+            ? '오랫동안 우리는\n스피커 안에 갇힌 소리를 들어왔습니다.\n\n공간이 바뀌어도,\n위치가 바뀌어도,\n취향이 달라져도,\n스피커는 처음의 소리에 머물렀습니다.'
+            : 'For too long,\nwe listened to sound locked inside the speaker.\n\nEven as spaces changed,\nplacement changed,\nand taste changed,\nthe speaker stayed fixed to its first sound.',
       ),
       (
-        ko ? '완성된 기본 사운드에서 시작합니다.' : 'It starts with the factory-tuned sound.',
+        ko ? 'TUNAI는 그 소리를 다시 엽니다.' : 'TUNAI opens that sound again.',
         ko
-            ? 'Room Scan은 공간의 울림과 스피커 배치,\n평소 듣는 위치를 확인합니다.\n\nAcoustic Tune은 기본 성향을 유지하면서\n그 환경에 맞춘 Sound Profile을 만듭니다.'
-            : 'Room Scan learns the room, speaker placement,\nand where you normally listen.\n\nAcoustic Tune preserves the original character\nwhile creating a profile for that environment.',
+            ? '스피커가 놓인 환경,\n청취 위치,\n그리고 당신이 좋아하는 소리까지.\n\nRoom Scan과 Acoustic Tune은\n당신의 공간과 취향을 읽고\nSound Profile을 만듭니다.'
+            : 'The environment around the speaker,\nthe place where you listen,\nand the sound you prefer.\n\nRoom Scan and Acoustic Tune read your space and taste\nto create your Sound Profile.',
       ),
       (
         ko ? '좋은 소리를 찾는 일을\n더 이상 당신에게 떠넘기지 않습니다.' : 'Finding good sound should no longer\nbe left to you.',
         ko
-            ? 'TUNAI ONE은 공장에서 완성된 기본 성향을 유지합니다.\n\nRoom Scan은 공간의 울림과 배치를 확인하고,\nAcoustic Tune은 청취 위치에 맞게 소리를 정리합니다.\n\n취향 조정은 그 위에 개인의 선호를 더합니다.'
-            : 'TUNAI ONE preserves its factory-tuned character.\n\nRoom Scan learns the room and placement.\nAcoustic Tune adapts that sound to your listening position.\n\nPreference Adjustment adds your taste on top.',
+            ? '복잡한 조작도,\n끝없는 매칭도 필요 없습니다.\n\nTUNAI는 당신의 환경에 맞춰지고,\n당신의 취향으로 발전합니다.\n\n이제 스피커는\n듣는 사람과 함께 진화합니다.'
+            : 'No complex controls.\nNo endless matching.\n\nTUNAI adapts to your environment\nand evolves with your taste.\n\nNow the speaker evolves\nwith the listener.',
       ),
     ];
 

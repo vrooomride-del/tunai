@@ -46,8 +46,8 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'The audio paradigm is changing.',
     titleKo: '오디오의 패러다임이 바뀝니다.',
-    subtitleEn: 'Your speaker already has its sound.\n\nTUNAI preserves that factory-tuned character\nand helps it arrive correctly at your listening position.',
-    subtitleKo: '스피커의 사운드는 공장에서 이미 완성됩니다.\n\nTUNAI는 그 기본 성향을 유지하면서\n청취 위치에 맞게 소리가 도달하도록 돕습니다.',
+    subtitleEn: 'For too long,\nwe listened to sound locked inside the speaker.\n\nTUNAI opens that sound again\nfor your space and your taste.',
+    subtitleKo: '오랫동안 우리는\n스피커 안에 갇힌 소리를 들어왔습니다.\n\nTUNAI는 그 소리를\n당신의 공간과 취향에 맞게 다시 엽니다.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),

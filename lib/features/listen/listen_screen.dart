@@ -126,7 +126,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             Builder(builder: (ctx) {
                               final ko = Localizations.localeOf(ctx).languageCode == 'ko';
                               return Text(
-                                _showAfter && hasAfter ? 'Acoustic Tune' : (ko ? '공장에서 완성된 기본 사운드' : 'Factory Sound'),
+                                _showAfter && hasAfter ? 'Acoustic Tune' : (ko ? '기본 사운드' : 'Original Sound'),
                                 style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2),
                               );
                             }),
@@ -150,8 +150,8 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             const SizedBox(height: 2),
                             Text(
                               ko
-                                  ? '공장에서 완성된 기본 사운드와 공간에 맞춘 Acoustic Tune을 비교해 보세요.'
-                                  : 'Compare the factory-tuned sound with the room-adapted Acoustic Tune.',
+                                  ? '원래 소리와 TUNAI Sound Profile을 비교해 보세요.'
+                                  : 'Compare the original sound with your TUNAI Sound Profile.',
                               style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11, height: 1.4),
                             ),
                           ]);
@@ -389,8 +389,8 @@ class _EmptyState extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           ko
-              ? 'Room Scan을 완료한 후 Acoustic Tune을 만들어보세요.\n공장에서 완성된 기본 사운드와 공간에 맞춘 소리를 비교할 수 있습니다.'
-              : 'Run a Room Scan first, then create an Acoustic Tune.\nFactory Sound and the room-adapted profile will appear here.',
+              ? 'Room Scan을 완료한 후 Acoustic Tune을 만들어보세요.\n원본 사운드와 Acoustic Tune을 여기서 비교할 수 있습니다.'
+              : 'Run a Room Scan first, then create an Acoustic Tune.\nOriginal Sound and Acoustic Tune will appear here for comparison.',
           style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.6),
           textAlign: TextAlign.center,
         ),
@@ -445,15 +445,8 @@ class _ConsumerActiveView extends ConsumerWidget {
           Row(children: [
             _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
             const SizedBox(width: 8),
-            _MetaChipListen(text: '${profile.createdAt.year}.${profile.createdAt.month.toString().padLeft(2, '0')}.${profile.createdAt.day.toString().padLeft(2, '0')}'),
+            _MetaChipListen(text: ko ? '마이크: ${profile.micLabel(ko)}' : 'Mic: ${profile.micLabel(ko)}'),
           ]),
-          const SizedBox(height: 10),
-          Text(
-            ko
-                ? '공장에서 완성된 기본 성향을 유지하면서 이 공간과 청취 위치에 맞춘 프로파일입니다.'
-                : 'Preserves the factory-tuned character while adapting it to this room and listening position.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11, height: 1.5),
-          ),
         ]),
       ),
       const SizedBox(height: 20),
@@ -471,7 +464,7 @@ class _ConsumerActiveView extends ConsumerWidget {
       ),
       const SizedBox(height: 20),
       Text(
-        ko ? '공간 적응 요약' : 'Room adaptation summary',
+        ko ? '적용된 조정' : 'Applied adjustments',
         style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
       ),
       const SizedBox(height: 12),
@@ -645,7 +638,7 @@ class _Legend extends StatelessWidget {
   Widget build(BuildContext context) {
     final ko = Localizations.localeOf(context).languageCode == 'ko';
     return Row(children: [
-      _LegendDot(color: Colors.white38, label: ko ? '기본 사운드' : 'Factory Sound'),
+      _LegendDot(color: Colors.white38, label: ko ? '원본 사운드' : 'Original Sound'),
       const SizedBox(width: 16),
       const _LegendDot(color: Colors.greenAccent, label: 'Acoustic Tune'),
       const SizedBox(width: 16),
