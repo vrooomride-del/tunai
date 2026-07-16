@@ -49,12 +49,16 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       }
     });
 
-    final isScanning = bState.connection == BleConnectionState.scanning ||
-        bState.connection == BleConnectionState.found ||
-        bState.connection == BleConnectionState.connecting;
+    final isScanning = bState.connection == BleConnectionState.scanning;
+    final isConnecting = bState.connection == BleConnectionState.connecting;
+    final deviceFound = bState.connection == BleConnectionState.found;
     final isConnected = bState.connection == BleConnectionState.connected;
     final notFound = bState.connection == BleConnectionState.notFound;
     final isIdle = bState.connection == BleConnectionState.disconnected;
+    final hasSafeError = bState.connection == BleConnectionState.error ||
+        bState.connection == BleConnectionState.permissionRequired ||
+        bState.connection == BleConnectionState.bluetoothOff ||
+        bState.connection == BleConnectionState.unsupported;
 
     final goTo = widget.onGoTo ?? (_) {};
 
@@ -65,6 +69,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             ? _ConnectedView(
                 deviceName: bState.deviceName,
                 onStartMeasure: widget.onConnected,
+                onDisconnect: () => ref.read(bleProvider.notifier).disconnect(),
                 ko: ko,
                 onGoTo: goTo,
               )
@@ -118,23 +123,81 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (isScanning) ...[
+                          if (isScanning || isConnecting) ...[
                             _ScanningAnimation(
-                              message: bState.message.isEmpty
-                                  ? (ko ? '검색 중...' : 'Scanning...')
-                                  : bState.message,
+                              message: isConnecting
+                                  ? (ko ? '연결 중...' : 'Connecting...')
+                                  : (ko ? '검색 중...' : 'Searching...'),
                             ),
                           ],
-
+                          if (deviceFound) ...[
+                            Text(
+                              ko ? '기기를 선택해주세요' : 'Select your speaker',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: const Key('consumer_ble_device_selector'),
+                              value: bState.selectedDeviceIdentifier,
+                              dropdownColor: const Color(0xFF181818),
+                              decoration: InputDecoration(
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                  ),
+                                ),
+                                focusedBorder: const OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ),
+                              style: const TextStyle(color: Colors.white),
+                              items: bState.devices
+                                  .map(
+                                    (device) => DropdownMenuItem<String>(
+                                      value: device.identifier,
+                                      child: Text(
+                                        device.rssi == null
+                                            ? device.name
+                                            : '${device.name} · ${device.rssi} dBm',
+                                      ),
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                              onChanged: (identifier) {
+                                if (identifier != null) {
+                                  ref
+                                      .read(bleProvider.notifier)
+                                      .selectDevice(identifier);
+                                }
+                              },
+                            ),
+                          ],
                           if (notFound) ...[
                             _ScanFailureGuide(
                               ko: ko,
-                              onRetry: () =>
-                                  ref.read(bleProvider.notifier).scanAndConnect(),
+                              onRetry: () => ref
+                                  .read(bleProvider.notifier)
+                                  .scanAndConnect(),
                             ),
                           ],
-
-                          if (bState.detectedBoard == DetectedBoard.adau1466) ...[
+                          if (hasSafeError) ...[
+                            _SafeConnectionMessage(
+                              text: _safeConnectionText(
+                                bState.connection,
+                                ko: ko,
+                              ),
+                            ),
+                          ],
+                          if (bState.detectedBoard ==
+                              DetectedBoard.adau1466) ...[
                             const SizedBox(height: 24),
                             _BoardBanner(
                               text: ko
@@ -144,10 +207,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                               icon: Icons.check_circle_outline,
                             ),
                           ],
-
                           const SizedBox(height: 32),
                           _InputSourceSection(ko: ko, isConnected: false),
-
                         ],
                       ),
                     ),
@@ -158,19 +219,31 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
                     child: Column(
                       children: [
-                        if (isScanning)
+                        if (isScanning || isConnecting)
                           _FullWidthButton(
-                            label: ko ? '검색 중...' : 'Scanning...',
+                            label: isConnecting
+                                ? (ko ? '연결 중...' : 'Connecting...')
+                                : (ko ? '검색 중...' : 'Searching...'),
                             filled: false,
                             onTap: null,
                           )
-                        else if (isIdle || notFound)
+                        else if (deviceFound)
                           _FullWidthButton(
+                            key: const Key('consumer_ble_connect_button'),
+                            label: ko ? '연결' : 'Connect',
+                            onTap: bState.selectedDeviceIdentifier == null
+                                ? null
+                                : () => ref
+                                    .read(bleProvider.notifier)
+                                    .connectSelected(),
+                          )
+                        else if (isIdle || notFound || hasSafeError)
+                          _FullWidthButton(
+                            key: const Key('consumer_ble_scan_button'),
                             label: ko ? '스캔 시작' : 'Start Scan',
-                            onTap: () =>
-                                ref.read(bleProvider.notifier).scanAndConnect(),
+                            onTap: () => ref.read(bleProvider.notifier).scan(),
                           ),
-                        if (isScanning || !isIdle) ...[
+                        if (isScanning || isConnecting || deviceFound) ...[
                           const SizedBox(height: 12),
                           GestureDetector(
                             onTap: () =>
@@ -199,10 +272,16 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 class _ConnectedView extends StatelessWidget {
   final String? deviceName;
   final VoidCallback onStartMeasure;
+  final VoidCallback onDisconnect;
   final bool ko;
   final void Function(int) onGoTo;
-  const _ConnectedView(
-      {required this.deviceName, required this.onStartMeasure, required this.ko, required this.onGoTo});
+  const _ConnectedView({
+    required this.deviceName,
+    required this.onStartMeasure,
+    required this.onDisconnect,
+    required this.ko,
+    required this.onGoTo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +293,12 @@ class _ConnectedView extends StatelessWidget {
         children: [
           FirstRunGuideCard(onGoTo: onGoTo),
           const SizedBox(height: 8),
-          _ConnectedBody(name: name, onStartMeasure: onStartMeasure, ko: ko),
+          _ConnectedBody(
+            name: name,
+            onStartMeasure: onStartMeasure,
+            onDisconnect: onDisconnect,
+            ko: ko,
+          ),
         ],
       ),
     );
@@ -224,8 +308,14 @@ class _ConnectedView extends StatelessWidget {
 class _ConnectedBody extends StatelessWidget {
   final String name;
   final VoidCallback onStartMeasure;
+  final VoidCallback onDisconnect;
   final bool ko;
-  const _ConnectedBody({required this.name, required this.onStartMeasure, required this.ko});
+  const _ConnectedBody({
+    required this.name,
+    required this.onStartMeasure,
+    required this.onDisconnect,
+    required this.ko,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -235,25 +325,27 @@ class _ConnectedBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 연결 상태 인디케이터
-          Row(children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Color(0xFF69F0AE),
-                shape: BoxShape.circle,
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF69F0AE),
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              ko ? '연결됨' : 'Connected',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.45),
-                fontSize: 12,
-                letterSpacing: 1.5,
+              const SizedBox(width: 10),
+              Text(
+                ko ? '연결됨' : 'Connected',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 12,
+                  letterSpacing: 1.5,
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
           const SizedBox(height: 28),
 
           // 타이틀
@@ -282,8 +374,16 @@ class _ConnectedBody extends StatelessWidget {
           const SizedBox(height: 32),
 
           _FullWidthButton(
+            key: const Key('consumer_start_room_button'),
             label: ko ? '공간 스캔 시작' : 'Start Room Scan',
             onTap: onStartMeasure,
+          ),
+          const SizedBox(height: 12),
+          _FullWidthButton(
+            key: const Key('consumer_ble_disconnect_button'),
+            label: ko ? '연결 해제' : 'Disconnect',
+            filled: false,
+            onTap: onDisconnect,
           ),
           const SizedBox(height: 36),
           _InputSourceSection(ko: ko, isConnected: true),
@@ -309,10 +409,14 @@ class _ScanningAnimationState extends State<_ScanningAnimation>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat(reverse: true);
-    _fade = Tween<double>(begin: 0.2, end: 0.8).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _fade = Tween<double>(
+      begin: 0.2,
+      end: 0.8,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -325,34 +429,60 @@ class _ScanningAnimationState extends State<_ScanningAnimation>
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        FadeTransition(
-          opacity: _fade,
-          child: Row(children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: Colors.white.withValues(alpha: 0.5),
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FadeTransition(
+            opacity: _fade,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  widget.message,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 13,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              widget.message,
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 13,
-                  letterSpacing: 0.3),
-            ),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ── 검색 실패 가이드 ───────────────────────────────────────────────────────────
+String _safeConnectionText(BleConnectionState state, {required bool ko}) =>
+    switch (state) {
+      BleConnectionState.bluetoothOff =>
+        ko ? '블루투스를 사용할 수 없습니다.' : 'Bluetooth unavailable',
+      BleConnectionState.permissionRequired =>
+        ko ? '블루투스 권한이 필요합니다.' : 'Permission required',
+      BleConnectionState.unsupported =>
+        ko ? '지원되지 않는 기기입니다.' : 'Unsupported device',
+      _ => ko ? '연결에 실패했습니다.' : 'Connection failed',
+    };
+
+class _SafeConnectionMessage extends StatelessWidget {
+  final String text;
+  const _SafeConnectionMessage({required this.text});
+
+  @override
+  Widget build(BuildContext context) =>
+      Text(text, style: const TextStyle(color: Colors.white70, fontSize: 14));
+}
+
 class _ScanFailureGuide extends StatelessWidget {
   final bool ko;
   final VoidCallback onRetry;
@@ -360,17 +490,27 @@ class _ScanFailureGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(
-        ko ? '스피커를 찾지 못했습니다' : "Can't find your speaker?",
-        style: const TextStyle(
-            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w400),
-      ),
-      const SizedBox(height: 16),
-      _Tip(ko ? '스피커 전원이 켜져 있는지 확인해주세요' : 'Turn on speaker and check the power cable'),
-      _Tip(ko ? '스피커와 더 가까이서 시도해보세요' : 'Move closer to your speaker'),
-      _Tip(ko ? '블루투스가 켜져 있는지 확인해주세요' : 'Make sure Bluetooth is enabled'),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          ko ? '스피커를 찾지 못했습니다' : "Can't find your speaker?",
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Tip(
+          ko
+              ? '스피커 전원이 켜져 있는지 확인해주세요'
+              : 'Turn on speaker and check the power cable',
+        ),
+        _Tip(ko ? '스피커와 더 가까이서 시도해보세요' : 'Move closer to your speaker'),
+        _Tip(ko ? '블루투스가 켜져 있는지 확인해주세요' : 'Make sure Bluetooth is enabled'),
+      ],
+    );
   }
 }
 
@@ -381,15 +521,28 @@ class _Tip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('— ', style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 13)),
-        Expanded(
-            child: Text(text,
-                style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.45),
-                    fontSize: 13,
-                    height: 1.5))),
-      ]),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '— ',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.25),
+              fontSize: 13,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -399,7 +552,11 @@ class _BoardBanner extends StatelessWidget {
   final String text;
   final Color color;
   final IconData icon;
-  const _BoardBanner({required this.text, required this.color, required this.icon});
+  const _BoardBanner({
+    required this.text,
+    required this.color,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -409,13 +566,18 @@ class _BoardBanner extends StatelessWidget {
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Row(children: [
-        Icon(icon, color: color, size: 14),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text(text,
-                style: TextStyle(color: color, fontSize: 11, height: 1.5))),
-      ]),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: color, fontSize: 11, height: 1.5),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -425,7 +587,12 @@ class _FullWidthButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
   final bool filled;
-  const _FullWidthButton({required this.label, this.onTap, this.filled = true});
+  const _FullWidthButton({
+    super.key,
+    required this.label,
+    this.onTap,
+    this.filled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -479,9 +646,16 @@ class _TestToneDialogState extends State<_TestToneDialog> {
   }
 
   Future<void> _play() async {
-    setState(() { _playing = true; _showTrouble = false; _playError = null; });
+    setState(() {
+      _playing = true;
+      _showTrouble = false;
+      _playError = null;
+    });
     try {
-      final bytes = const ToneGenerator(frequencyHz: 1000, durationSeconds: 1).generateWav();
+      final bytes = const ToneGenerator(
+        frequencyHz: 1000,
+        durationSeconds: 1,
+      ).generateWav();
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/tunai_test_tone.wav');
       await file.writeAsBytes(bytes);
@@ -509,45 +683,67 @@ class _TestToneDialogState extends State<_TestToneDialog> {
         ko ? '소리 확인' : 'Sound Check',
         style: const TextStyle(color: Colors.white, fontSize: 16),
       ),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(
-          _playing
-              ? (ko ? '처음 소리는 낮은 볼륨에서 시작됩니다.' : 'The first sound starts at a safe volume.')
-              : (ko ? '스피커에서 짧은 소리가 들리나요?' : 'Do you hear the test sound from your speaker?'),
-          style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-        ),
-        if (_playError != null) ...[
-          const SizedBox(height: 8),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            ko ? '재생 오류: $_playError' : 'Playback error: $_playError',
-            style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+            _playing
+                ? (ko
+                    ? '처음 소리는 낮은 볼륨에서 시작됩니다.'
+                    : 'The first sound starts at a safe volume.')
+                : (ko
+                    ? '스피커에서 짧은 소리가 들리나요?'
+                    : 'Do you hear the test sound from your speaker?'),
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
+          if (_playError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              ko ? '재생 오류: $_playError' : 'Playback error: $_playError',
+              style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+            ),
+          ],
+          if (_showTrouble) ...[
+            const SizedBox(height: 12),
+            Text(
+              ko ? '확인해보세요:' : 'Try these steps:',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              ko
+                  ? '• 스피커 볼륨이 켜져 있는지 확인\n• 스피커 전원/연결 케이블 확인\n• 앰프 입력 소스가 맞는지 확인'
+                  : '• Check that the speaker volume is on\n• Check speaker power and cables\n• Make sure the amplifier input is correct',
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                height: 1.6,
+              ),
+            ),
+          ],
         ],
-        if (_showTrouble) ...[
-          const SizedBox(height: 12),
-          Text(
-            ko ? '확인해보세요:' : 'Try these steps:',
-            style: const TextStyle(color: Colors.white38, fontSize: 11),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            ko
-                ? '• 스피커 볼륨이 켜져 있는지 확인\n• 스피커 전원/연결 케이블 확인\n• 앰프 입력 소스가 맞는지 확인'
-                : '• Check that the speaker volume is on\n• Check speaker power and cables\n• Make sure the amplifier input is correct',
-            style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.6),
-          ),
-        ],
-      ]),
+      ),
       actions: [
         if (_showTrouble)
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(ko ? '건너뛰기' : 'Skip', style: const TextStyle(color: Colors.white24)),
+            child: Text(
+              ko ? '건너뛰기' : 'Skip',
+              style: const TextStyle(color: Colors.white24),
+            ),
           ),
         if (_showTrouble)
           TextButton(
             onPressed: _play,
-            child: Text(ko ? '다시 시도' : 'Try Again', style: const TextStyle(color: Colors.white70)),
+            child: Text(
+              ko ? '다시 시도' : 'Try Again',
+              style: const TextStyle(color: Colors.white70),
+            ),
           ),
         if (!_playing) ...[
           TextButton(
@@ -588,7 +784,10 @@ Future<void> _showBluetoothOffDialog(BuildContext context) async {
             Navigator.pop(ctx);
             await openAppSettings();
           },
-          child: const Text('설정 열기', style: TextStyle(color: Colors.white70)),
+          child: const Text(
+            '설정 열기',
+            style: TextStyle(color: Colors.white70),
+          ),
         ),
       ],
     ),
@@ -609,23 +808,28 @@ class _InputSourceSection extends ConsumerWidget {
         ConsumerInputSource.bluetooth => ko
             ? '휴대폰이나 플레이어의 Bluetooth 소리를 사용합니다.'
             : 'Use sound from your phone or player over Bluetooth.',
-        ConsumerInputSource.aux => ko
-            ? '케이블로 연결된 소리를 사용합니다.'
-            : 'Use sound from a cable connection.',
+        ConsumerInputSource.aux =>
+          ko ? '케이블로 연결된 소리를 사용합니다.' : 'Use sound from a cable connection.',
       };
 
-  void _select(BuildContext context, WidgetRef ref, ConsumerInputSource source) {
+  void _select(
+    BuildContext context,
+    WidgetRef ref,
+    ConsumerInputSource source,
+  ) {
     ref.read(selectedInputSourceProvider.notifier).state = source;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-        ko
-            ? '현재 버전에서는 입력 상태 표시용입니다.'
-            : 'This version shows input preference only.',
-        style: const TextStyle(color: Colors.white70, fontSize: 13),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ko
+              ? '현재 버전에서는 입력 상태 표시용입니다.'
+              : 'This version shows input preference only.',
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        backgroundColor: const Color(0xFF1A1A1A),
+        duration: const Duration(seconds: 3),
       ),
-      backgroundColor: const Color(0xFF1A1A1A),
-      duration: const Duration(seconds: 3),
-    ));
+    );
   }
 
   @override
@@ -661,42 +865,52 @@ class _InputSourceSection extends ConsumerWidget {
             ),
           ),
         ] else ...[
-          Builder(builder: (context) {
-            final selected = ref.watch(selectedInputSourceProvider);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  _InputChip(
-                    label: ko ? '자동' : 'Auto',
-                    isSelected: selected == ConsumerInputSource.auto,
-                    onTap: () => _select(context, ref, ConsumerInputSource.auto),
+          Builder(
+            builder: (context) {
+              final selected = ref.watch(selectedInputSourceProvider);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _InputChip(
+                        label: ko ? '자동' : 'Auto',
+                        isSelected: selected == ConsumerInputSource.auto,
+                        onTap: () =>
+                            _select(context, ref, ConsumerInputSource.auto),
+                      ),
+                      const SizedBox(width: 8),
+                      _InputChip(
+                        label: 'Bluetooth',
+                        isSelected: selected == ConsumerInputSource.bluetooth,
+                        onTap: () => _select(
+                          context,
+                          ref,
+                          ConsumerInputSource.bluetooth,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _InputChip(
+                        label: 'AUX',
+                        isSelected: selected == ConsumerInputSource.aux,
+                        onTap: () =>
+                            _select(context, ref, ConsumerInputSource.aux),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  _InputChip(
-                    label: 'Bluetooth',
-                    isSelected: selected == ConsumerInputSource.bluetooth,
-                    onTap: () => _select(context, ref, ConsumerInputSource.bluetooth),
+                  const SizedBox(height: 10),
+                  Text(
+                    _description(selected, ko),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      fontSize: 12,
+                      height: 1.5,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  _InputChip(
-                    label: 'AUX',
-                    isSelected: selected == ConsumerInputSource.aux,
-                    onTap: () => _select(context, ref, ConsumerInputSource.aux),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Text(
-                  _description(selected, ko),
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.35),
-                    fontSize: 12,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            );
-          }),
+                ],
+              );
+            },
+          ),
         ],
       ],
     );
@@ -707,7 +921,11 @@ class _InputChip extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
-  const _InputChip({required this.label, required this.isSelected, required this.onTap});
+  const _InputChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -716,16 +934,22 @@ class _InputChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.07) : Colors.transparent,
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.07)
+              : Colors.transparent,
           border: Border.all(
-            color: isSelected ? Colors.white54 : Colors.white.withValues(alpha: 0.15),
+            color: isSelected
+                ? Colors.white54
+                : Colors.white.withValues(alpha: 0.15),
           ),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.38),
+            color: isSelected
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.38),
             fontSize: 13,
             letterSpacing: 0.5,
           ),
