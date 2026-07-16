@@ -170,8 +170,10 @@ const _kKey = 'tunai_consumer_sound_profiles';
 class ConsumerSoundProfileNotifier
     extends StateNotifier<List<ConsumerSoundProfile>> {
   ConsumerSoundProfileNotifier() : super([]) {
-    _load();
+    _hydrated = _load();
   }
+
+  late final Future<void> _hydrated;
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -194,11 +196,42 @@ class ConsumerSoundProfileNotifier
   }
 
   Future<void> add(ConsumerSoundProfile profile) async {
+    await _hydrated;
     state = [profile, ...state];
     await _persist();
   }
 
+  Future<void> upsertAndActivate(ConsumerSoundProfile profile) async {
+    await _hydrated;
+    final now = DateTime.now();
+    final active = profile.copyWith(
+      isActive: true,
+      status: ConsumerProfileStatus.active,
+      updatedAt: now,
+    );
+    final matchingIndex = state.indexWhere(
+      (candidate) => candidate.id == profile.id ||
+          (candidate.roomType == profile.roomType &&
+              candidate.micProfileName == profile.micProfileName &&
+              _sameResultCards(candidate.resultCards, profile.resultCards)),
+    );
+    final next = state
+        .map((candidate) => candidate.copyWith(
+              isActive: false,
+              status: ConsumerProfileStatus.ready,
+            ))
+        .toList();
+    if (matchingIndex == -1) {
+      state = [active, ...next];
+    } else {
+      next[matchingIndex] = active;
+      state = next;
+    }
+    await _persist();
+  }
+
   Future<void> setActive(String id) async {
+    await _hydrated;
     final now = DateTime.now();
     state = state.map((p) {
       if (p.id == id) {
@@ -211,15 +244,21 @@ class ConsumerSoundProfileNotifier
   }
 
   Future<void> deactivateAll() async {
+    await _hydrated;
     state = state.map((p) => p.copyWith(isActive: false, status: ConsumerProfileStatus.ready)).toList();
     await _persist();
   }
 
   Future<void> delete(String id) async {
+    await _hydrated;
     state = state.where((p) => p.id != id).toList();
     await _persist();
   }
 }
+
+bool _sameResultCards(List<RoomScanResultCard> left, List<RoomScanResultCard> right) =>
+    jsonEncode(left.map((card) => card.toJson()).toList()) ==
+    jsonEncode(right.map((card) => card.toJson()).toList());
 
 final consumerSoundProfileProvider = StateNotifierProvider<
     ConsumerSoundProfileNotifier, List<ConsumerSoundProfile>>(

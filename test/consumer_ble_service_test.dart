@@ -337,7 +337,8 @@ void main() {
     await tester.pump();
     expect(
         find.byKey(const Key('consumer_ble_device_selector')), findsOneWidget);
-    expect(find.text('WONDOM ICP5 · -42 dBm'), findsOneWidget);
+    expect(find.text('WONDOM ICP5'), findsOneWidget);
+    expect(find.text('-42 dBm'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('consumer_ble_connect_button')));
     await tester.pump();

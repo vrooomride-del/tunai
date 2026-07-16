@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
-import '../../core/sound_profile_store.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../main.dart' show currentTabIndexProvider;
 import '../health/speaker_health_screen.dart';
@@ -267,7 +266,7 @@ class _CurrentProfileSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(appliedProfileProvider);
+    final profile = ref.watch(activeConsumerProfileProvider);
     final ko = Localizations.localeOf(context).languageCode == 'ko';
 
     if (profile == null) {
@@ -332,9 +331,9 @@ class _CurrentProfileSection extends ConsumerWidget {
         const SizedBox(height: 8),
         Row(children: [
           _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
-          if (profile.soundScore != null) ...[
+          if (profile.soundScoreAfter != null) ...[
             const SizedBox(width: 8),
-            _MetaChipListen(text: 'Score ${profile.soundScore}'),
+            _MetaChipListen(text: 'Score ${profile.soundScoreAfter}'),
           ],
         ]),
         const SizedBox(height: 12),

@@ -143,6 +143,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             DropdownButtonFormField<String>(
                               key: const Key('consumer_ble_device_selector'),
                               value: bState.selectedDeviceIdentifier,
+                              isExpanded: true,
                               dropdownColor: const Color(0xFF181818),
                               decoration: InputDecoration(
                                 enabledBorder: OutlineInputBorder(
@@ -163,11 +164,19 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                   .map(
                                     (device) => DropdownMenuItem<String>(
                                       value: device.identifier,
-                                      child: Text(
-                                        device.rssi == null
-                                            ? device.name
-                                            : '${device.name} · ${device.rssi} dBm',
-                                      ),
+                                      child: Row(children: [
+                                        Expanded(child: Text(device.name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        )),
+                                        if (device.rssi != null) ...[
+                                          const SizedBox(width: 8),
+                                          Text('${device.rssi} dBm',
+                                            maxLines: 1,
+                                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                                          ),
+                                        ],
+                                      ]),
                                     ),
                                   )
                                   .toList(growable: false),

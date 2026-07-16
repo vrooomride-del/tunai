@@ -270,7 +270,7 @@ class _MicCheckView extends ConsumerWidget {
                     ),
                     const SizedBox(height: 28),
                     // Mic Strategy
-                    _MicStrategySection(ko: ko),
+                    ConsumerMicStrategySection(ko: ko),
                   ],
                 ),
               ),
@@ -576,9 +576,10 @@ class _ResultCard extends StatelessWidget {
 
 // ── Mic Strategy Section ──────────────────────────────────────────────────────
 
-class _MicStrategySection extends StatelessWidget {
+@visibleForTesting
+class ConsumerMicStrategySection extends StatelessWidget {
   final bool ko;
-  const _MicStrategySection({required this.ko});
+  const ConsumerMicStrategySection({super.key, required this.ko});
 
   @override
   Widget build(BuildContext context) {
@@ -596,21 +597,14 @@ class _MicStrategySection extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           color: Colors.white.withValues(alpha: 0.04),
         ),
-        child: Row(children: [
-          const Icon(Icons.smartphone, color: Colors.white70, size: 16),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              ko ? 'Phone Mic' : 'Phone Mic',
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
+        child: LayoutBuilder(builder: (context, constraints) {
+          final details = Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Phone Mic', style: TextStyle(color: Colors.white, fontSize: 13)),
             const SizedBox(height: 2),
-            Text(
-              ko ? '빠른 측정에 적합합니다.' : 'Best for quick setup.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11, height: 1.4),
-            ),
-          ])),
-          Container(
+            Text(ko ? '빠른 측정에 적합합니다.' : 'Best for quick setup.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11, height: 1.4)),
+          ]));
+          final badge = Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
               color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
@@ -619,10 +613,30 @@ class _MicStrategySection extends StatelessWidget {
             ),
             child: Text(
               ko ? '사용 중' : 'Active',
+              maxLines: 1,
               style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
             ),
-          ),
-        ]),
+          );
+          final detailsRow = Row(children: [
+            const Icon(Icons.smartphone, color: Colors.white70, size: 16),
+            const SizedBox(width: 12),
+            details,
+          ]);
+          if (constraints.maxWidth < 250) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              detailsRow,
+              const SizedBox(height: 8),
+              Align(alignment: Alignment.centerRight, child: badge),
+            ]);
+          }
+          return Row(children: [
+            const Icon(Icons.smartphone, color: Colors.white70, size: 16),
+            const SizedBox(width: 12),
+            details,
+            const SizedBox(width: 8),
+            badge,
+          ]);
+        }),
       ),
       const SizedBox(height: 6),
       // USB Measurement Mic — optional

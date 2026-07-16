@@ -43,8 +43,10 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       soundScoreAfter: 94,
       profileType: ConsumerProfileType.tunaiTune,
     );
-    await ref.read(consumerSoundProfileProvider.notifier).add(profile);
-    if (mounted) setState(() => _creating = false);
+    await ref.read(consumerSoundProfileProvider.notifier).upsertAndActivate(profile);
+    if (!mounted) return;
+    setState(() => _creating = false);
+    widget.onApplied();
   }
 
   Future<void> _applyProfile(ConsumerSoundProfile profile) async {
