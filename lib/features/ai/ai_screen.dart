@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ble/ble_controller.dart';
 import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
+import '../../core/room_measurement.dart';
+import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
 
 /// TUNE 탭 — Consumer Acoustic Tune 6-state flow.
@@ -22,34 +24,48 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   bool get _isKo => Localizations.localeOf(context).languageCode == 'ko';
 
   Future<void> _createTune(RoomScanResult scan) async {
+    if (_creating) return;
     setState(() => _creating = true);
-    await Future.delayed(const Duration(milliseconds: 2600));
-    if (!mounted) return;
-    final ko = _isKo;
-    final roomLabel = ko ? roomTypeLabelKo(scan.roomType) : scan.roomType;
-    final name = '$roomLabel Acoustic Tune';
-    final profile = ConsumerSoundProfile(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      roomType: scan.roomType,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      micProfileName: scan.micProfileName,
-      confidence: scan.confidence,
-      isActive: false,
-      status: ConsumerProfileStatus.ready,
-      resultCards: scan.cards,
-      profileType: ConsumerProfileType.tunaiTune,
-    );
-    await ref.read(consumerSoundProfileProvider.notifier).upsertAndActivate(profile);
-    if (!mounted) return;
-    setState(() => _creating = false);
-    widget.onApplied();
-  }
-
-  Future<void> _applyProfile(ConsumerSoundProfile profile) async {
-    await ref.read(consumerSoundProfileProvider.notifier).setActive(profile.id);
-    widget.onApplied();
+    TunePlan? plan;
+    try {
+      if (!scan.validatedMeasurement || scan.measurementId == null) {
+        throw StateError('A validated Room Scan is required.');
+      }
+      final measurement = await RoomMeasurementStore.load();
+      if (measurement == null || measurement.id != scan.measurementId) {
+        throw StateError('The validated Room Scan measurement is unavailable.');
+      }
+      plan = const TunePlanner(now: DateTime.now).generate(measurement);
+      await TunePlanStore.save(plan);
+      final ko = _isKo;
+      final roomLabel = ko ? roomTypeLabelKo(scan.roomType) : scan.roomType;
+      final now = DateTime.now();
+      final profile = ConsumerSoundProfile(
+        id: plan.id,
+        name: '$roomLabel Acoustic Tune',
+        roomType: scan.roomType,
+        createdAt: now,
+        updatedAt: now,
+        micProfileName: scan.micProfileName,
+        confidence: scan.confidence,
+        isActive: false,
+        status: ConsumerProfileStatus.ready,
+        resultCards: _resultCardsForPlan(scan.cards, plan),
+        profileType: ConsumerProfileType.tunaiTune,
+        measurementId: measurement.id,
+        tunePlanId: plan.id,
+        isSelected: true,
+        generationStatus: ConsumerProfileGenerationStatus.generated,
+        deploymentStatus: TuneDeploymentStatus.notDeployed,
+      );
+      await ref
+          .read(consumerSoundProfileProvider.notifier)
+          .upsertGeneratedAndSelect(profile);
+    } catch (_) {
+      if (plan != null) await TunePlanStore.clear();
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
   }
 
   @override
@@ -62,22 +78,32 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     final isConnected = ble.connection == BleConnectionState.connected;
 
     // State F — active profile exists (shown regardless of BLE connection)
-    if (active != null) {
-      return _StateF(ko: ko, profile: active, onGoListen: widget.onApplied,
+    if (active != null &&
+        active.deploymentStatus == TuneDeploymentStatus.applied) {
+      return _StateF(
+          ko: ko,
+          profile: active,
+          onGoListen: widget.onApplied,
           onReset: () async {
-            await ref.read(consumerSoundProfileProvider.notifier).deactivateAll();
+            await ref
+                .read(consumerSoundProfileProvider.notifier)
+                .deactivateAll();
           });
     }
 
     // State A — no BLE AND no scan data: show connection prompt.
     // If scan already exists (e.g. from simulation), skip past State A.
     if (!isConnected && scan == null) {
-      return _StateA(ko: ko, onGoConnect: widget.onGoTo != null ? () => widget.onGoTo!(0) : null);
+      return _StateA(
+          ko: ko,
+          onGoConnect: widget.onGoTo != null ? () => widget.onGoTo!(0) : null);
     }
 
     // State B — BLE connected but no scan yet
     if (scan == null) {
-      return _StateB(ko: ko, onGoRoom: widget.onGoTo != null ? () => widget.onGoTo!(1) : null);
+      return _StateB(
+          ko: ko,
+          onGoRoom: widget.onGoTo != null ? () => widget.onGoTo!(1) : null);
     }
 
     // State D — creating in progress
@@ -86,14 +112,20 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     }
 
     // State E — ready profile exists (not yet active); visible even without BLE
-    final ready = profiles.where((p) => p.status == ConsumerProfileStatus.ready).toList();
+    final ready = profiles
+        .where((profile) =>
+            profile.status == ConsumerProfileStatus.ready &&
+            profile.generationStatus ==
+                ConsumerProfileGenerationStatus.generated &&
+            profile.deploymentStatus == TuneDeploymentStatus.notDeployed)
+        .toList();
     if (ready.isNotEmpty) {
       return _StateE(
         ko: ko,
         profile: ready.first,
         scan: scan,
         isConnected: isConnected,
-        onApply: () => _applyProfile(ready.first),
+        onApply: null,
       );
     }
 
@@ -105,6 +137,20 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       onCreate: () => _createTune(scan),
     );
   }
+}
+
+List<RoomScanResultCard> _resultCardsForPlan(
+  List<RoomScanResultCard> measuredCards,
+  TunePlan plan,
+) {
+  final hasLowBand = plan.bands.any((band) => band.frequencyHz <= 200);
+  final hasUpperBand = plan.bands.any((band) => band.frequencyHz > 200);
+  return measuredCards.where((card) {
+    if (card.id == 'measured_bass') return hasLowBand;
+    if (card.id == 'measured_balance') return hasUpperBand;
+    if (card.id == 'measured_neutral') return plan.bands.isEmpty;
+    return false;
+  }).toList(growable: false);
 }
 
 // ── State A — No device, no scan ─────────────────────────────────────────────
@@ -127,19 +173,27 @@ class _StateA extends StatelessWidget {
               const Spacer(flex: 2),
               Text(
                 ko ? '먼저 스피커를 연결해 주세요.' : 'Connect your speaker first.',
-                style: const TextStyle(color: Colors.white, fontSize: 24,
-                    fontWeight: FontWeight.w300, height: 1.4),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w300,
+                    height: 1.4),
               ),
               const SizedBox(height: 16),
               Text(
                 ko
                     ? 'TUNAI 스피커와 연결하면 공간을 학습하고\n나만의 사운드 프로파일을 만들 수 있습니다.'
                     : 'Connect your TUNAI speaker to let TUNAI\nlearn your room and create your Sound Profile.',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14, height: 1.65),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 14,
+                    height: 1.65),
               ),
               const SizedBox(height: 36),
               if (onGoConnect != null)
-                _TuneBigButton(label: ko ? '스피커 연결하기' : 'Connect Speaker', onTap: onGoConnect!),
+                _TuneBigButton(
+                    label: ko ? '스피커 연결하기' : 'Connect Speaker',
+                    onTap: onGoConnect!),
               const Spacer(flex: 3),
             ],
           ),
@@ -169,19 +223,27 @@ class _StateB extends StatelessWidget {
               const Spacer(flex: 2),
               Text(
                 ko ? '아직 공간 스캔이 없습니다.' : 'No Room Scan yet.',
-                style: const TextStyle(color: Colors.white, fontSize: 24,
-                    fontWeight: FontWeight.w300, height: 1.4),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w300,
+                    height: 1.4),
               ),
               const SizedBox(height: 16),
               Text(
                 ko
                     ? 'Room Scan을 먼저 완료하면\nAcoustic Tune을 만들 수 있습니다.'
                     : 'Run a Room Scan first to create\nyour Acoustic Tune.',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14, height: 1.65),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    fontSize: 14,
+                    height: 1.65),
               ),
               const SizedBox(height: 36),
               if (onGoRoom != null)
-                _TuneBigButton(label: ko ? 'Room Scan 시작' : 'Start Room Scan', onTap: onGoRoom!),
+                _TuneBigButton(
+                    label: ko ? 'Room Scan 시작' : 'Start Room Scan',
+                    onTap: onGoRoom!),
               const Spacer(flex: 3),
             ],
           ),
@@ -198,7 +260,11 @@ class _StateC extends StatelessWidget {
   final RoomScanResult scan;
   final VoidCallback onCreate;
   final bool isConnected;
-  const _StateC({required this.ko, required this.scan, required this.onCreate, this.isConnected = true});
+  const _StateC(
+      {required this.ko,
+      required this.scan,
+      required this.onCreate,
+      this.isConnected = true});
 
   @override
   Widget build(BuildContext context) {
@@ -215,24 +281,32 @@ class _StateC extends StatelessWidget {
                   children: [
                     Text(
                       ko ? 'Room Scan 완료' : 'Room Scan Complete',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 11, letterSpacing: 2),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 11,
+                          letterSpacing: 2),
                     ),
                     const SizedBox(height: 20),
                     Text(
                       ko
                           ? '공간에 맞는\nAcoustic Tune을 만들 준비가 됐습니다.'
                           : 'Ready to create your\nAcoustic Tune for this room.',
-                      style: const TextStyle(color: Colors.white, fontSize: 26,
-                          fontWeight: FontWeight.w300, height: 1.35, letterSpacing: -0.2),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w300,
+                          height: 1.35,
+                          letterSpacing: -0.2),
                     ),
                     const SizedBox(height: 20),
                     Text(
                       ko
                           ? 'TUNAI가 공간 특성에 맞는 안전한 사운드 프로파일을 만듭니다.\n복잡한 설정 없이, 그저 좋은 소리를 들으면 됩니다.'
                           : 'TUNAI creates a safe, room-matched Sound Profile.\nNo complex settings — just better sound.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 14, height: 1.65),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 14,
+                          height: 1.65),
                     ),
                     const SizedBox(height: 32),
                     _ScanSummaryCard(ko: ko, scan: scan),
@@ -273,13 +347,18 @@ class _ScanSummaryCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(ko ? '스캔 결과' : 'Scan Result',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
-                fontSize: 10, letterSpacing: 1.5)),
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.35),
+                fontSize: 10,
+                letterSpacing: 1.5)),
         const SizedBox(height: 10),
         Row(children: [
           _ScanChip(text: ko ? roomTypeLabelKo(scan.roomType) : scan.roomType),
           const SizedBox(width: 8),
-          _ScanChip(text: ko ? '마이크: ${micProfileLabelKo(scan.micProfileName)}' : 'Mic: ${scan.micProfileName}'),
+          _ScanChip(
+              text: ko
+                  ? '마이크: ${micProfileLabelKo(scan.micProfileName)}'
+                  : 'Mic: ${scan.micProfileName}'),
         ]),
       ]),
     );
@@ -291,10 +370,14 @@ class _ScanChip extends StatelessWidget {
   const _ScanChip({required this.text});
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(3)),
-    child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 10)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+            border: Border.all(color: Colors.white12),
+            borderRadius: BorderRadius.circular(3)),
+        child: Text(text,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45), fontSize: 10)),
+      );
 }
 
 // ── State D — Creating ────────────────────────────────────────────────────────
@@ -317,8 +400,11 @@ class _StateD extends StatelessWidget {
                 ko
                     ? '이 공간에 맞는 안전한\n사운드 프로파일을 만들고 있습니다.'
                     : 'Creating a safe Sound Profile\nfor this room.',
-                style: const TextStyle(color: Colors.white, fontSize: 24,
-                    fontWeight: FontWeight.w300, height: 1.4),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w300,
+                    height: 1.4),
               ),
               const Spacer(),
               const LinearProgressIndicator(
@@ -331,8 +417,10 @@ class _StateD extends StatelessWidget {
                 ko
                     ? '공간 특성을 분석하고 있습니다...'
                     : 'Analysing room characteristics...',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
-                    fontSize: 12, letterSpacing: 0.5),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    fontSize: 12,
+                    letterSpacing: 0.5),
               ),
               const Spacer(flex: 3),
             ],
@@ -349,10 +437,14 @@ class _StateE extends StatelessWidget {
   final bool ko;
   final ConsumerSoundProfile profile;
   final RoomScanResult scan;
-  final VoidCallback onApply;
+  final VoidCallback? onApply;
   final bool isConnected;
-  const _StateE({required this.ko, required this.profile, required this.scan,
-      required this.onApply, this.isConnected = true});
+  const _StateE(
+      {required this.ko,
+      required this.profile,
+      required this.scan,
+      required this.onApply,
+      this.isConnected = true});
 
   @override
   Widget build(BuildContext context) {
@@ -368,31 +460,44 @@ class _StateE extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Container(width: 8, height: 8,
-                          decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+                      Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFF69F0AE),
+                              shape: BoxShape.circle)),
                       const SizedBox(width: 10),
                       Text(ko ? '공간 맞춤' : 'Room Matched',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
-                              fontSize: 11, letterSpacing: 1.5)),
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.45),
+                              fontSize: 11,
+                              letterSpacing: 1.5)),
                     ]),
                     const SizedBox(height: 20),
                     Text(
                       ko
                           ? '사운드 프로파일이 준비되었습니다.'
                           : 'Your Sound Profile is ready.',
-                      style: const TextStyle(color: Colors.white, fontSize: 26,
-                          fontWeight: FontWeight.w300, height: 1.35, letterSpacing: -0.2),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w300,
+                          height: 1.35,
+                          letterSpacing: -0.2),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       ko
                           ? '이 공간에 맞게 안전하게 조정된 사운드 프로파일입니다.\n적용하면 바로 들을 수 있습니다.'
                           : 'A safe, room-matched Sound Profile has been created.\nApply it to start listening.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 14, height: 1.65),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 14,
+                          height: 1.65),
                     ),
                     const SizedBox(height: 32),
-                    if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
+                    if (profile.soundScoreBefore != null &&
+                        profile.soundScoreAfter != null) ...[
                       _SoundScoreCard(
                         ko: ko,
                         before: profile.soundScoreBefore!,
@@ -407,11 +512,14 @@ class _StateE extends StatelessWidget {
                     const SizedBox(height: 28),
                     Text(
                       ko ? 'TUNAI가 발견한 것' : 'What TUNAI found',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
-                          fontSize: 11, letterSpacing: 1.5),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 11,
+                          letterSpacing: 1.5),
                     ),
                     const SizedBox(height: 12),
-                    ...profile.resultCards.map((card) => _ResultCard(card: card, ko: ko)),
+                    ...profile.resultCards
+                        .map((card) => _ResultCard(card: card, ko: ko)),
                     if (!isConnected) ...[
                       const SizedBox(height: 16),
                       _ConnectionNotice(ko: ko),
@@ -450,15 +558,24 @@ class _ResultCard extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 6, height: 6,
-              decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+          Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                  color: Color(0xFF69F0AE), shape: BoxShape.circle)),
           const SizedBox(width: 8),
           Text(card.label(ko: ko),
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w300)),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w300)),
         ]),
         const SizedBox(height: 6),
         Text(card.description(ko: ko),
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5)),
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 12,
+                height: 1.5)),
       ]),
     );
   }
@@ -471,7 +588,11 @@ class _StateF extends StatelessWidget {
   final ConsumerSoundProfile profile;
   final VoidCallback onGoListen;
   final VoidCallback onReset;
-  const _StateF({required this.ko, required this.profile, required this.onGoListen, required this.onReset});
+  const _StateF(
+      {required this.ko,
+      required this.profile,
+      required this.onGoListen,
+      required this.onReset});
 
   @override
   Widget build(BuildContext context) {
@@ -487,29 +608,42 @@ class _StateF extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Container(width: 8, height: 8,
-                          decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+                      Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFF69F0AE),
+                              shape: BoxShape.circle)),
                       const SizedBox(width: 10),
                       Text(ko ? '사운드 프로파일 활성화됨' : 'Sound Profile Active',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
-                              fontSize: 11, letterSpacing: 1.5)),
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.45),
+                              fontSize: 11,
+                              letterSpacing: 1.5)),
                     ]),
                     const SizedBox(height: 20),
                     Text(
                       ko ? '들을 준비 완료.' : 'Ready to listen.',
-                      style: const TextStyle(color: Colors.white, fontSize: 26,
-                          fontWeight: FontWeight.w300, height: 1.35, letterSpacing: -0.2),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w300,
+                          height: 1.35,
+                          letterSpacing: -0.2),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       ko
                           ? '${profile.name}이(가) 활성화되어 있습니다.\nLISTEN 탭에서 Before / After를 비교해보세요.'
                           : '${profile.name} is active.\nGo to LISTEN to compare before and after.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 14, height: 1.65),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 14,
+                          height: 1.65),
                     ),
                     const SizedBox(height: 32),
-                    if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
+                    if (profile.soundScoreBefore != null &&
+                        profile.soundScoreAfter != null) ...[
                       _SoundScoreCard(
                         ko: ko,
                         before: profile.soundScoreBefore!,
@@ -524,11 +658,14 @@ class _StateF extends StatelessWidget {
                     const SizedBox(height: 28),
                     Text(
                       ko ? '적용된 조정' : 'Applied adjustments',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35),
-                          fontSize: 11, letterSpacing: 1.5),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 11,
+                          letterSpacing: 1.5),
                     ),
                     const SizedBox(height: 12),
-                    ...profile.resultCards.map((card) => _ResultCard(card: card, ko: ko)),
+                    ...profile.resultCards
+                        .map((card) => _ResultCard(card: card, ko: ko)),
                     const SizedBox(height: 20),
                     GestureDetector(
                       onTap: () => _confirmReset(context),
@@ -539,7 +676,8 @@ class _StateF extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.3),
                             fontSize: 12,
                             decoration: TextDecoration.underline,
-                            decorationColor: Colors.white.withValues(alpha: 0.15),
+                            decorationColor:
+                                Colors.white.withValues(alpha: 0.15),
                           ),
                         ),
                       ),
@@ -570,14 +708,21 @@ class _StateF extends StatelessWidget {
         title: Text(ko ? '프로파일 초기화' : 'Reset Profile',
             style: const TextStyle(color: Colors.white, fontSize: 15)),
         content: Text(
-          ko ? '현재 사운드 프로파일을 비활성화하고 새로 만들겠습니까?' : 'Deactivate the current Sound Profile and create a new one?',
-          style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+          ko
+              ? '현재 사운드 프로파일을 비활성화하고 새로 만들겠습니까?'
+              : 'Deactivate the current Sound Profile and create a new one?',
+          style:
+              const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text(ko ? '확인' : 'Confirm', style: const TextStyle(color: Colors.white70))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ko ? '취소' : 'Cancel',
+                  style: const TextStyle(color: Colors.white38))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ko ? '확인' : 'Confirm',
+                  style: const TextStyle(color: Colors.white70))),
         ],
       ),
     );
@@ -607,7 +752,8 @@ class _ConnectionNotice extends StatelessWidget {
             ko
                 ? 'Sound Profile이 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
                 : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
-            style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
+            style: const TextStyle(
+                color: Colors.white38, fontSize: 11, height: 1.5),
           ),
         ),
       ]),
@@ -621,7 +767,8 @@ class _SoundScoreCard extends StatelessWidget {
   final bool ko;
   final int before;
   final int after;
-  const _SoundScoreCard({required this.ko, required this.before, required this.after});
+  const _SoundScoreCard(
+      {required this.ko, required this.before, required this.after});
 
   @override
   Widget build(BuildContext context) {
@@ -630,35 +777,54 @@ class _SoundScoreCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
-        border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.2)),
+        border:
+            Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.2)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(
           ko ? 'Sound Score' : 'Sound Score',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
+          style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.35),
+              fontSize: 10,
+              letterSpacing: 1.5),
         ),
         const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          Text('$before', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 22, fontWeight: FontWeight.w300)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Icon(Icons.arrow_forward, color: Colors.white.withValues(alpha: 0.25), size: 14),
-          ),
-          Text('$after', style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 28, fontWeight: FontWeight.w300)),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '+$improvement',
-              style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 12, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ]),
+        Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text('$before',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w300)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Icon(Icons.arrow_forward,
+                    color: Colors.white.withValues(alpha: 0.25), size: 14),
+              ),
+              Text('$after',
+                  style: const TextStyle(
+                      color: Color(0xFF69F0AE),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w300)),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '+$improvement',
+                  style: const TextStyle(
+                      color: Color(0xFF69F0AE),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+            ]),
       ]),
     );
   }
@@ -688,7 +854,8 @@ class _TuneBigButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: enabled ? Colors.black : Colors.white.withValues(alpha: 0.45),
+            color:
+                enabled ? Colors.black : Colors.white.withValues(alpha: 0.45),
             fontSize: 14,
             fontWeight: FontWeight.w500,
             letterSpacing: 1.2,

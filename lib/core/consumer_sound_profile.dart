@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'room_scan_result.dart';
+import 'tune_plan.dart';
 
 enum ConsumerProfileStatus { draft, ready, active }
+
+enum ConsumerProfileGenerationStatus { legacy, generated }
 
 /// Taxonomy tag for consumer sound profiles.
 /// Note: `factorySound` represents the device baseline (cannot use `factory` — Dart keyword).
@@ -59,6 +62,11 @@ class ConsumerSoundProfile {
   final int? soundScoreBefore;
   final int? soundScoreAfter;
   final ConsumerProfileType profileType;
+  final String? measurementId;
+  final String? tunePlanId;
+  final bool isSelected;
+  final ConsumerProfileGenerationStatus generationStatus;
+  final TuneDeploymentStatus deploymentStatus;
 
   const ConsumerSoundProfile({
     required this.id,
@@ -74,6 +82,11 @@ class ConsumerSoundProfile {
     this.soundScoreBefore,
     this.soundScoreAfter,
     this.profileType = ConsumerProfileType.tunaiTune,
+    this.measurementId,
+    this.tunePlanId,
+    this.isSelected = false,
+    this.generationStatus = ConsumerProfileGenerationStatus.legacy,
+    this.deploymentStatus = TuneDeploymentStatus.unknown,
   });
 
   int? get soundScoreImprovement {
@@ -89,6 +102,9 @@ class ConsumerSoundProfile {
     int? soundScoreBefore,
     int? soundScoreAfter,
     ConsumerProfileType? profileType,
+    bool? isSelected,
+    ConsumerProfileGenerationStatus? generationStatus,
+    TuneDeploymentStatus? deploymentStatus,
   }) =>
       ConsumerSoundProfile(
         id: id,
@@ -104,6 +120,11 @@ class ConsumerSoundProfile {
         soundScoreBefore: soundScoreBefore ?? this.soundScoreBefore,
         soundScoreAfter: soundScoreAfter ?? this.soundScoreAfter,
         profileType: profileType ?? this.profileType,
+        measurementId: measurementId,
+        tunePlanId: tunePlanId,
+        isSelected: isSelected ?? this.isSelected,
+        generationStatus: generationStatus ?? this.generationStatus,
+        deploymentStatus: deploymentStatus ?? this.deploymentStatus,
       );
 
   Map<String, dynamic> toJson() => {
@@ -120,6 +141,11 @@ class ConsumerSoundProfile {
         if (soundScoreBefore != null) 'soundScoreBefore': soundScoreBefore,
         if (soundScoreAfter != null) 'soundScoreAfter': soundScoreAfter,
         'profileType': profileType.toJson(),
+        if (measurementId != null) 'measurementId': measurementId,
+        if (tunePlanId != null) 'tunePlanId': tunePlanId,
+        'isSelected': isSelected,
+        'generationStatus': generationStatus.name,
+        'deploymentStatus': deploymentStatus.name,
       };
 
   factory ConsumerSoundProfile.fromJson(Map<String, dynamic> j) =>
@@ -139,6 +165,15 @@ class ConsumerSoundProfile {
         soundScoreBefore: j['soundScoreBefore'] as int?,
         soundScoreAfter: j['soundScoreAfter'] as int?,
         profileType: ConsumerProfileType.fromJson(j['profileType'] as String?),
+        measurementId: j['measurementId'] as String?,
+        tunePlanId: j['tunePlanId'] as String?,
+        isSelected: j['isSelected'] as bool? ?? false,
+        generationStatus: ConsumerProfileGenerationStatus.values.byName(
+          j['generationStatus'] as String? ?? 'legacy',
+        ),
+        deploymentStatus: TuneDeploymentStatus.values.byName(
+          j['deploymentStatus'] as String? ?? 'unknown',
+        ),
       );
 }
 
@@ -182,8 +217,8 @@ class ConsumerSoundProfileNotifier
       try {
         final list = jsonDecode(raw) as List;
         state = list
-            .map((e) =>
-                ConsumerSoundProfile.fromJson(e as Map<String, dynamic>))
+            .map(
+                (e) => ConsumerSoundProfile.fromJson(e as Map<String, dynamic>))
             .toList();
       } catch (_) {}
     }
@@ -191,8 +226,9 @@ class ConsumerSoundProfileNotifier
 
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    final saved = await prefs.setString(
         _kKey, jsonEncode(state.map((p) => p.toJson()).toList()));
+    if (!saved) throw StateError('The Sound Profile could not be saved.');
   }
 
   Future<void> add(ConsumerSoundProfile profile) async {
@@ -210,7 +246,8 @@ class ConsumerSoundProfileNotifier
       updatedAt: now,
     );
     final matchingIndex = state.indexWhere(
-      (candidate) => candidate.id == profile.id ||
+      (candidate) =>
+          candidate.id == profile.id ||
           (candidate.roomType == profile.roomType &&
               candidate.micProfileName == profile.micProfileName &&
               _sameResultCards(candidate.resultCards, profile.resultCards)),
@@ -230,13 +267,45 @@ class ConsumerSoundProfileNotifier
     await _persist();
   }
 
+  Future<void> upsertGeneratedAndSelect(ConsumerSoundProfile profile) async {
+    await _hydrated;
+    if (profile.measurementId == null || profile.tunePlanId == null) {
+      throw StateError(
+          'Generated profiles require measurement and TunePlan links.');
+    }
+    final previous = state;
+    final selected = profile.copyWith(
+      isActive: false,
+      isSelected: true,
+      status: ConsumerProfileStatus.ready,
+      generationStatus: ConsumerProfileGenerationStatus.generated,
+      deploymentStatus: TuneDeploymentStatus.notDeployed,
+      updatedAt: DateTime.now(),
+    );
+    final remaining = state
+        .where((candidate) =>
+            candidate.id != profile.id &&
+            candidate.tunePlanId != profile.tunePlanId)
+        .map((candidate) => candidate.copyWith(isSelected: false))
+        .toList();
+    state = [selected, ...remaining];
+    try {
+      await _persist();
+    } catch (_) {
+      state = previous;
+      rethrow;
+    }
+  }
+
   Future<void> setActive(String id) async {
     await _hydrated;
     final now = DateTime.now();
     state = state.map((p) {
       if (p.id == id) {
         return p.copyWith(
-            isActive: true, status: ConsumerProfileStatus.active, updatedAt: now);
+            isActive: true,
+            status: ConsumerProfileStatus.active,
+            updatedAt: now);
       }
       return p.copyWith(isActive: false, status: ConsumerProfileStatus.ready);
     }).toList();
@@ -245,7 +314,10 @@ class ConsumerSoundProfileNotifier
 
   Future<void> deactivateAll() async {
     await _hydrated;
-    state = state.map((p) => p.copyWith(isActive: false, status: ConsumerProfileStatus.ready)).toList();
+    state = state
+        .map((p) =>
+            p.copyWith(isActive: false, status: ConsumerProfileStatus.ready))
+        .toList();
     await _persist();
   }
 
@@ -256,7 +328,8 @@ class ConsumerSoundProfileNotifier
   }
 }
 
-bool _sameResultCards(List<RoomScanResultCard> left, List<RoomScanResultCard> right) =>
+bool _sameResultCards(
+        List<RoomScanResultCard> left, List<RoomScanResultCard> right) =>
     jsonEncode(left.map((card) => card.toJson()).toList()) ==
     jsonEncode(right.map((card) => card.toJson()).toList());
 
@@ -269,6 +342,15 @@ final activeConsumerProfileProvider = Provider<ConsumerSoundProfile?>((ref) {
   final profiles = ref.watch(consumerSoundProfileProvider);
   try {
     return profiles.firstWhere((p) => p.isActive);
+  } catch (_) {
+    return null;
+  }
+});
+
+final selectedConsumerProfileProvider = Provider<ConsumerSoundProfile?>((ref) {
+  final profiles = ref.watch(consumerSoundProfileProvider);
+  try {
+    return profiles.firstWhere((profile) => profile.isSelected);
   } catch (_) {
     return null;
   }
