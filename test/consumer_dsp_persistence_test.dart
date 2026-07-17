@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
 import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/more/dev_simulation_screen.dart';
+import 'package:tunai/core/consumer_dsp_physical_qa_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -66,11 +67,37 @@ void main() {
         child: MaterialApp(home: DevSimulationScreen()),
       ),
     );
-    await tester.ensureVisible(find.text('Apply DSP Test'));
+    await tester.scrollUntilVisible(find.text('Apply DSP Test'), 120);
     await tester.tap(find.text('Apply DSP Test'));
     await tester.pump();
 
     expect(find.text('DSP TEST: BLOCKED: ORIGINAL SNAPSHOT REQUIRED'),
+        findsOneWidget);
+  });
+
+  testWidgets('manual gain still requires explicit snapshot confirmation',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: DevSimulationScreen(
+            physicalQaFixture: ConsumerDspPhysicalQaFixture(),
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField), '-1.0');
+    final applyButton = find.text('Apply DSP Test').first;
+    await tester.drag(find.byType(ListView), const Offset(0, -160));
+    await tester.pump();
+    await tester.tap(applyButton);
+    await tester.pump();
+
+    expect(find.text('DSP TEST: BLOCKED: SNAPSHOT CONFIRMATION REQUIRED'),
+        findsOneWidget);
+    expect(
+        find.textContaining('Failure category: explicitConfirmationRequired'),
         findsOneWidget);
   });
 }

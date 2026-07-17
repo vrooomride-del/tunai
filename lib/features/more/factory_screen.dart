@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/dsp/transport/dsp_transport_provider.dart';
 import '../../core/first_run_state.dart';
+import '../../core/consumer_dsp_physical_qa_fixture.dart';
 import '../../core/profiles/system_profile.dart';
 import '../../shared/widgets.dart';
 import 'dsp_unlock_flags.dart';
@@ -22,13 +23,16 @@ const _kPerDriverPeqAddrs = [0x21A, 0x27E, 0x326, 0x2F4, 0x24C, 0x2B0];
 const _kDspMapVersion = 'ADAU1466 v0.8B Export18';
 
 const _kChannelNames = [
-  'WOO L', 'WOO R', 'MID L', 'MID R', 'TWE L', 'TWE R',
+  'WOO L',
+  'WOO R',
+  'MID L',
+  'MID R',
+  'TWE L',
+  'TWE R',
 ];
 
-final _gainProvider =
-    StateProvider<List<double>>((ref) => List.filled(6, 0.0));
-final _muteProvider =
-    StateProvider<List<bool>>((ref) => List.filled(6, false));
+final _gainProvider = StateProvider<List<double>>((ref) => List.filled(6, 0.0));
+final _muteProvider = StateProvider<List<bool>>((ref) => List.filled(6, false));
 final _delayProvider =
     StateProvider<List<double>>((ref) => List.filled(6, 0.0));
 final _globalPeqProvider =
@@ -67,17 +71,26 @@ class FactoryScreen extends ConsumerWidget {
             if (kDebugMode)
               GestureDetector(
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DevSimulationScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const DevSimulationScreen(
+                      physicalQaFixture: ConsumerDspPhysicalQaFixture(),
+                    ),
+                  ),
                 ),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   color: const Color(0xFF080C10),
                   child: const Row(children: [
-                    Icon(Icons.science_outlined, color: Color(0xFF4A9EFF), size: 14),
+                    Icon(Icons.science_outlined,
+                        color: Color(0xFF4A9EFF), size: 14),
                     SizedBox(width: 8),
                     Text('Developer Simulation',
-                        style: TextStyle(color: Color(0xFF4A9EFF), fontSize: 11, letterSpacing: 1)),
+                        style: TextStyle(
+                            color: Color(0xFF4A9EFF),
+                            fontSize: 11,
+                            letterSpacing: 1)),
                   ]),
                 ),
               ),
@@ -87,7 +100,8 @@ class FactoryScreen extends ConsumerWidget {
               color: const Color(0xFF3A1A00),
               child: const Text(
                 'Changing factory settings may affect speaker safety and sound output.\n팩토리 설정 변경은 스피커 안전성과 출력에 영향을 줄 수 있습니다.',
-                style: TextStyle(color: Color(0xFFFFB366), fontSize: 11, height: 1.5),
+                style: TextStyle(
+                    color: Color(0xFFFFB366), fontSize: 11, height: 1.5),
               ),
             ),
             Expanded(
@@ -163,32 +177,42 @@ class FactoryScreen extends ConsumerWidget {
                     const Divider(color: Colors.white12),
                     const SizedBox(height: 12),
                     const Text('DEBUG',
-                        style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 3)),
+                        style: TextStyle(
+                            color: Colors.white24,
+                            fontSize: 9,
+                            letterSpacing: 3)),
                     const SizedBox(height: 10),
                     GestureDetector(
                       onTap: () async {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.remove('first_run_complete');
-                        ref.read(acousticTuneAppliedProvider.notifier).state = false;
+                        ref.read(acousticTuneAppliedProvider.notifier).state =
+                            false;
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('First-run reset. Restart the app to see onboarding.'),
+                            content: Text(
+                                'First-run reset. Restart the app to see onboarding.'),
                             backgroundColor: Color(0xFF1A1A1A),
                           ),
                         );
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.white12),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Row(children: [
-                          Icon(Icons.restart_alt, color: Colors.white24, size: 14),
+                          Icon(Icons.restart_alt,
+                              color: Colors.white24, size: 14),
                           SizedBox(width: 10),
                           Text('Reset Onboarding / First-Run',
-                              style: TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5)),
+                              style: TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 12,
+                                  letterSpacing: 0.5)),
                         ]),
                       ),
                     ),
@@ -273,9 +297,7 @@ class _GainSliders extends ConsumerWidget {
                 width: 52,
                 child: Text(_kChannelNames[i],
                     style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                        letterSpacing: 1)),
+                        color: Colors.white54, fontSize: 11, letterSpacing: 1)),
               ),
               Expanded(
                 child: Slider(
@@ -292,22 +314,19 @@ class _GainSliders extends ConsumerWidget {
                           ref.read(_gainProvider.notifier).state = next;
                         }
                       : null,
-                  onChangeEnd:
-                      (connected && DspUnlockFlags.gainWriteUnlocked)
-                          ? (v) async {
-                              if (transport == null) return;
-                              final linear = pow(10.0, v / 20.0).toDouble();
-                              final fixed =
-                                  (linear * (1 << 27)).round();
-                              await transport.writeParameter(
-                                  _kDriverGainAddrs[i], [
-                                (fixed >> 24) & 0xFF,
-                                (fixed >> 16) & 0xFF,
-                                (fixed >> 8) & 0xFF,
-                                fixed & 0xFF,
-                              ]);
-                            }
-                          : null,
+                  onChangeEnd: (connected && DspUnlockFlags.gainWriteUnlocked)
+                      ? (v) async {
+                          if (transport == null) return;
+                          final linear = pow(10.0, v / 20.0).toDouble();
+                          final fixed = (linear * (1 << 27)).round();
+                          await transport.writeParameter(_kDriverGainAddrs[i], [
+                            (fixed >> 24) & 0xFF,
+                            (fixed >> 16) & 0xFF,
+                            (fixed >> 8) & 0xFF,
+                            fixed & 0xFF,
+                          ]);
+                        }
+                      : null,
                 ),
               ),
               SizedBox(
@@ -342,9 +361,7 @@ class _MuteToggles extends ConsumerWidget {
                 width: 52,
                 child: Text(_kChannelNames[i],
                     style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                        letterSpacing: 1)),
+                        color: Colors.white54, fontSize: 11, letterSpacing: 1)),
               ),
               const SizedBox(width: 8),
               Container(
@@ -364,8 +381,7 @@ class _MuteToggles extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                  '0x${_kDriverMuteAddrs[i].toRadixString(16).toUpperCase()}',
+              Text('0x${_kDriverMuteAddrs[i].toRadixString(16).toUpperCase()}',
                   style: const TextStyle(
                       color: Colors.white24,
                       fontSize: 10,
@@ -393,9 +409,7 @@ class _DelaySliders extends ConsumerWidget {
                 width: 52,
                 child: Text(_kChannelNames[i],
                     style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                        letterSpacing: 1)),
+                        color: Colors.white54, fontSize: 11, letterSpacing: 1)),
               ),
               Expanded(
                 child: Slider(
@@ -427,8 +441,26 @@ class _DelaySliders extends ConsumerWidget {
 
 class _GlobalPeqSliders extends ConsumerWidget {
   static const _freqs = [
-    '20', '32', '50', '80', '125', '200', '315', '500', '800', '1k',
-    '1.6k', '2.5k', '4k', '6.3k', '10k', '12.5k', '14k', '16k', '18k', '20k',
+    '20',
+    '32',
+    '50',
+    '80',
+    '125',
+    '200',
+    '315',
+    '500',
+    '800',
+    '1k',
+    '1.6k',
+    '2.5k',
+    '4k',
+    '6.3k',
+    '10k',
+    '12.5k',
+    '14k',
+    '16k',
+    '18k',
+    '20k',
   ];
 
   @override
@@ -469,8 +501,7 @@ class _GlobalPeqSliders extends ConsumerWidget {
                     ),
                     Text(_freqs[i],
                         style: const TextStyle(
-                            color: Colors.white24,
-                            fontSize: 7)),
+                            color: Colors.white24, fontSize: 7)),
                   ],
                 ),
               );
@@ -495,8 +526,8 @@ class _PerDriverPeqInfo extends StatelessWidget {
               SizedBox(
                 width: 52,
                 child: Text(_kChannelNames[i],
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 11)),
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
               ),
               Text(
                   '0x${_kPerDriverPeqAddrs[i].toRadixString(16).toUpperCase()}  · 20-band',
@@ -566,12 +597,10 @@ class _Adau1701FactoryContent extends ConsumerWidget {
                       onChangeEnd:
                           (connected && DspUnlockFlags.gainWriteUnlocked)
                               ? (v) async {
-                                  final linear =
-                                      pow(10.0, v / 20.0).toDouble();
-                                  final fixed =
-                                      (linear * (1 << 23)).round();
-                                  await transport.writeParameter(
-                                      _kGain1701Addrs[i], [
+                                  final linear = pow(10.0, v / 20.0).toDouble();
+                                  final fixed = (linear * (1 << 23)).round();
+                                  await transport
+                                      .writeParameter(_kGain1701Addrs[i], [
                                     (fixed >> 24) & 0xFF,
                                     (fixed >> 16) & 0xFF,
                                     (fixed >> 8) & 0xFF,
@@ -750,9 +779,7 @@ class _LockedNote extends StatelessWidget {
             const SizedBox(width: 4),
             Text(reason,
                 style: const TextStyle(
-                    color: Colors.white24,
-                    fontSize: 10,
-                    letterSpacing: 0.5)),
+                    color: Colors.white24, fontSize: 10, letterSpacing: 0.5)),
           ],
         ),
       );

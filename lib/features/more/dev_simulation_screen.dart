@@ -17,6 +17,7 @@ import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/install_location.dart';
 import '../../core/consumer_dsp_deployment.dart';
+import '../../core/consumer_dsp_physical_qa_fixture.dart';
 import '../../core/tune_deployment_plan.dart';
 import '../../core/tune_plan.dart';
 import '../ble/ble_controller.dart';
@@ -25,10 +26,12 @@ class DevSimulationScreen extends ConsumerStatefulWidget {
   /// A deployment plan with externally captured original values must be
   /// supplied by a developer harness. The normal app never creates one.
   final List<TuneDeploymentPlan> dspTestPlans;
+  final ConsumerDspPhysicalQaFixture? physicalQaFixture;
 
   const DevSimulationScreen({
     super.key,
     this.dspTestPlans = const [],
+    this.physicalQaFixture,
   });
 
   @override
@@ -39,13 +42,59 @@ class DevSimulationScreen extends ConsumerStatefulWidget {
 class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
   String _log = '';
   String _dspStatus = 'IDLE';
+  String _dspResultDetails = 'No physical QA result in this session.';
+  late ConsumerDspPhysicalQaFixture? _physicalQaFixture;
+  final _originalGainController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _physicalQaFixture = widget.physicalQaFixture;
+  }
+
+  @override
+  void dispose() {
+    _originalGainController.dispose();
+    super.dispose();
+  }
+
+  List<TuneDeploymentPlan> get _validatedDspTestPlans =>
+      _physicalQaFixture?.createPlans() ?? widget.dspTestPlans;
 
   void _appendLog(String msg) => setState(() => _log += '✓ $msg\n');
   void _appendErr(String msg) => setState(() => _log += '✗ $msg\n');
 
+  void _blockDsp(String reason, String failureCategory) {
+    setState(() {
+      _dspStatus = 'BLOCKED: $reason';
+      _dspResultDetails = 'Guard: BLOCKED\n'
+          'Command count: 0\n'
+          'ACKed command count: 0\n'
+          'Outcome: blocked\n'
+          'Rollback attempted: false\n'
+          'Rollback succeeded: false\n'
+          'Failure category: $failureCategory\n'
+          'Final confidence: notDeployed';
+    });
+  }
+
   Future<void> _applyDspTest() async {
-    if (widget.dspTestPlans.isEmpty) {
-      setState(() => _dspStatus = 'BLOCKED: ORIGINAL SNAPSHOT REQUIRED');
+    final plans = _validatedDspTestPlans;
+    if (plans.isEmpty) {
+      final originalGainPresent = _physicalQaFixture?.originalGainDb != null;
+      final snapshotConfirmed = _physicalQaFixture?.snapshotConfirmed ?? false;
+      _blockDsp(
+        !originalGainPresent
+            ? 'ORIGINAL SNAPSHOT REQUIRED'
+            : snapshotConfirmed
+                ? 'ORIGINAL SNAPSHOT INVALID'
+                : 'SNAPSHOT CONFIRMATION REQUIRED',
+        !originalGainPresent
+            ? 'missingOriginalSnapshot'
+            : snapshotConfirmed
+                ? 'invalidOriginalSnapshot'
+                : 'explicitConfirmationRequired',
+      );
       _appendErr('DSP test blocked — no captured original-value snapshot');
       return;
     }
@@ -54,15 +103,20 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     if (profile == null ||
         tunePlan == null ||
         profile.tunePlanId != tunePlan.id) {
-      setState(() => _dspStatus = 'BLOCKED: TUNE PLAN MISMATCH');
+      _blockDsp('TUNE PLAN MISMATCH', 'tunePlanMismatch');
       _appendErr(
           'DSP test blocked — selected profile and TunePlan do not match');
       return;
     }
     final service = ref.read(consumerBleServiceProvider);
+    if (!service.state.connected) {
+      _blockDsp('BLE TRANSPORT UNAVAILABLE', 'disconnected');
+      _appendErr('DSP test blocked — BLE transport is unavailable');
+      return;
+    }
     final deviceIdentifier = service.validatedDeviceIdentifier;
     if (deviceIdentifier == null) {
-      setState(() => _dspStatus = 'BLOCKED: DEVICE NOT VALIDATED');
+      _blockDsp('DEVICE NOT VALIDATED', 'handshakeNotValidated');
       _appendErr(
           'DSP test blocked — connected device is not identity-validated');
       return;
@@ -73,7 +127,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
           builder: (context) => AlertDialog(
             title: const Text('Apply DSP Test?'),
             content: Text(
-              'Write ${widget.dspTestPlans.length} PEQ band(s) to the '
+              'Write ${plans.length} PEQ band(s) to the '
               'validated test device. This is a developer-only action.',
             ),
             actions: [
@@ -98,7 +152,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     final result = await ConsumerDspDeploymentExecutor(
       transport: ConsumerBleDspTransport(service),
     ).execute(
-      plans: widget.dspTestPlans,
+      plans: plans,
       expectedDeviceIdentifier: deviceIdentifier,
       explicitlyConfirmed: true,
     );
@@ -118,13 +172,20 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
             tunePlanId: tunePlan.id,
             deviceIdentifier: deviceIdentifier,
             attemptedAt: attemptedAt,
-            bandCount: widget.dspTestPlans.length,
+            bandCount: plans.length,
             result: recordResult,
             dspApplied: result.dspApplied,
             failureCategory: result.failure?.name,
           ),
         );
-    setState(() => _dspStatus = result.outcome.name.toUpperCase());
+    final resultLog = ConsumerDspPhysicalQaResultLog.fromDeployment(
+      result,
+      commandCount: plans.length * 3,
+    );
+    setState(() {
+      _dspStatus = result.outcome.name.toUpperCase();
+      _dspResultDetails = resultLog.displayText;
+    });
     _appendLog('DSP test result: ${result.outcome.name}');
   }
 
@@ -352,6 +413,91 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     _appendLog('=== Verify complete ===');
   }
 
+  Widget _physicalQaPanel() {
+    final fixture = _physicalQaFixture!;
+    final validated =
+        ref.read(consumerBleServiceProvider).supportedIdentityValidated;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Colors.orangeAccent.withValues(alpha: 0.35),
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PHYSICAL ICP5 QA — ONE BAND',
+            style: TextStyle(color: Colors.orangeAccent, fontSize: 10),
+          ),
+          _StatusRow(
+            label: 'Device validation',
+            value: validated ? 'validated' : 'not validated',
+          ),
+          _StatusRow(label: 'Channel', value: '${fixture.channel}'),
+          _StatusRow(label: 'Band', value: '${fixture.bandId + 1}'),
+          _StatusRow(
+            label: 'Original F / Gain / Q',
+            value: '${fixture.originalFrequencyHz} Hz / '
+                '${fixture.originalGainDb?.toStringAsFixed(1) ?? "required"} dB / '
+                '${fixture.originalQ.toStringAsFixed(1)}',
+          ),
+          _StatusRow(
+            label: 'Test F / Gain / Q',
+            value: '${fixture.testFrequencyHz} Hz / '
+                '${fixture.testGainDb?.toStringAsFixed(1) ?? "pending"} dB / '
+                '${fixture.testQ.toStringAsFixed(1)}',
+          ),
+          Text(
+            'Evidence: ${fixture.evidenceSource}',
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _originalGainController,
+            keyboardType: const TextInputType.numberWithOptions(
+              signed: true,
+              decimal: true,
+            ),
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Original Gain from current physical DSP (dB)',
+              labelStyle: TextStyle(color: Colors.white54, fontSize: 10),
+            ),
+            onChanged: (value) => setState(() {
+              _physicalQaFixture = fixture.withOriginalGain(
+                double.tryParse(value.trim()),
+              );
+            }),
+          ),
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: fixture.snapshotConfirmed,
+            onChanged: fixture.originalGainDb == null
+                ? null
+                : (value) => setState(() {
+                      _physicalQaFixture =
+                          fixture.withSnapshotConfirmation(value ?? false);
+                    }),
+            title: const Text(
+              'I confirmed these original values match the current physical DSP state.',
+              style: TextStyle(color: Colors.white70, fontSize: 10),
+            ),
+          ),
+          _StatusRow(
+            label: 'Snapshot complete',
+            value: fixture.snapshotComplete ? 'yes' : 'no',
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scan = ref.watch(roomScanResultProvider);
@@ -422,6 +568,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
                       label: 'Verify Current State',
                       color: const Color(0xFFFFD700),
                       onTap: _verifyCurrentState),
+                  if (_physicalQaFixture != null) _physicalQaPanel(),
                   _DevButton(
                     label: 'Apply DSP Test',
                     color: const Color(0xFFFF8A00),
@@ -435,6 +582,21 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
                         color: Colors.white54,
                         fontSize: 10,
                         fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    color: Colors.black,
+                    child: Text(
+                      _dspResultDetails,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        height: 1.4,
                       ),
                     ),
                   ),
