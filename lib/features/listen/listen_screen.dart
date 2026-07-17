@@ -101,7 +101,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
               child: PresetBar(onSave: _saveConsumerProfile),
             ),
             const SizedBox(height: 4),
-            const _MasterVolumeSection(),
+            const _ListeningLevelSection(),
             const SizedBox(height: 4),
             Expanded(
               child: SingleChildScrollView(
@@ -180,8 +180,8 @@ String _levelLabel(double db, {required bool ko}) {
   return ko ? '크게' : 'Lively';
 }
 
-class _MasterVolumeSection extends ConsumerWidget {
-  const _MasterVolumeSection();
+class _ListeningLevelSection extends ConsumerWidget {
+  const _ListeningLevelSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

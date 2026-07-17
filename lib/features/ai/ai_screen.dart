@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ble/ble_controller.dart';
+import '../../core/consumer_dsp_deployment.dart';
+import '../../core/dsp_state_synchronization.dart';
 import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/room_measurement.dart';
 import '../../core/speaker_check_gate.dart';
 import '../../core/speaker_state_verification.dart';
+import '../../core/tune_deployment_plan.dart';
 import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
 
@@ -24,6 +27,95 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   bool _creating = false;
 
   bool get _isKo => Localizations.localeOf(context).languageCode == 'ko';
+
+  void _resetApplyPhase() {
+    ref.read(consumerApplyPhaseProvider.notifier).state =
+        ConsumerApplyPhase.idle;
+  }
+
+  Future<void> _applyTune() async {
+    final speakerCheck = ref.read(speakerCheckResultProvider);
+    final snapshot = ref.read(dspStateSnapshotProvider);
+    final profile = ref.read(selectedConsumerProfileProvider);
+    if (!speakerCheck.readyToApply || snapshot == null || profile == null) {
+      return;
+    }
+
+    final tunePlan = await TunePlanStore.load();
+    if (!mounted || tunePlan == null) return;
+
+    final expectedId = speakerCheck.confirmedSpeakerId!;
+
+    final originalValues = <TuneDeploymentOriginalValues>[];
+    for (var i = 0; i < tunePlan.bands.length; i++) {
+      final state = snapshot.stateFor(
+        DspPeqStateRequest(
+          channel: ConsumerDspDeploymentExecutor.confirmedTunePlanChannel,
+          bandId: i,
+        ),
+      );
+      if (state == null || !mounted) return;
+      originalValues.add(TuneDeploymentOriginalValues(
+        frequencyHz: state.frequencyHz,
+        gainDb: state.gainDb,
+        q: state.q,
+        enable: state.enabled,
+      ));
+    }
+
+    final plans = TuneDeploymentPlan.fromTunePlan(
+      tunePlan,
+      channel: ConsumerDspDeploymentExecutor.confirmedTunePlanChannel,
+      originalValues: originalValues,
+    );
+
+    ref.read(consumerApplyPhaseProvider.notifier).state =
+        ConsumerApplyPhase.applying;
+
+    final service = ref.read(consumerBleServiceProvider);
+    final result = await ConsumerDspDeploymentExecutor(
+      transport: ConsumerBleDspTransport(service),
+    ).execute(
+      plans: plans,
+      expectedDeviceIdentifier: expectedId,
+      explicitlyConfirmed: true,
+    );
+
+    if (!mounted) return;
+
+    final recordResult = switch (result.outcome) {
+      ConsumerDspDeploymentOutcome.applied =>
+        ConsumerDspDeploymentRecordResult.applied,
+      ConsumerDspDeploymentOutcome.restored =>
+        ConsumerDspDeploymentRecordResult.restored,
+      ConsumerDspDeploymentOutcome.failed =>
+        ConsumerDspDeploymentRecordResult.failed,
+      ConsumerDspDeploymentOutcome.blocked =>
+        ConsumerDspDeploymentRecordResult.blocked,
+    };
+
+    await ref.read(consumerSoundProfileProvider.notifier).recordDspDeployment(
+          profile.id,
+          ConsumerDspDeploymentRecord(
+            tunePlanId: tunePlan.id,
+            deviceIdentifier: expectedId,
+            attemptedAt: DateTime.now(),
+            bandCount: plans.length,
+            result: recordResult,
+            dspApplied: result.dspApplied,
+            failureCategory: result.failure?.name,
+          ),
+        );
+
+    if (!mounted) return;
+
+    ref.read(consumerApplyPhaseProvider.notifier).state = switch (result.outcome) {
+      ConsumerDspDeploymentOutcome.applied => ConsumerApplyPhase.idle,
+      ConsumerDspDeploymentOutcome.restored => ConsumerApplyPhase.restored,
+      ConsumerDspDeploymentOutcome.failed => ConsumerApplyPhase.failed,
+      ConsumerDspDeploymentOutcome.blocked => ConsumerApplyPhase.idle,
+    };
+  }
 
   Future<void> _createTune(RoomScanResult scan) async {
     if (_creating) return;
@@ -88,10 +180,31 @@ class _AiScreenState extends ConsumerState<AiScreen> {
           profile: active,
           onGoListen: widget.onApplied,
           onReset: () async {
+            _resetApplyPhase();
             await ref
                 .read(consumerSoundProfileProvider.notifier)
                 .deactivateAll();
           });
+    }
+
+    // Apply lifecycle states (session-scoped, not persisted)
+    final applyPhase = ref.watch(consumerApplyPhaseProvider);
+    if (applyPhase == ConsumerApplyPhase.applying) {
+      return _StateApplying(ko: ko);
+    }
+    if (applyPhase == ConsumerApplyPhase.restored) {
+      return _StateApplyResult(
+        ko: ko,
+        safe: true,
+        onRetry: _resetApplyPhase,
+      );
+    }
+    if (applyPhase == ConsumerApplyPhase.failed) {
+      return _StateApplyResult(
+        ko: ko,
+        safe: false,
+        onRetry: _resetApplyPhase,
+      );
     }
 
     // State A — no BLE AND no scan data: show connection prompt.
@@ -130,7 +243,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         scan: scan,
         isConnected: isConnected,
         speakerCheck: speakerCheck,
-        onApply: speakerCheck.readyToApply ? () {} : null,
+        onApply: speakerCheck.readyToApply ? _applyTune : null,
       );
     }
 
@@ -552,6 +665,124 @@ class _StateE extends StatelessWidget {
     );
   }
 }
+
+// ── Apply lifecycle state widgets ────────────────────────────────────────────
+
+class _StateApplying extends StatelessWidget {
+  final bool ko;
+  const _StateApplying({required this.ko});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF69F0AE),
+                    strokeWidth: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  key: const Key('consumer_apply_applying'),
+                  ko ? '스피커에 적용 중...' : 'Applying to speaker...',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  ko ? '잠시 기다려 주세요.' : 'Please wait.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+/// Shown after a non-applied outcome.
+///
+/// [safe] = true  → rollback succeeded; original settings are active.
+/// [safe] = false → rollback also failed; speaker may be in a partial state.
+class _StateApplyResult extends StatelessWidget {
+  final bool ko;
+  final bool safe;
+  final VoidCallback onRetry;
+  const _StateApplyResult({
+    required this.ko,
+    required this.safe,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final headline = safe
+        ? (ko ? '변경되지 않았습니다.' : 'No changes were made.')
+        : (ko ? '문제가 발생했습니다.' : 'Something went wrong.');
+    final body = safe
+        ? (ko
+            ? '스피커의 원래 사운드가 그대로 유지됩니다.\n이전 설정은 안전하게 보존되어 있습니다.'
+            : 'Your speaker\'s original sound remains active.\nYour previous settings are safe.')
+        : (ko
+            ? '스피커를 재연결하고 다시 시도해 주세요.'
+            : 'Please reconnect your speaker and try again.');
+    final retryLabel = ko ? '다시 시도' : 'Try again';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 48, 32, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Spacer(),
+              Text(
+                key: Key(safe
+                    ? 'consumer_apply_restored'
+                    : 'consumer_apply_failed'),
+                headline,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w300,
+                  height: 1.35,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                body,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 14,
+                  height: 1.65,
+                ),
+              ),
+              const Spacer(),
+              _TuneBigButton(label: retryLabel, onTap: onRetry),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Speaker Check notice ──────────────────────────────────────────────────────
 
 class _SpeakerCheckNotice extends StatelessWidget {
   final bool ko;

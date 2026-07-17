@@ -5,6 +5,19 @@ import 'consumer_dsp_deployment.dart';
 import 'dsp_state_synchronization.dart';
 import 'speaker_state_verification.dart';
 
+// ── Consumer apply phase ──────────────────────────────────────────────────────
+
+/// Session-scoped apply lifecycle — not persisted across restarts.
+enum ConsumerApplyPhase { idle, applying, failed, restored }
+
+/// Holds the current apply lifecycle phase.
+///
+/// Reset to [ConsumerApplyPhase.idle] on app launch.  After a successful
+/// apply the profile's persistent [TuneDeploymentStatus.applied] takes
+/// precedence and this value is ignored.
+final consumerApplyPhaseProvider =
+    StateProvider<ConsumerApplyPhase>((_) => ConsumerApplyPhase.idle);
+
 // ── Required-states constant ─────────────────────────────────────────────────
 //
 // Consumer tune plans use channel 1, bands 0–2 (up to 3 bands).
