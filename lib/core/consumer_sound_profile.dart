@@ -439,6 +439,25 @@ class ConsumerSoundProfileNotifier
     await _persist();
   }
 
+  /// Connection transitions cannot prove that volatile device DSP state was
+  /// retained. Historical deployment records remain available.
+  Future<void> markCurrentDspConfidenceUnknown() async {
+    await _hydrated;
+    final previous = state;
+    state = state
+        .map((profile) => profile.copyWith(
+              deploymentStatus: TuneDeploymentStatus.unknown,
+            ))
+        .toList(growable: false);
+    if (_sameProfiles(previous, state)) return;
+    try {
+      await _persist();
+    } catch (_) {
+      state = previous;
+      rethrow;
+    }
+  }
+
   Future<void> delete(String id) async {
     await _hydrated;
     state = state.where((p) => p.id != id).toList();
@@ -450,6 +469,11 @@ bool _sameResultCards(
         List<RoomScanResultCard> left, List<RoomScanResultCard> right) =>
     jsonEncode(left.map((card) => card.toJson()).toList()) ==
     jsonEncode(right.map((card) => card.toJson()).toList());
+
+bool _sameProfiles(
+        List<ConsumerSoundProfile> left, List<ConsumerSoundProfile> right) =>
+    jsonEncode(left.map((profile) => profile.toJson()).toList()) ==
+    jsonEncode(right.map((profile) => profile.toJson()).toList());
 
 final consumerSoundProfileProvider = StateNotifierProvider<
     ConsumerSoundProfileNotifier, List<ConsumerSoundProfile>>(

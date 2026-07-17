@@ -96,7 +96,7 @@ class _Driver implements ConsumerBleGattDriver {
   @override
   Future<bool> requestPermissions() async => true;
   @override
-  Future<List<ConsumerBleDevice>> scan() async => [device];
+  Future<List<ConsumerBleDevice>> scan({String? identifier}) async => [device];
   @override
   Future<ConsumerBleConnection> connect(ConsumerBleDevice device) async =>
       _Connection();

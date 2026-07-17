@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
 import 'package:tunai/features/ble/consumer_ble_service.dart';
 import 'package:tunai/features/ble/icp5_consumer_frame_codec.dart';
 import 'package:tunai/features/ble/icp5_peq_command_builder.dart';
 import 'package:tunai/features/ble/consumer_product_identity.dart';
+import 'package:tunai/features/ble/known_consumer_device.dart';
 import 'package:tunai/features/connect/connect_screen.dart';
 
 List<int> _identity(String profile) {
@@ -32,6 +34,16 @@ final _validIdentity = _identity('DSP1701.100.00.01');
 class _NativeHandle {
   final String id;
   const _NativeHandle(this.id);
+}
+
+class _TestKnownDeviceStore implements KnownConsumerDevicePersistence {
+  KnownConsumerDevice? value;
+  @override
+  Future<KnownConsumerDevice?> load() async => value;
+  @override
+  Future<void> save(KnownConsumerDevice device) async => value = device;
+  @override
+  Future<void> clear() async => value = null;
 }
 
 class _FakeConnection implements ConsumerBleConnection {
@@ -107,7 +119,7 @@ class _FakeDriver implements ConsumerBleGattDriver {
   Future<bool> requestPermissions() async => permissions;
 
   @override
-  Future<List<ConsumerBleDevice>> scan() async {
+  Future<List<ConsumerBleDevice>> scan({String? identifier}) async {
     scanCalls++;
     return devices;
   }
@@ -136,11 +148,14 @@ ConsumerBleService _service(
   ConsumerBleGattDriver driver, {
   Duration timeout = const Duration(milliseconds: 40),
   Duration quarantine = const Duration(milliseconds: 5),
+  List<Duration>? reconnectDelays,
 }) =>
     ConsumerBleService(
       driver: driver,
+      knownDeviceStore: _TestKnownDeviceStore(),
       handshakeTimeout: timeout,
       staleAckQuarantine: quarantine,
+      reconnectDelays: reconnectDelays ?? const [Duration(seconds: 1)],
     );
 
 // ── Test helpers for stale-ACK and reconnect tests ──────────────────────────
@@ -202,7 +217,7 @@ class _MultiConnectionDriver implements ConsumerBleGattDriver {
   @override
   Future<bool> requestPermissions() async => true;
   @override
-  Future<List<ConsumerBleDevice>> scan() async => devices;
+  Future<List<ConsumerBleDevice>> scan({String? identifier}) async => devices;
   @override
   Future<ConsumerBleConnection> connect(ConsumerBleDevice device) async {
     onConnect();
@@ -211,6 +226,8 @@ class _MultiConnectionDriver implements ConsumerBleGattDriver {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
   test('Consumer identity confirms TUNAI ONE only after validation', () {
     final candidate = ConsumerProductIdentity.fromPhysicalIdentity(
       physicalDeviceName: 'WONDOM ICP5',
@@ -411,7 +428,7 @@ void main() {
     service.dispose();
   });
 
-  test('disconnect fails closed and never retries', () async {
+  test('unexpected disconnect enters bounded reconnecting state', () async {
     final connection = _FakeConnection();
     final driver = _FakeDriver(
       devices: [_device('icp5', 'WONDOM ICP5')],
@@ -422,7 +439,7 @@ void main() {
     await service.connect();
     connection.disconnectUnexpectedly();
     await Future<void>.delayed(Duration.zero);
-    expect(service.state.status, ConsumerBleStatus.disconnected);
+    expect(service.state.status, ConsumerBleStatus.reconnecting);
     expect(driver.connectCalls, 1);
     expect(driver.scanCalls, 1);
     service.dispose();
@@ -448,7 +465,7 @@ void main() {
     connection.disconnectUnexpectedly();
     await Future<void>.delayed(Duration.zero);
     expect(container.read(bleProvider).connection,
-        BleConnectionState.connectionLost);
+        BleConnectionState.reconnecting);
     expect(driver.connectCalls, 1);
     expect(driver.scanCalls, 1);
   });
@@ -751,7 +768,7 @@ void main() {
         connections: [conn1, conn2],
         onConnect: () => connectCalls++,
       );
-      final service = _service(driver);
+      final service = _service(driver, reconnectDelays: const [Duration.zero]);
 
       await service.scan();
       await service.connect();
@@ -759,11 +776,7 @@ void main() {
 
       // Simulate unexpected disconnect.
       conn1.disconnectUnexpectedly();
-      await Future<void>.delayed(Duration.zero);
-      expect(service.state.status, ConsumerBleStatus.disconnected);
-
-      // Reconnect using the second connection.
-      await service.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(service.state.status, ConsumerBleStatus.connected);
       expect(connectCalls, 2);
 

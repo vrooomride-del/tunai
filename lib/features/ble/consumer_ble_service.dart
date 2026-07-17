@@ -6,12 +6,15 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'icp5_consumer_frame_codec.dart';
+import 'consumer_product_identity.dart';
+import 'known_consumer_device.dart';
 
 enum ConsumerBleStatus {
   disconnected,
   bluetoothUnavailable,
   permissionRequired,
   searching,
+  reconnecting,
   deviceFound,
   connecting,
   connected,
@@ -51,6 +54,7 @@ class ConsumerBleState {
   bool get connected => status == ConsumerBleStatus.connected;
   bool get busy =>
       status == ConsumerBleStatus.searching ||
+      status == ConsumerBleStatus.reconnecting ||
       status == ConsumerBleStatus.connecting;
 }
 
@@ -63,7 +67,7 @@ abstract interface class ConsumerBleConnection {
 abstract interface class ConsumerBleGattDriver {
   Future<bool> isBluetoothAvailable();
   Future<bool> requestPermissions();
-  Future<List<ConsumerBleDevice>> scan();
+  Future<List<ConsumerBleDevice>> scan({String? identifier});
   Future<ConsumerBleConnection> connect(ConsumerBleDevice device);
 }
 
@@ -100,7 +104,9 @@ class ConsumerBleApplicationException implements Exception {
 /// The UI can only scan, select, connect, disconnect, and observe safe states.
 class ConsumerBleService extends ChangeNotifier {
   final ConsumerBleGattDriver _driver;
+  final KnownConsumerDevicePersistence _knownDeviceStore;
   final Duration handshakeTimeout;
+  final List<Duration> reconnectDelays;
 
   /// How long to discard incoming notifications after a command timeout before
   /// allowing the next request. The ICP5 protocol carries no per-command
@@ -127,18 +133,48 @@ class ConsumerBleService extends ChangeNotifier {
   List<int>? _applicationRawNotificationElapsedMilliseconds;
   Stopwatch? _applicationStopwatch;
   bool _applicationWriteCompleted = false;
+  bool _initialized = false;
+  bool _manualDisconnect = false;
+  bool _reconnectLoopActive = false;
+  bool _disposed = false;
+  int _reconnectGeneration = 0;
+  KnownConsumerDevice? _knownDevice;
+  Timer? _reconnectDelayTimer;
+  Completer<void>? _reconnectDelayCompleter;
 
   ConsumerBleService({
     ConsumerBleGattDriver? driver,
+    KnownConsumerDevicePersistence? knownDeviceStore,
     this.handshakeTimeout = const Duration(seconds: 10),
     this.staleAckQuarantine = const Duration(milliseconds: 50),
-  }) : _driver = driver ?? FlutterBluePlusConsumerGattDriver();
+    this.reconnectDelays = const [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+      Duration(seconds: 8),
+    ],
+  })  : _driver = driver ?? FlutterBluePlusConsumerGattDriver(),
+        _knownDeviceStore = knownDeviceStore ?? KnownConsumerDeviceStore();
 
   ConsumerBleState get state => _state;
   bool get supportedIdentityValidated =>
       _state.connected && _supportedIdentityValidated;
   String? get validatedDeviceIdentifier =>
       supportedIdentityValidated ? _state.selectedDevice?.identifier : null;
+  KnownConsumerDevice? get knownDevice => _knownDevice;
+  bool get reconnecting => _reconnectLoopActive;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    _knownDevice = await _knownDeviceStore.load();
+    final known = _knownDevice;
+    if (known != null &&
+        known.autoReconnectEnabled &&
+        !known.lastDisconnectWasUserInitiated) {
+      await _startReconnect(immediate: true);
+    }
+  }
 
   Future<void> scan() async {
     if (_state.busy || _state.connected) return;
@@ -227,40 +263,7 @@ class ConsumerBleService extends ChangeNotifier {
     );
 
     try {
-      final connection = await _driver.connect(selected);
-      _connection = connection;
-      _receiveBuffer.clear();
-      _handshakeResponse = Completer<List<int>>();
-      _notificationSubscription = connection.notifications.listen(
-        _onNotification,
-        onError: _onConnectionError,
-        onDone: _onConnectionClosed,
-      );
-      await connection.write(Icp5ConsumerFrameCodec.identificationRequest);
-      final identity = await _handshakeResponse!.future.timeout(
-        handshakeTimeout,
-      );
-      if (!Icp5ConsumerFrameCodec.isSupportedIdentity(identity)) {
-        await _closeConnection();
-        _setState(
-          ConsumerBleState(
-            status: ConsumerBleStatus.unsupportedDevice,
-            devices: _state.devices,
-            selectedDevice: selected,
-          ),
-        );
-        return;
-      }
-      _supportedIdentityValidated = true;
-      _handshakeResponse = null;
-      _setState(
-        ConsumerBleState(
-          status: ConsumerBleStatus.connected,
-          devices: _state.devices,
-          selectedDevice: selected,
-          connectedDeviceName: selected.name,
-        ),
-      );
+      await _connectAndValidate(selected, reconnecting: false);
     } on TimeoutException {
       await _closeConnection();
       _setState(
@@ -282,6 +285,153 @@ class ConsumerBleService extends ChangeNotifier {
         ),
       );
     }
+  }
+
+  Future<void> _connectAndValidate(
+    ConsumerBleDevice selected, {
+    required bool reconnecting,
+  }) async {
+    final connection = await _driver.connect(selected);
+    _connection = connection;
+    _receiveBuffer.clear();
+    _handshakeResponse = Completer<List<int>>();
+    await _notificationSubscription?.cancel();
+    _notificationSubscription = connection.notifications.listen(
+      _onNotification,
+      onError: _onConnectionError,
+      onDone: _onConnectionClosed,
+    );
+    await connection.write(Icp5ConsumerFrameCodec.identificationRequest);
+    final identity = await _handshakeResponse!.future.timeout(handshakeTimeout);
+    if (!Icp5ConsumerFrameCodec.isSupportedIdentity(identity)) {
+      await _closeConnection();
+      await _blockAutomaticReconnect();
+      _setState(ConsumerBleState(
+        status: ConsumerBleStatus.unsupportedDevice,
+        devices: _state.devices,
+        selectedDevice: selected,
+      ));
+      throw StateError('Unsupported Bluetooth identity.');
+    }
+    _supportedIdentityValidated = true;
+    _handshakeResponse = null;
+    _manualDisconnect = false;
+    final previous = _knownDevice;
+    final known = KnownConsumerDevice(
+      identifier: selected.identifier,
+      advertisedName: selected.name,
+      validatedProductIdentity: ConsumerProductIdentity.tunaiOneDisplayName,
+      lastSuccessfulConnectionAt: DateTime.now().toUtc(),
+      autoReconnectEnabled: previous?.autoReconnectEnabled ?? true,
+      lastDisconnectWasUserInitiated: false,
+    );
+    try {
+      await _knownDeviceStore.save(known);
+    } catch (_) {
+      // A validated live connection remains usable if local persistence is
+      // temporarily unavailable. The next validated connection retries save.
+    }
+    _knownDevice = known;
+    _setState(ConsumerBleState(
+      status: ConsumerBleStatus.connected,
+      devices: _state.devices,
+      selectedDevice: selected,
+      connectedDeviceName: selected.name,
+    ));
+  }
+
+  Future<void> _blockAutomaticReconnect() async {
+    final known = _knownDevice;
+    if (known == null) return;
+    _knownDevice = known.copyWith(autoReconnectEnabled: false);
+    try {
+      await _knownDeviceStore.save(_knownDevice!);
+    } catch (_) {}
+  }
+
+  Future<void> _startReconnect({required bool immediate}) async {
+    if (_reconnectLoopActive || _state.connected || _disposed) return;
+    final known = _knownDevice;
+    if (known == null ||
+        !known.autoReconnectEnabled ||
+        known.lastDisconnectWasUserInitiated) {
+      return;
+    }
+    _reconnectLoopActive = true;
+    final generation = ++_reconnectGeneration;
+    _setState(ConsumerBleState(
+      status: ConsumerBleStatus.reconnecting,
+      devices: _state.devices,
+      selectedDevice: _state.selectedDevice,
+    ));
+    try {
+      for (var attempt = 0; attempt < reconnectDelays.length; attempt++) {
+        if (!_isReconnectCurrent(generation)) return;
+        if (!immediate || attempt > 0) {
+          await _waitForReconnectDelay(reconnectDelays[attempt]);
+        }
+        if (!_isReconnectCurrent(generation)) return;
+        if (!await _driver.isBluetoothAvailable()) {
+          _setState(const ConsumerBleState(
+            status: ConsumerBleStatus.bluetoothUnavailable,
+          ));
+          return;
+        }
+        if (!await _driver.requestPermissions()) {
+          _setState(const ConsumerBleState(
+            status: ConsumerBleStatus.permissionRequired,
+          ));
+          return;
+        }
+        try {
+          final matches = await _driver.scan(identifier: known.identifier);
+          final exact = matches
+              .where((device) => device.identifier == known.identifier)
+              .firstOrNull;
+          if (exact == null) continue;
+          _setState(ConsumerBleState(
+            status: ConsumerBleStatus.reconnecting,
+            devices: [exact],
+            selectedDevice: exact,
+          ));
+          await _connectAndValidate(exact, reconnecting: true);
+          return;
+        } catch (_) {
+          await _closeConnection();
+          if (_state.status == ConsumerBleStatus.unsupportedDevice) return;
+        }
+      }
+      if (_isReconnectCurrent(generation)) {
+        _setState(ConsumerBleState(
+          status: ConsumerBleStatus.disconnected,
+          devices: _state.devices,
+          selectedDevice: _state.selectedDevice,
+        ));
+      }
+    } finally {
+      if (generation == _reconnectGeneration) _reconnectLoopActive = false;
+    }
+  }
+
+  bool _isReconnectCurrent(int generation) =>
+      !_disposed && !_manualDisconnect && generation == _reconnectGeneration;
+
+  Future<void> _waitForReconnectDelay(Duration delay) {
+    _cancelReconnectDelay();
+    final completer = Completer<void>();
+    _reconnectDelayCompleter = completer;
+    _reconnectDelayTimer = Timer(delay, () {
+      if (!completer.isCompleted) completer.complete();
+    });
+    return completer.future;
+  }
+
+  void _cancelReconnectDelay() {
+    _reconnectDelayTimer?.cancel();
+    _reconnectDelayTimer = null;
+    final completer = _reconnectDelayCompleter;
+    _reconnectDelayCompleter = null;
+    if (completer != null && !completer.isCompleted) completer.complete();
   }
 
   Future<void> sendApplicationFrame(List<int> bytes) async {
@@ -396,6 +546,17 @@ class ConsumerBleService extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _manualDisconnect = true;
+    _reconnectLoopActive = false;
+    _reconnectGeneration++;
+    _cancelReconnectDelay();
+    final known = _knownDevice;
+    if (known != null) {
+      _knownDevice = known.copyWith(lastDisconnectWasUserInitiated: true);
+      try {
+        await _knownDeviceStore.save(_knownDevice!);
+      } catch (_) {}
+    }
     await _closeConnection();
     _setState(
       ConsumerBleState(
@@ -404,6 +565,29 @@ class ConsumerBleService extends ChangeNotifier {
         selectedDevice: _state.selectedDevice,
       ),
     );
+  }
+
+  Future<void> forgetDevice() async {
+    _manualDisconnect = true;
+    _reconnectLoopActive = false;
+    _reconnectGeneration++;
+    _cancelReconnectDelay();
+    await _closeConnection();
+    await _knownDeviceStore.clear();
+    _knownDevice = null;
+    _setState(const ConsumerBleState(status: ConsumerBleStatus.disconnected));
+  }
+
+  Future<void> setAutoReconnectEnabled(bool enabled) async {
+    final known = _knownDevice;
+    if (known == null) return;
+    _knownDevice = known.copyWith(
+      autoReconnectEnabled: enabled,
+      lastDisconnectWasUserInitiated:
+          enabled ? false : known.lastDisconnectWasUserInitiated,
+    );
+    await _knownDeviceStore.save(_knownDevice!);
+    if (enabled && !_state.connected) await _startReconnect(immediate: true);
   }
 
   void _onNotification(List<int> bytes) {
@@ -489,6 +673,7 @@ class ConsumerBleService extends ChangeNotifier {
         selectedDevice: _state.selectedDevice,
       ),
     );
+    if (!_manualDisconnect) unawaited(_startReconnect(immediate: false));
   }
 
   Future<void> _closeConnection() async {
@@ -522,6 +707,9 @@ class ConsumerBleService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _reconnectGeneration++;
+    _cancelReconnectDelay();
     _notificationSubscription?.cancel();
     _connection?.close();
     super.dispose();
@@ -556,7 +744,7 @@ class FlutterBluePlusConsumerGattDriver implements ConsumerBleGattDriver {
   }
 
   @override
-  Future<List<ConsumerBleDevice>> scan() async {
+  Future<List<ConsumerBleDevice>> scan({String? identifier}) async {
     final byIdentifier = <String, ConsumerBleDevice>{};
     late final StreamSubscription<List<ScanResult>> subscription;
     subscription = FlutterBluePlus.scanResults.listen((results) {
@@ -585,7 +773,10 @@ class FlutterBluePlusConsumerGattDriver implements ConsumerBleGattDriver {
       await FlutterBluePlus.stopScan();
       await subscription.cancel();
     }
-    final devices = byIdentifier.values.toList(growable: false);
+    final devices = byIdentifier.values
+        .where(
+            (device) => identifier == null || device.identifier == identifier)
+        .toList(growable: false);
     devices.sort((left, right) {
       final leftPreferred = left.name.trim().toUpperCase() == 'WONDOM ICP5';
       final rightPreferred = right.name.trim().toUpperCase() == 'WONDOM ICP5';

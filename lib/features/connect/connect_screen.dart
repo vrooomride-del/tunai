@@ -52,6 +52,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
     final isScanning = bState.connection == BleConnectionState.scanning;
     final isConnecting = bState.connection == BleConnectionState.connecting;
+    final isReconnecting = bState.connection == BleConnectionState.reconnecting;
     final deviceFound = bState.connection == BleConnectionState.found;
     final isConnected = bState.connection == BleConnectionState.connected;
     final notFound = bState.connection == BleConnectionState.notFound;
@@ -72,6 +73,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 deviceName: bState.deviceName,
                 onStartMeasure: widget.onConnected,
                 onDisconnect: () => ref.read(bleProvider.notifier).disconnect(),
+                onForget: () => ref.read(bleProvider.notifier).forgetDevice(),
                 ko: ko,
                 onGoTo: goTo,
               )
@@ -125,9 +127,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (isScanning || isConnecting) ...[
+                          if (isScanning || isConnecting || isReconnecting) ...[
                             _ScanningAnimation(
-                              message: isConnecting
+                              message: isConnecting || isReconnecting
                                   ? (ko ? '연결 중...' : 'Connecting...')
                                   : (ko ? '검색 중...' : 'Searching...'),
                             ),
@@ -167,8 +169,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                     (device) => DropdownMenuItem<String>(
                                       value: device.identifier,
                                       child: Row(children: [
-                                        Expanded(child: Text(
-                                          ConsumerProductIdentity.fromPhysicalIdentity(
+                                        Expanded(
+                                            child: Text(
+                                          ConsumerProductIdentity
+                                              .fromPhysicalIdentity(
                                             physicalDeviceName: device.name,
                                             supportedProfileValidated: false,
                                           ).displayName,
@@ -177,9 +181,14 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                         )),
                                         if (device.rssi != null) ...[
                                           const SizedBox(width: 8),
-                                          Text(ConsumerProductIdentity.signalQuality(device.rssi, ko: ko),
+                                          Text(
+                                            ConsumerProductIdentity
+                                                .signalQuality(device.rssi,
+                                                    ko: ko),
                                             maxLines: 1,
-                                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                                            style: const TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 12),
                                           ),
                                         ],
                                       ]),
@@ -234,10 +243,12 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
                     child: Column(
                       children: [
-                        if (isScanning || isConnecting)
+                        if (isScanning || isConnecting || isReconnecting)
                           _FullWidthButton(
-                            label: isConnecting
-                                ? (ko ? '연결 중...' : 'Connecting...')
+                            label: isConnecting || isReconnecting
+                                ? (isReconnecting
+                                    ? (ko ? '재연결 중...' : 'Reconnecting...')
+                                    : (ko ? '연결 중...' : 'Connecting...'))
                                 : (ko ? '검색 중...' : 'Searching...'),
                             filled: false,
                             onTap: null,
@@ -258,7 +269,26 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             label: ko ? '스캔 시작' : 'Start Scan',
                             onTap: () => ref.read(bleProvider.notifier).scan(),
                           ),
-                        if (isScanning || isConnecting || deviceFound) ...[
+                        if (!isConnected &&
+                            bState.hasKnownDevice &&
+                            !isScanning &&
+                            !isConnecting &&
+                            !isReconnecting) ...[
+                          const SizedBox(height: 8),
+                          TextButton(
+                            key: const Key('consumer_ble_forget_saved_button'),
+                            onPressed: () =>
+                                ref.read(bleProvider.notifier).forgetDevice(),
+                            child: Text(
+                              ko ? '저장된 기기 지우기' : 'Forget saved device',
+                              style: const TextStyle(color: Colors.white38),
+                            ),
+                          ),
+                        ],
+                        if (isScanning ||
+                            isConnecting ||
+                            isReconnecting ||
+                            deviceFound) ...[
                           const SizedBox(height: 12),
                           GestureDetector(
                             onTap: () =>
@@ -288,12 +318,14 @@ class _ConnectedView extends StatelessWidget {
   final String? deviceName;
   final VoidCallback onStartMeasure;
   final VoidCallback onDisconnect;
+  final VoidCallback onForget;
   final bool ko;
   final void Function(int) onGoTo;
   const _ConnectedView({
     required this.deviceName,
     required this.onStartMeasure,
     required this.onDisconnect,
+    required this.onForget,
     required this.ko,
     required this.onGoTo,
   });
@@ -312,6 +344,7 @@ class _ConnectedView extends StatelessWidget {
             name: name,
             onStartMeasure: onStartMeasure,
             onDisconnect: onDisconnect,
+            onForget: onForget,
             ko: ko,
           ),
         ],
@@ -324,11 +357,13 @@ class _ConnectedBody extends StatelessWidget {
   final String name;
   final VoidCallback onStartMeasure;
   final VoidCallback onDisconnect;
+  final VoidCallback onForget;
   final bool ko;
   const _ConnectedBody({
     required this.name,
     required this.onStartMeasure,
     required this.onDisconnect,
+    required this.onForget,
     required this.ko,
   });
 
@@ -399,6 +434,15 @@ class _ConnectedBody extends StatelessWidget {
             label: ko ? '연결 해제' : 'Disconnect',
             filled: false,
             onTap: onDisconnect,
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            key: const Key('consumer_ble_forget_button'),
+            onPressed: onForget,
+            child: Text(
+              ko ? '기기 지우기' : 'Forget Device',
+              style: const TextStyle(color: Colors.white38),
+            ),
           ),
           const SizedBox(height: 36),
           _InputSourceSection(ko: ko, isConnected: true),
@@ -488,6 +532,8 @@ String _safeConnectionText(BleConnectionState state, {required bool ko}) =>
         ko ? '지원되지 않는 기기입니다.' : 'Unsupported device',
       BleConnectionState.connectionLost =>
         ko ? 'TUNAI ONE과의 연결이 끊어졌습니다.' : 'Connection to TUNAI ONE was lost',
+      BleConnectionState.reconnecting =>
+        ko ? 'TUNAI ONE에 다시 연결하고 있습니다.' : 'Reconnecting to TUNAI ONE',
       _ => ko ? '연결에 실패했습니다.' : 'Connection failed',
     };
 

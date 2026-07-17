@@ -6,12 +6,15 @@ import '../../core/profiles/system_profile.dart';
 import '../dsp/dsp_compiler.dart';
 import 'consumer_ble_service.dart';
 import 'consumer_product_identity.dart';
+import 'known_consumer_device.dart';
+import '../../core/consumer_sound_profile.dart';
 
 enum BleConnectionState {
   disconnected,
   scanning,
   found,
   connecting,
+  reconnecting,
   connected,
   notFound,
   error,
@@ -31,6 +34,7 @@ class BleState {
   final DetectedBoard? detectedBoard;
   final List<ConsumerBleDevice> devices;
   final String? selectedDeviceIdentifier;
+  final bool hasKnownDevice;
 
   const BleState({
     this.connection = BleConnectionState.disconnected,
@@ -40,6 +44,7 @@ class BleState {
     this.detectedBoard,
     this.devices = const [],
     this.selectedDeviceIdentifier,
+    this.hasKnownDevice = false,
   });
 
   BleState copyWith({
@@ -50,26 +55,34 @@ class BleState {
     DetectedBoard? detectedBoard,
     List<ConsumerBleDevice>? devices,
     String? selectedDeviceIdentifier,
+    bool? hasKnownDevice,
     bool clearConnectionIdentity = false,
     bool clearSelection = false,
-  }) => BleState(
-    connection: connection ?? this.connection,
-    deviceName:
-        clearConnectionIdentity ? null : (deviceName ?? this.deviceName),
-    message: message ?? this.message,
-    isSending: isSending ?? this.isSending,
-    detectedBoard:
-        clearConnectionIdentity ? null : (detectedBoard ?? this.detectedBoard),
-    devices: devices ?? this.devices,
-    selectedDeviceIdentifier:
-        clearSelection
+  }) =>
+      BleState(
+        connection: connection ?? this.connection,
+        deviceName:
+            clearConnectionIdentity ? null : (deviceName ?? this.deviceName),
+        message: message ?? this.message,
+        isSending: isSending ?? this.isSending,
+        detectedBoard: clearConnectionIdentity
+            ? null
+            : (detectedBoard ?? this.detectedBoard),
+        devices: devices ?? this.devices,
+        selectedDeviceIdentifier: clearSelection
             ? null
             : (selectedDeviceIdentifier ?? this.selectedDeviceIdentifier),
-  );
+        hasKnownDevice: hasKnownDevice ?? this.hasKnownDevice,
+      );
 }
 
+final knownConsumerDeviceStoreProvider =
+    Provider<KnownConsumerDevicePersistence>((_) => KnownConsumerDeviceStore());
+
 final consumerBleServiceProvider = Provider<ConsumerBleService>((ref) {
-  final service = ConsumerBleService();
+  final service = ConsumerBleService(
+    knownDeviceStore: ref.read(knownConsumerDeviceStoreProvider),
+  );
   ref.onDispose(service.dispose);
   return service;
 });
@@ -85,6 +98,10 @@ class BleController extends StateNotifier<BleState> {
   BleController(this._ref) : super(const BleState()) {
     _service = _ref.read(consumerBleServiceProvider);
     _service.addListener(_onServiceChanged);
+    Future.microtask(() async {
+      await _service.initialize();
+      _onServiceChanged();
+    });
   }
 
   Future<void> scan() => _service.scan();
@@ -108,17 +125,23 @@ class BleController extends StateNotifier<BleState> {
       ConsumerBleStatus.permissionRequired =>
         BleConnectionState.permissionRequired,
       ConsumerBleStatus.searching => BleConnectionState.scanning,
+      ConsumerBleStatus.reconnecting => BleConnectionState.reconnecting,
       ConsumerBleStatus.deviceFound => BleConnectionState.found,
       ConsumerBleStatus.connecting => BleConnectionState.connecting,
       ConsumerBleStatus.connected => BleConnectionState.connected,
-      ConsumerBleStatus.connectionFailed =>
-        next.devices.isEmpty
-            ? BleConnectionState.notFound
-            : BleConnectionState.error,
+      ConsumerBleStatus.connectionFailed => next.devices.isEmpty
+          ? BleConnectionState.notFound
+          : BleConnectionState.error,
       ConsumerBleStatus.unsupportedDevice => BleConnectionState.unsupported,
     };
     if (next.connected) {
       _ref.read(systemProfileProvider.notifier).state = kTunaiOneSystemProfile;
+    }
+    if ((wasConnected && !next.connected) ||
+        (next.connected && state.connection != BleConnectionState.connected)) {
+      _ref
+          .read(consumerSoundProfileProvider.notifier)
+          .markCurrentDspConfidenceUnknown();
     }
     state = state.copyWith(
       connection: connection,
@@ -132,22 +155,24 @@ class BleController extends StateNotifier<BleState> {
       devices: next.devices,
       selectedDeviceIdentifier: next.selectedDevice?.identifier,
       message: _safeStatus(next.status),
+      hasKnownDevice: _service.knownDevice != null,
       clearConnectionIdentity: !next.connected,
       clearSelection: next.selectedDevice == null,
     );
   }
 
   String _safeStatus(ConsumerBleStatus status) => switch (status) {
-    ConsumerBleStatus.disconnected => 'Disconnected',
-    ConsumerBleStatus.bluetoothUnavailable => 'Bluetooth unavailable',
-    ConsumerBleStatus.permissionRequired => 'Permission required',
-    ConsumerBleStatus.searching => 'Searching',
-    ConsumerBleStatus.deviceFound => 'Device found',
-    ConsumerBleStatus.connecting => 'Connecting',
-    ConsumerBleStatus.connected => 'Connected',
-    ConsumerBleStatus.connectionFailed => 'Connection failed',
-    ConsumerBleStatus.unsupportedDevice => 'Unsupported device',
-  };
+        ConsumerBleStatus.disconnected => 'Disconnected',
+        ConsumerBleStatus.bluetoothUnavailable => 'Bluetooth unavailable',
+        ConsumerBleStatus.permissionRequired => 'Permission required',
+        ConsumerBleStatus.searching => 'Searching',
+        ConsumerBleStatus.reconnecting => 'Reconnecting',
+        ConsumerBleStatus.deviceFound => 'Device found',
+        ConsumerBleStatus.connecting => 'Connecting',
+        ConsumerBleStatus.connected => 'Connected',
+        ConsumerBleStatus.connectionFailed => 'Connection failed',
+        ConsumerBleStatus.unsupportedDevice => 'Unsupported device',
+      };
 
   Future<void> sendRawFrame(Uint8List frame) async {
     await _service.sendApplicationFrame(frame);
@@ -172,6 +197,18 @@ class BleController extends StateNotifier<BleState> {
   }
 
   Future<void> disconnect() => _service.disconnect();
+
+  Future<void> cancelReconnect() => _service.disconnect();
+
+  Future<void> forgetDevice() async {
+    await _service.forgetDevice();
+    await _ref
+        .read(consumerSoundProfileProvider.notifier)
+        .markCurrentDspConfidenceUnknown();
+  }
+
+  Future<void> setAutoReconnectEnabled(bool enabled) =>
+      _service.setAutoReconnectEnabled(enabled);
 
   @override
   void dispose() {

@@ -257,16 +257,11 @@ class _MicCheckView extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          const Icon(Icons.mic, color: Colors.white54, size: 16),
-                          const SizedBox(width: 10),
-                          Text(
-                            mic != null
-                                ? mic.statusLabel(ko: ko)
-                                : (ko ? '마이크 확인 중...' : 'Checking microphone...'),
-                            style: const TextStyle(color: Colors.white, fontSize: 13),
-                          ),
-                        ]),
+                        PhoneMicCheckStatusLine(
+                          status: mic != null
+                              ? mic.statusLabel(ko: ko)
+                              : (ko ? '마이크 확인 중...' : 'Checking microphone...'),
+                        ),
                         if (mic != null) ...[
                           const SizedBox(height: 8),
                           Text(
@@ -636,6 +631,24 @@ class _ResultCard extends StatelessWidget {
 // ── Mic Strategy Section ──────────────────────────────────────────────────────
 
 @visibleForTesting
+class PhoneMicCheckStatusLine extends StatelessWidget {
+  final String status;
+  const PhoneMicCheckStatusLine({super.key, required this.status});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    const Icon(Icons.mic, color: Colors.white54, size: 16),
+    const SizedBox(width: 10),
+    Expanded(
+      child: Text(
+        status,
+        softWrap: true,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
+      ),
+    ),
+  ]);
+}
+
 class ConsumerMicStrategySection extends StatelessWidget {
   final bool ko;
   const ConsumerMicStrategySection({super.key, required this.ko});
