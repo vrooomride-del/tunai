@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'room_measurement.dart';
 
 /// Consumer-facing result after a Room Scan completes.
 /// No DSP/PEQ/frequency graph data is exposed here.
@@ -10,6 +11,7 @@ class RoomScanResultCard {
   final String labelKo;
   final String descriptionEn;
   final String descriptionKo;
+  final String? evidenceKey;
 
   const RoomScanResultCard({
     required this.id,
@@ -17,6 +19,7 @@ class RoomScanResultCard {
     required this.labelKo,
     required this.descriptionEn,
     required this.descriptionKo,
+    this.evidenceKey,
   });
 
   String label({bool ko = false}) => ko ? labelKo : labelEn;
@@ -25,6 +28,7 @@ class RoomScanResultCard {
   Map<String, dynamic> toJson() => {
     'id': id, 'labelEn': labelEn, 'labelKo': labelKo,
     'descriptionEn': descriptionEn, 'descriptionKo': descriptionKo,
+    if (evidenceKey != null) 'evidenceKey': evidenceKey,
   };
   factory RoomScanResultCard.fromJson(Map<String, dynamic> j) => RoomScanResultCard(
     id: j['id'] as String,
@@ -32,6 +36,7 @@ class RoomScanResultCard {
     labelKo: j['labelKo'] as String,
     descriptionEn: j['descriptionEn'] as String,
     descriptionKo: j['descriptionKo'] as String,
+    evidenceKey: j['evidenceKey'] as String?,
   );
 }
 
@@ -83,6 +88,9 @@ const kDefaultResultCards = [
 ];
 
 class RoomScanResult {
+  final int schemaVersion;
+  final String? measurementId;
+  final bool validatedMeasurement;
   final String roomType;
   final String micProfileName;
   final DateTime completedAt;
@@ -90,6 +98,9 @@ class RoomScanResult {
   final List<RoomScanResultCard> cards;
 
   const RoomScanResult({
+    this.schemaVersion = 1,
+    this.measurementId,
+    this.validatedMeasurement = false,
     required this.roomType,
     required this.micProfileName,
     required this.completedAt,
@@ -98,6 +109,9 @@ class RoomScanResult {
   });
 
   Map<String, dynamic> toJson() => {
+    'schemaVersion': schemaVersion,
+    if (measurementId != null) 'measurementId': measurementId,
+    'validatedMeasurement': validatedMeasurement,
     'roomType': roomType,
     'micProfileName': micProfileName,
     'completedAt': completedAt.toIso8601String(),
@@ -106,6 +120,9 @@ class RoomScanResult {
   };
 
   factory RoomScanResult.fromJson(Map<String, dynamic> j) => RoomScanResult(
+    schemaVersion: j['schemaVersion'] as int? ?? 0,
+    measurementId: j['measurementId'] as String?,
+    validatedMeasurement: j['validatedMeasurement'] as bool? ?? false,
     roomType: j['roomType'] as String,
     micProfileName: j['micProfileName'] as String,
     completedAt: DateTime.parse(j['completedAt'] as String),
@@ -114,6 +131,78 @@ class RoomScanResult {
         .map((c) => RoomScanResultCard.fromJson(c as Map<String, dynamic>))
         .toList(),
   );
+
+  static RoomScanResult fromMeasurement(RoomMeasurement measurement) {
+    if (!measurement.isValid) {
+      throw StateError('An invalid measurement cannot become a RoomScanResult.');
+    }
+    return RoomScanResult(
+      schemaVersion: roomMeasurementSchemaVersion,
+      measurementId: measurement.id,
+      validatedMeasurement: true,
+      roomType: measurement.roomType,
+      micProfileName: measurement.microphoneProfileId,
+      completedAt: measurement.capturedAt,
+      confidence: _confidenceFromMeasurement(measurement),
+      cards: _cardsFromMeasurement(measurement),
+    );
+  }
+}
+
+String _confidenceFromMeasurement(RoomMeasurement measurement) {
+  var score = 0.0;
+  score += measurement.timing.durationCompleteness.clamp(0.0, 1.0) * 0.3;
+  score += measurement.levels.signalPresent ? 0.25 : 0;
+  score += measurement.levels.severelyClipped ? 0 : 0.2;
+  score += measurement.consistencyMetric.clamp(0.0, 1.0) * 0.15;
+  score += measurement.hasMicrophoneCalibration ? 0.1 : 0.05;
+  if (score >= 0.85) return 'High';
+  if (score >= 0.65) return 'Medium';
+  return 'Low';
+}
+
+List<RoomScanResultCard> _cardsFromMeasurement(RoomMeasurement measurement) {
+  final cards = <RoomScanResultCard>[];
+  final bassPeaks = measurement.peaks
+      .where((peak) => peak.frequency <= 200 && peak.gain <= -2.0)
+      .toList();
+  if (bassPeaks.isNotEmpty) {
+    cards.add(const RoomScanResultCard(
+      id: 'measured_bass',
+      labelEn: 'Bass Response',
+      labelKo: '저역 반응',
+      descriptionEn:
+          'The measurement found a noticeable low-frequency buildup at the listening position.',
+      descriptionKo: '청취 위치에서 두드러지는 저역의 부풀림이 측정되었습니다.',
+      evidenceKey: 'detected_peak_20_200hz',
+    ));
+  }
+  final upperBassPeaks = measurement.peaks
+      .where((peak) => peak.frequency > 200 && peak.gain <= -2.0)
+      .toList();
+  if (upperBassPeaks.isNotEmpty) {
+    cards.add(const RoomScanResultCard(
+      id: 'measured_balance',
+      labelEn: 'Room Balance',
+      labelKo: '공간 밸런스',
+      descriptionEn:
+          'The measurement found an uneven response that may affect overall balance at the listening position.',
+      descriptionKo: '청취 위치의 전체적인 균형에 영향을 줄 수 있는 응답 차이가 측정되었습니다.',
+      evidenceKey: 'detected_peak_200_500hz',
+    ));
+  }
+  if (cards.isEmpty) {
+    cards.add(const RoomScanResultCard(
+      id: 'measured_neutral',
+      labelEn: 'Room Scan',
+      labelKo: '공간 스캔',
+      descriptionEn:
+          'The measurement did not find a strong low-frequency buildup in the analyzed range.',
+      descriptionKo: '분석한 범위에서 두드러지는 저역의 부풀림은 측정되지 않았습니다.',
+      evidenceKey: 'no_bounded_peak_20_500hz',
+    ));
+  }
+  return cards;
 }
 
 // ── Riverpod store ────────────────────────────────────────────────────────────
@@ -129,7 +218,10 @@ class RoomScanResultNotifier extends StateNotifier<RoomScanResult?> {
     final raw = prefs.getString(_kKey);
     if (raw != null) {
       try {
-        state = RoomScanResult.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        final loaded = RoomScanResult.fromJson(
+            jsonDecode(raw) as Map<String, dynamic>);
+        // Legacy records remain available but are explicitly unvalidated.
+        state = loaded;
       } catch (_) {}
     }
   }

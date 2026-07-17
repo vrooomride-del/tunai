@@ -16,6 +16,9 @@ import '../auth/auth_controller.dart' show authProvider;
 import '../../core/device_service.dart';
 import '../../core/install_location.dart';
 import '../../core/akg/measurement_session.dart';
+import '../../core/room_measurement.dart';
+import '../../core/mic_calibration_service.dart';
+import '../../core/measurement_capture_sequence.dart';
 
 enum MeasurementStep {
   idle,
@@ -37,6 +40,7 @@ class MeasurementState {
   final List<ResonancePeak> peaks;
   final List<RegisterPacket> packets;
   final String? error;
+  final RoomMeasurement? measurement;
   // Closed Loop 상태
   final int iteration;           // 현재 반복 회차 (1-based, 0=미진행)
   final bool hasConverged;       // 수렴 성공 여부
@@ -49,6 +53,7 @@ class MeasurementState {
     this.peaks = const [],
     this.packets = const [],
     this.error,
+    this.measurement,
     this.iteration = 0,
     this.hasConverged = false,
     this.residualErrorDb,
@@ -61,6 +66,7 @@ class MeasurementState {
     List<ResonancePeak>? peaks,
     List<RegisterPacket>? packets,
     String? error,
+    RoomMeasurement? measurement,
     int? iteration,
     bool? hasConverged,
     double? residualErrorDb,
@@ -71,6 +77,7 @@ class MeasurementState {
     peaks: peaks ?? this.peaks,
     packets: packets ?? this.packets,
     error: error ?? this.error,
+    measurement: measurement ?? this.measurement,
     iteration: iteration ?? this.iteration,
     hasConverged: hasConverged ?? this.hasConverged,
     residualErrorDb: residualErrorDb ?? this.residualErrorDb,
@@ -90,6 +97,10 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   final _player = AudioPlayer();
   bool _recorderInitialized = false;
   bool _isCancelled = false;
+  bool _captureActive = false;
+  bool _disposed = false;
+
+  bool get captureActive => _captureActive;
 
   static const int _maxIterations = 3;
   static const double _convergenceThresholdDb = 1.5;
@@ -98,12 +109,14 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
   /// Open-loop 단일 측정 (기존 동작 유지)
   Future<void> startMeasurement({SpeakerProfile? speakerProfile}) async {
+    if (_captureActive) return;
+    _captureActive = true;
     _isCancelled = false;
     state = const MeasurementState();
     try {
       if (!await _requestMicPermission()) return;
       final wavFile = await _prepareWav();
-      final (scmsBins, safePeaks) = await _measureOnce(
+      final (scmsBins, safePeaks, measurement) = await _measureOnce(
           wavFile: wavFile, speakerProfile: speakerProfile, label: '');
       if (_isCancelled) return;
       final packets = DspCompiler.compileAll(safePeaks);
@@ -113,11 +126,17 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         scmsBins: scmsBins,
         peaks: safePeaks,
         packets: packets,
+        measurement: measurement,
         iteration: 1,
       );
       _recordSession(peakCount: safePeaks.length, iterations: 1);
     } catch (e) {
-      state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+      if (!_isCancelled && !_disposed) {
+        state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+      }
+    } finally {
+      await _stopCapture();
+      _captureActive = false;
     }
   }
 
@@ -126,6 +145,8 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   /// apply → re-measure → converge → retry
   /// 최대 3회, 수렴 기준 1.5dB (JND)
   Future<void> startClosedLoop({SpeakerProfile? speakerProfile}) async {
+    if (_captureActive) return;
+    _captureActive = true;
     _isCancelled = false;
     state = const MeasurementState();
     try {
@@ -141,7 +162,7 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         final iterLabel = '${iter + 1}/$_maxIterations차';
         _update(MeasurementStep.converging, '$iterLabel 보정 — 측정 중...');
 
-        final (scmsBins, safePeaks) = await _measureOnce(
+        final (scmsBins, safePeaks, measurement) = await _measureOnce(
             wavFile: wavFile, speakerProfile: speakerProfile, label: iterLabel);
         if (_isCancelled) return;
 
@@ -169,6 +190,7 @@ class MeasurementController extends StateNotifier<MeasurementState> {
               scmsBins: scmsBins,
               peaks: safePeaks,
               packets: packets,
+              measurement: measurement,
               iteration: iter + 1,
               hasConverged: true,
               residualErrorDb: residual,
@@ -215,17 +237,25 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         converged: false,
       );
     } catch (e) {
-      state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+      if (!_isCancelled && !_disposed) {
+        state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+      }
+    } finally {
+      await _stopCapture();
+      _captureActive = false;
     }
   }
 
   /// 루프 도중 취소
-  void cancelLoop() {
+  Future<void> cancelLoop() async {
     _isCancelled = true;
-    state = state.copyWith(
-      step: MeasurementStep.idle,
-      message: '측정 취소됨',
-    );
+    await _stopCapture();
+    if (!_disposed) {
+      state = state.copyWith(
+        step: MeasurementStep.idle,
+        message: '측정 취소됨',
+      );
+    }
   }
 
   // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
@@ -252,7 +282,7 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
   /// 단일 측정 사이클: 녹음 → FFT → MicCal → CCV → 피크검출 → SafetyProfile
   /// 반환: (scmsBins, safePeaks)
-  Future<(List<FrequencyBin>, List<ResonancePeak>)> _measureOnce({
+  Future<(List<FrequencyBin>, List<ResonancePeak>, RoomMeasurement)> _measureOnce({
     required File wavFile,
     required SpeakerProfile? speakerProfile,
     required String label,
@@ -264,30 +294,43 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       await _recorder.openRecorder();
       _recorderInitialized = true;
     }
+    if (_isCancelled) throw const _MeasurementCancelled();
 
     // 녹음 시작
     // ignore: unnecessary_brace_in_string_interps
     _update(MeasurementStep.recording, '${prefix}공간 측정 중... (10초)');
     final recordPath = await _recordingPath();
-    await _recorder.startRecorder(
-      toFile: recordPath,
-      codec: Codec.pcm16WAV,
-      sampleRate: AudioAnalyzer.sampleRate,
-      numChannels: 1,
-    );
-
-    // 핑크노이즈 재생
-    _update(MeasurementStep.playing, '${prefix}Sref 재생 중...');
     await _player.setFilePath(wavFile.path);
-    await _player.play();
-    await Future.delayed(const Duration(seconds: 10));
-
-    await _recorder.stopRecorder();
-    await _player.stop();
+    final timestamps = await const MeasurementCaptureSequence(now: DateTime.now).run(
+      startRecorder: () async {
+        await _recorder.startRecorder(
+          toFile: recordPath,
+          codec: Codec.pcm16WAV,
+          sampleRate: AudioAnalyzer.sampleRate,
+          numChannels: 1,
+        );
+      },
+      recorderIsReady: () => _recorder.isRecording,
+      playSignalToCompletion: () async {
+        _update(MeasurementStep.playing, '${prefix}Sref 재생 중...');
+        await _player.play();
+        if (_isCancelled) throw const _MeasurementCancelled();
+      },
+      stopRecorder: () async {
+        await _recorder.stopRecorder();
+      },
+      stopPlayback: _player.stop,
+    );
 
     // FFT 분석
     _update(MeasurementStep.analyzing, '${prefix}FFT 분석 중...');
     final pcmBytes = await File(recordPath).readAsBytes();
+    if (pcmBytes.length <= 44) {
+      throw StateError('The recording file was empty or incomplete.');
+    }
+    final header = ByteData.sublistView(pcmBytes);
+    final actualChannels = header.getUint16(22, Endian.little);
+    final actualSampleRate = header.getUint32(24, Endian.little);
     final rawPcm = Uint8List.sublistView(pcmBytes, 44);
     final samples = AudioAnalyzer.pcmToFloat(rawPcm);
     debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
@@ -331,7 +374,75 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       )).toList();
     }
 
-    return (scmsBins, safePeaks);
+    final captureDuration = Duration(
+      microseconds: (samples.length /
+              actualSampleRate /
+              actualChannels *
+              Duration.microsecondsPerSecond)
+          .round(),
+    );
+    final timing = CaptureTiming(
+      requestedSampleRate: AudioAnalyzer.sampleRate,
+      actualSampleRate: actualSampleRate,
+      channelCount: actualChannels,
+      expectedDuration:
+          const Duration(seconds: PinkNoiseGenerator.durationSeconds),
+      capturedDuration: captureDuration,
+      sampleCount: samples.length,
+      fileSizeBytes: pcmBytes.length,
+      recordingStartedAt: timestamps.recordingStartedAt,
+      playbackStartedAt: timestamps.playbackStartedAt,
+      playbackCompletedAt: timestamps.playbackCompletedAt,
+      recordingStoppedAt: timestamps.recordingStoppedAt,
+    );
+    final levels = RoomMeasurementValidator.calculateLevels(samples);
+    final failures = RoomMeasurementValidator.validate(
+      timing: timing,
+      samples: samples,
+      bins: scmsBins,
+      peaks: safePeaks,
+      levels: levels,
+    );
+    if (failures.isNotEmpty) {
+      throw StateError(failures.first);
+    }
+    final location = _ref.read(installLocationProvider);
+    final mic = _ref.read(micCalibrationProfileProvider).valueOrNull;
+    final measurement = RoomMeasurement(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      roomType: location?.labelEn ?? 'Living Room',
+      microphoneProfileId: mic?.profileName ?? 'Generic Phone Mic',
+      hasMicrophoneCalibration: mic != null && !mic.isGeneric,
+      capturedAt: timestamps.recordingStoppedAt,
+      timing: timing,
+      usableRangeMinHz: 20,
+      usableRangeMaxHz: 500,
+      frequencyBins: List.unmodifiable(scmsBins),
+      peaks: List.unmodifiable(safePeaks),
+      consistencyMetric: scmsBins.isEmpty
+          ? 0
+          : scmsBins.where((bin) =>
+                bin.frequency.isFinite && bin.magnitude.isFinite).length /
+              scmsBins.length,
+      levels: levels,
+      quality: CaptureQualityStatus.valid,
+      warnings: [
+        if (mic == null || mic.isGeneric)
+          'No device-specific microphone calibration was available.',
+      ],
+    );
+    return (scmsBins, safePeaks, measurement);
+  }
+
+  Future<void> _stopCapture() async {
+    try {
+      await _player.stop();
+    } catch (_) {}
+    try {
+      if (_recorderInitialized && !_recorder.isStopped) {
+        await _recorder.stopRecorder();
+      }
+    } catch (_) {}
   }
 
   /// 수렴 잔류 오차 계산 — 이전 피크 주파수 ±10% 범위에서 현재 최대 |gain| (dB)
@@ -468,10 +579,24 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
   void reset() => state = const MeasurementState();
 
+  void markPersistenceFailure() {
+    state = state.copyWith(
+      step: MeasurementStep.error,
+      error: 'The measurement could not be saved. Please try again.',
+    );
+  }
+
   @override
   void dispose() {
+    _disposed = true;
+    _isCancelled = true;
+    _stopCapture();
     _recorder.closeRecorder();
     _player.dispose();
     super.dispose();
   }
+}
+
+class _MeasurementCancelled implements Exception {
+  const _MeasurementCancelled();
 }

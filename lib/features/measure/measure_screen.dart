@@ -7,6 +7,7 @@ import '../../core/install_location.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../core/mic_calibration_service.dart';
 import '../../core/room_scan_result.dart';
+import '../../core/room_measurement.dart';
 import '../../shared/widgets.dart';
 import '../../shared/acoustic_timeline.dart';
 
@@ -19,44 +20,88 @@ class MeasureScreen extends ConsumerStatefulWidget {
   ConsumerState<MeasureScreen> createState() => _MeasureScreenState();
 }
 
-class _MeasureScreenState extends ConsumerState<MeasureScreen> {
+class _MeasureScreenState extends ConsumerState<MeasureScreen>
+    with WidgetsBindingObserver {
   // true = show Mic Check card before scan starts
   bool _showMicCheck = false;
+  bool _committingResult = false;
+  late final MeasurementController _measurementController;
 
   bool get _isKo => Localizations.localeOf(context).languageCode == 'ko';
+
+  @override
+  void initState() {
+    super.initState();
+    _measurementController = ref.read(measurementProvider.notifier);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _measurementController.cancelLoop();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _measurementController.cancelLoop();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final mState = ref.watch(measurementProvider);
     final bState = ref.watch(bleProvider);
     final ko = _isKo;
-
-    ref.listen<MeasurementState>(measurementProvider, (prev, next) {
-      if (next.step == MeasurementStep.done && prev?.step != MeasurementStep.done) {
-        if (next.scmsBins.isNotEmpty) {
-          ref.read(spectrumSnapshotProvider.notifier).setBefore(next.scmsBins);
-        }
-        // Save consumer result cards
-        final location = ref.read(installLocationProvider);
-        final micAsync = ref.read(micCalibrationProfileProvider);
-        final micName = micAsync.valueOrNull?.profileName ?? 'Generic Phone Mic';
-        ref.read(roomScanResultProvider.notifier).saveResult(RoomScanResult(
-          roomType: location?.labelEn ?? 'Living Room',
-          micProfileName: micName,
-          completedAt: DateTime.now(),
-          confidence: 'Medium',
-          cards: kDefaultResultCards,
-        ));
-        widget.onMeasured();
-      }
-    });
-
     final step = mState.step;
     final isRunning = step != MeasurementStep.idle
         && step != MeasurementStep.done && step != MeasurementStep.error;
     final isConnected = bState.connection == BleConnectionState.connected;
 
-    if (isRunning) return _MeasuringView(mState: mState, ko: ko);
+    ref.listen<MeasurementState>(measurementProvider, (prev, next) async {
+      if (next.step == MeasurementStep.done && prev?.step != MeasurementStep.done) {
+        final measurement = next.measurement;
+        if (_committingResult || measurement == null || !measurement.isValid) {
+          return;
+        }
+        _committingResult = true;
+        if (next.scmsBins.isNotEmpty) {
+          ref.read(spectrumSnapshotProvider.notifier).setBefore(next.scmsBins);
+        }
+        try {
+          await RoomMeasurementStore.save(measurement);
+          await ref
+              .read(roomScanResultProvider.notifier)
+              .saveResult(RoomScanResult.fromMeasurement(measurement));
+          if (mounted) widget.onMeasured();
+        } catch (_) {
+          if (mounted) {
+            ref.read(measurementProvider.notifier).markPersistenceFailure();
+          }
+        } finally {
+          _committingResult = false;
+        }
+      }
+    });
+
+    ref.listen<BleState>(bleProvider, (previous, next) {
+      final wasConnected = previous?.connection == BleConnectionState.connected;
+      if (wasConnected &&
+          next.connection != BleConnectionState.connected &&
+          isRunning) {
+        ref.read(measurementProvider.notifier).cancelLoop();
+      }
+    });
+
+    if (isRunning) {
+      return _MeasuringView(
+        mState: mState,
+        ko: ko,
+        onCancel: () => ref.read(measurementProvider.notifier).cancelLoop(),
+      );
+    }
 
     if (step == MeasurementStep.done) {
       return _ResultView(
@@ -354,7 +399,12 @@ class _MicStatusCard extends ConsumerWidget {
 class _MeasuringView extends StatefulWidget {
   final MeasurementState mState;
   final bool ko;
-  const _MeasuringView({required this.mState, required this.ko});
+  final VoidCallback onCancel;
+  const _MeasuringView({
+    required this.mState,
+    required this.ko,
+    required this.onCancel,
+  });
   @override
   State<_MeasuringView> createState() => _MeasuringViewState();
 }
@@ -437,6 +487,15 @@ class _MeasuringViewState extends State<_MeasuringView> {
                 ),
               ],
               const Spacer(flex: 3),
+              GestureDetector(
+                onTap: widget.onCancel,
+                child: Center(
+                  child: Text(
+                    ko ? '취소' : 'Cancel',
+                    style: const TextStyle(color: Colors.white38, fontSize: 13),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -461,7 +520,7 @@ class _ResultView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(roomScanResultProvider);
-    final cards = result?.cards ?? kDefaultResultCards;
+    final cards = result?.cards ?? const <RoomScanResultCard>[];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
