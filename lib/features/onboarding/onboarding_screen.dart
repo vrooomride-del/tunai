@@ -54,8 +54,8 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'Create your personal sound.',
     titleKo: '당신만의 사운드를 만드세요.',
-    subtitleEn: 'AI Acoustic Intelligence understands your room and optimizes your listening experience.',
-    subtitleKo: 'AI Acoustic Intelligence가 공간 특성을 이해하고 음악 경험을 최적화합니다.',
+    subtitleEn: 'Create a sound experience made for your space.',
+    subtitleKo: '당신의 공간에 맞는 새로운 사운드를 만들어보세요.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),

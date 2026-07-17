@@ -56,7 +56,7 @@ void main() {
     await tester.tap(find.text('계속'));
     await tester.pumpAndSettle();
     expect(find.text('당신만의 사운드를 만드세요.'), findsOneWidget);
-    expect(find.textContaining('AI Acoustic Intelligence가'), findsOneWidget);
+    expect(find.textContaining('당신의 공간에 맞는'), findsOneWidget);
     await tester.tap(find.text('계속'));
     await tester.pumpAndSettle();
     expect(find.text('연결하고, 분석하고, 경험하세요.'), findsOneWidget);

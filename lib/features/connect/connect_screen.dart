@@ -4,7 +4,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../ble/ble_controller.dart';
 import '../ble/consumer_product_identity.dart';
 import '../../shared/first_run_guide_card.dart';
-import '../../core/consumer_input_source.dart';
 
 /// CONNECT 탭 — 스피커 BLE 스캔/연결만 담당.
 /// 연결 성공 시 [onConnected]로 MEASURE 탭 자동 전환을 요청한다.
@@ -68,33 +67,57 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     child: FirstRunGuideCard(onGoTo: goTo),
                   ),
 
-                  // ── 상단 헤더 ─────────────────────────────────────
+                  // ── 상단 헤더 (스텝 계층) ────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'TUNAI ONE',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w300,
-                            height: 1.35,
-                            letterSpacing: -0.2,
+                        // STEP 1 — active
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              ko ? '1단계' : 'STEP 1',
+                              style: const TextStyle(color: Colors.black, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w600),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          ko
-                              ? '스피커를 연결해주세요\nBluetooth로 TUNAI 스피커를 연결합니다.'
-                              : 'Connect your speaker\nConnect your TUNAI speaker with Bluetooth.',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
-                            fontSize: 14,
-                            height: 1.65,
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              ko ? '스피커 연결' : 'Connect Speaker',
+                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w300, letterSpacing: 0.2),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
+                        ]),
+                        const SizedBox(height: 14),
+                        // STEP 2 — upcoming / dimmed
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.white24),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              ko ? '2단계' : 'STEP 2',
+                              style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1.5),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              ko ? '공간 분석' : 'Analyze Space',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15, fontWeight: FontWeight.w300),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ]),
                       ],
                     ),
                   ),
@@ -207,7 +230,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             _BoardBanner(
                               text: ko
                                   ? 'TUNAI ONE이 준비되었습니다. 이제 공간 분석을 시작할 수 있습니다.'
-                                  : 'TUNAI ONE is ready. You can start Room Analysis now.',
+                                  : 'TUNAI ONE is ready. You can start Space Analysis now.',
                               color: Colors.white24,
                               icon: Icons.check_circle_outline,
                             ),
@@ -406,7 +429,7 @@ class _ConnectedBody extends StatelessWidget {
 
           _FullWidthButton(
             key: const Key('consumer_start_room_button'),
-            label: ko ? '공간 분석 시작' : 'Start Room Analysis',
+            label: ko ? '공간 분석 시작' : 'Start Space Analysis',
             onTap: onStartMeasure,
           ),
           const SizedBox(height: 12),
@@ -703,51 +726,20 @@ Future<void> _showBluetoothOffDialog(BuildContext context) async {
   );
 }
 
-// ── Input Source Section ───────────────────────────────────────────────────────
+// ── Measurement Device Section ────────────────────────────────────────────────
 
-class _InputSourceSection extends ConsumerWidget {
+class _InputSourceSection extends StatelessWidget {
   final bool ko;
   final bool isConnected;
   const _InputSourceSection({required this.ko, required this.isConnected});
 
-  String _description(ConsumerInputSource source, bool ko) => switch (source) {
-        ConsumerInputSource.auto => ko
-            ? 'TUNAI가 사용 가능한 입력을 자동으로 선택합니다.'
-            : 'TUNAI selects the available input automatically.',
-        ConsumerInputSource.bluetooth => ko
-            ? '휴대폰이나 플레이어의 Bluetooth 소리를 사용합니다.'
-            : 'Use sound from your phone or player over Bluetooth.',
-        ConsumerInputSource.aux =>
-          ko ? '케이블로 연결된 소리를 사용합니다.' : 'Use sound from a cable connection.',
-      };
-
-  void _select(
-    BuildContext context,
-    WidgetRef ref,
-    ConsumerInputSource source,
-  ) {
-    ref.read(selectedInputSourceProvider.notifier).state = source;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ko
-              ? '현재 버전에서는 입력 상태 표시용입니다.'
-              : 'This version shows input preference only.',
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
-        ),
-        backgroundColor: const Color(0xFF1A1A1A),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          ko ? '입력 소스' : 'Input Source',
+          ko ? '측정 장치' : 'Measurement Device',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.35),
             fontSize: 11,
@@ -755,115 +747,31 @@ class _InputSourceSection extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
-        if (!isConnected) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              ko
-                  ? '스피커를 연결하면 입력 소스를 확인할 수 있습니다.'
-                  : 'Connect your speaker to view input source options.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.28),
-                fontSize: 12,
-                height: 1.5,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white.withValues(alpha: isConnected ? 0.2 : 0.07)),
+            borderRadius: BorderRadius.circular(6),
+            color: isConnected ? Colors.white.withValues(alpha: 0.04) : Colors.transparent,
+          ),
+          child: Row(children: [
+            Icon(Icons.smartphone, color: isConnected ? Colors.white70 : Colors.white24, size: 16),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                isConnected
+                    ? (ko ? '✓ 스마트폰 마이크' : '✓ Smartphone microphone')
+                    : (ko ? '스피커를 연결하면 측정 장치를 확인할 수 있습니다.' : 'Connect your speaker to view measurement device.'),
+                style: TextStyle(
+                  color: isConnected ? Colors.white : Colors.white.withValues(alpha: 0.28),
+                  fontSize: 12,
+                  height: 1.5,
+                ),
               ),
             ),
-          ),
-        ] else ...[
-          Builder(
-            builder: (context) {
-              final selected = ref.watch(selectedInputSourceProvider);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _InputChip(
-                        label: ko ? '자동' : 'Auto',
-                        isSelected: selected == ConsumerInputSource.auto,
-                        onTap: () =>
-                            _select(context, ref, ConsumerInputSource.auto),
-                      ),
-                      const SizedBox(width: 8),
-                      _InputChip(
-                        label: 'Bluetooth',
-                        isSelected: selected == ConsumerInputSource.bluetooth,
-                        onTap: () => _select(
-                          context,
-                          ref,
-                          ConsumerInputSource.bluetooth,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _InputChip(
-                        label: 'AUX',
-                        isSelected: selected == ConsumerInputSource.aux,
-                        onTap: () =>
-                            _select(context, ref, ConsumerInputSource.aux),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _description(selected, ko),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+          ]),
+        ),
       ],
-    );
-  }
-}
-
-class _InputChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  const _InputChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.white.withValues(alpha: 0.07)
-              : Colors.transparent,
-          border: Border.all(
-            color: isSelected
-                ? Colors.white54
-                : Colors.white.withValues(alpha: 0.15),
-          ),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.38),
-            fontSize: 13,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
     );
   }
 }

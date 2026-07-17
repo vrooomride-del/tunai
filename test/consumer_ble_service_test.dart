@@ -492,11 +492,10 @@ void main() {
       ),
     );
 
-    expect(find.text('TUNAI ONE'), findsOneWidget);
-    expect(
-        find.text(
-            'Connect your speaker\nConnect your TUNAI speaker with Bluetooth.'),
-        findsOneWidget);
+    expect(find.text('STEP 1'), findsOneWidget);
+    expect(find.text('Connect Speaker'), findsWidgets);
+    expect(find.text('STEP 2'), findsOneWidget);
+    expect(find.text('Analyze Space'), findsOneWidget);
     expect(find.text('Start Connection'), findsOneWidget);
 
     expect(find.text('PASS_ACK'), findsNothing);
@@ -511,7 +510,7 @@ void main() {
     await tester.pump();
     expect(
         find.byKey(const Key('consumer_ble_device_selector')), findsOneWidget);
-    expect(find.text('TUNAI ONE'), findsNWidgets(2));
+    expect(find.text('TUNAI ONE'), findsOneWidget);
     expect(find.text('Strong signal'), findsOneWidget);
     expect(find.text('WONDOM ICP5'), findsNothing);
     expect(find.text('-42 dBm'), findsNothing);
@@ -549,9 +548,10 @@ void main() {
         home: ConnectScreen(onConnected: () {}),
       ),
     ));
-    expect(find.text('TUNAI ONE'), findsOneWidget);
-    expect(
-        find.text('스피커를 연결해주세요\nBluetooth로 TUNAI 스피커를 연결합니다.'), findsOneWidget);
+    expect(find.text('1단계'), findsOneWidget);
+    expect(find.text('스피커 연결'), findsWidgets);
+    expect(find.text('2단계'), findsOneWidget);
+    expect(find.text('공간 분석'), findsWidgets);
     expect(find.text('연결 시작'), findsOneWidget);
     service.dispose();
   });
