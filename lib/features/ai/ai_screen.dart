@@ -4,6 +4,8 @@ import '../ble/ble_controller.dart';
 import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/room_measurement.dart';
+import '../../core/speaker_check_gate.dart';
+import '../../core/speaker_state_verification.dart';
 import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
 
@@ -121,12 +123,14 @@ class _AiScreenState extends ConsumerState<AiScreen> {
             profile.deploymentStatus == TuneDeploymentStatus.notDeployed)
         .toList();
     if (ready.isNotEmpty) {
+      final speakerCheck = ref.watch(speakerCheckResultProvider);
       return _StateE(
         ko: ko,
         profile: ready.first,
         scan: scan,
         isConnected: isConnected,
-        onApply: null,
+        speakerCheck: speakerCheck,
+        onApply: speakerCheck.readyToApply ? () {} : null,
       );
     }
 
@@ -440,12 +444,14 @@ class _StateE extends StatelessWidget {
   final RoomScanResult scan;
   final VoidCallback? onApply;
   final bool isConnected;
+  final SpeakerCheckResult? speakerCheck;
   const _StateE(
       {required this.ko,
       required this.profile,
       required this.scan,
       required this.onApply,
-      this.isConnected = true});
+      this.isConnected = true,
+      this.speakerCheck});
 
   @override
   Widget build(BuildContext context) {
@@ -524,7 +530,9 @@ class _StateE extends StatelessWidget {
                       _ConnectionNotice(ko: ko),
                     ],
                     const SizedBox(height: 16),
-                    _StateVerificationNotice(ko: ko),
+                    if (speakerCheck == null ||
+                        !speakerCheck!.readyToApply)
+                      _SpeakerCheckNotice(ko: ko, check: speakerCheck),
                   ],
                 ),
               ),
@@ -532,7 +540,9 @@ class _StateE extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _TuneBigButton(
-                label: ko ? '스피커 상태 확인 필요' : 'Verification Required',
+                label: speakerCheck?.readyToApply == true
+                    ? (ko ? '스피커에 적용' : 'Apply to Speaker')
+                    : (ko ? '스피커 상태 확인 필요' : 'Verification Required'),
                 onTap: onApply,
               ),
             ),
@@ -543,9 +553,29 @@ class _StateE extends StatelessWidget {
   }
 }
 
-class _StateVerificationNotice extends StatelessWidget {
+class _SpeakerCheckNotice extends StatelessWidget {
   final bool ko;
-  const _StateVerificationNotice({required this.ko});
+  final SpeakerCheckResult? check;
+  const _SpeakerCheckNotice({required this.ko, this.check});
+
+  String _message() {
+    final status = check?.status;
+    if (status == SpeakerCheckStatus.speakerNotConnected) {
+      return ko
+          ? '스피커 연결을 확인해 주세요.'
+          : 'Check speaker connection.';
+    }
+    if (status == SpeakerCheckStatus.identityUnconfirmed ||
+        status == SpeakerCheckStatus.speakerMismatch) {
+      return ko
+          ? '연결된 스피커를 확인할 수 없습니다.'
+          : 'Speaker identity could not be confirmed.';
+    }
+    // soundStateNotVerified / originalValuesUnavailable / null
+    return ko
+        ? '적용하기 전에 스피커 상태 확인이 필요합니다.'
+        : 'Speaker state verification required before applying.';
+  }
 
   @override
   Widget build(BuildContext context) => Container(
@@ -558,9 +588,7 @@ class _StateVerificationNotice extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          ko
-              ? '적용하기 전에 스피커 상태 확인이 필요합니다.'
-              : 'Speaker state verification required before applying.',
+          _message(),
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.55),
             fontSize: 13,

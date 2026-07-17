@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
 import 'package:tunai/core/room_scan_result.dart';
+import 'package:tunai/core/speaker_check_gate.dart';
+import 'package:tunai/core/speaker_state_verification.dart';
 import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
@@ -313,6 +315,13 @@ void main() {
         overrides: [
           consumerSoundProfileProvider.overrideWith((ref) => profiles),
           roomScanResultProvider.overrideWith((ref) => scans),
+          // Speaker Check is explicitly blocked (sound state not yet verified).
+          speakerCheckResultProvider.overrideWith(
+            (_) => SpeakerCheckResult.blocked(
+              status: SpeakerCheckStatus.soundStateNotVerified,
+              evaluatedAt: DateTime.utc(2025, 7, 1),
+            ),
+          ),
         ],
         child: _app(
           AiScreen(onApplied: () {}),
