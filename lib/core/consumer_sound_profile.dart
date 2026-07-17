@@ -8,6 +8,50 @@ enum ConsumerProfileStatus { draft, ready, active }
 
 enum ConsumerProfileGenerationStatus { legacy, generated }
 
+enum ConsumerDspDeploymentRecordResult { applied, restored, failed, blocked }
+
+class ConsumerDspDeploymentRecord {
+  final String tunePlanId;
+  final String deviceIdentifier;
+  final DateTime attemptedAt;
+  final int bandCount;
+  final ConsumerDspDeploymentRecordResult result;
+  final bool dspApplied;
+  final String? failureCategory;
+
+  const ConsumerDspDeploymentRecord({
+    required this.tunePlanId,
+    required this.deviceIdentifier,
+    required this.attemptedAt,
+    required this.bandCount,
+    required this.result,
+    required this.dspApplied,
+    this.failureCategory,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'tunePlanId': tunePlanId,
+        'deviceIdentifier': deviceIdentifier,
+        'attemptedAt': attemptedAt.toIso8601String(),
+        'bandCount': bandCount,
+        'result': result.name,
+        'dspApplied': dspApplied,
+        if (failureCategory != null) 'failureCategory': failureCategory,
+      };
+
+  factory ConsumerDspDeploymentRecord.fromJson(Map<String, dynamic> json) =>
+      ConsumerDspDeploymentRecord(
+        tunePlanId: json['tunePlanId'] as String,
+        deviceIdentifier: json['deviceIdentifier'] as String,
+        attemptedAt: DateTime.parse(json['attemptedAt'] as String),
+        bandCount: json['bandCount'] as int,
+        result: ConsumerDspDeploymentRecordResult.values
+            .byName(json['result'] as String),
+        dspApplied: json['dspApplied'] as bool,
+        failureCategory: json['failureCategory'] as String?,
+      );
+}
+
 /// Taxonomy tag for consumer sound profiles.
 /// Note: `factorySound` represents the device baseline (cannot use `factory` — Dart keyword).
 enum ConsumerProfileType {
@@ -67,6 +111,7 @@ class ConsumerSoundProfile {
   final bool isSelected;
   final ConsumerProfileGenerationStatus generationStatus;
   final TuneDeploymentStatus deploymentStatus;
+  final ConsumerDspDeploymentRecord? dspDeploymentRecord;
 
   const ConsumerSoundProfile({
     required this.id,
@@ -87,6 +132,7 @@ class ConsumerSoundProfile {
     this.isSelected = false,
     this.generationStatus = ConsumerProfileGenerationStatus.legacy,
     this.deploymentStatus = TuneDeploymentStatus.unknown,
+    this.dspDeploymentRecord,
   });
 
   int? get soundScoreImprovement {
@@ -105,6 +151,7 @@ class ConsumerSoundProfile {
     bool? isSelected,
     ConsumerProfileGenerationStatus? generationStatus,
     TuneDeploymentStatus? deploymentStatus,
+    ConsumerDspDeploymentRecord? dspDeploymentRecord,
   }) =>
       ConsumerSoundProfile(
         id: id,
@@ -125,6 +172,7 @@ class ConsumerSoundProfile {
         isSelected: isSelected ?? this.isSelected,
         generationStatus: generationStatus ?? this.generationStatus,
         deploymentStatus: deploymentStatus ?? this.deploymentStatus,
+        dspDeploymentRecord: dspDeploymentRecord ?? this.dspDeploymentRecord,
       );
 
   Map<String, dynamic> toJson() => {
@@ -146,6 +194,8 @@ class ConsumerSoundProfile {
         'isSelected': isSelected,
         'generationStatus': generationStatus.name,
         'deploymentStatus': deploymentStatus.name,
+        if (dspDeploymentRecord != null)
+          'dspDeploymentRecord': dspDeploymentRecord!.toJson(),
       };
 
   factory ConsumerSoundProfile.fromJson(Map<String, dynamic> j) =>
@@ -174,6 +224,11 @@ class ConsumerSoundProfile {
         deploymentStatus: TuneDeploymentStatus.values.byName(
           j['deploymentStatus'] as String? ?? 'unknown',
         ),
+        dspDeploymentRecord: j['dspDeploymentRecord'] == null
+            ? null
+            : ConsumerDspDeploymentRecord.fromJson(
+                Map<String, dynamic>.from(j['dspDeploymentRecord'] as Map),
+              ),
       );
 }
 
@@ -310,6 +365,31 @@ class ConsumerSoundProfileNotifier
       return p.copyWith(isActive: false, status: ConsumerProfileStatus.ready);
     }).toList();
     await _persist();
+  }
+
+  Future<void> recordDspDeployment(
+    String profileId,
+    ConsumerDspDeploymentRecord record,
+  ) async {
+    await _hydrated;
+    final index = state.indexWhere((profile) => profile.id == profileId);
+    if (index == -1) throw StateError('Sound Profile not found.');
+    final previous = state;
+    final next = [...state];
+    next[index] = next[index].copyWith(
+      deploymentStatus: record.dspApplied
+          ? TuneDeploymentStatus.applied
+          : TuneDeploymentStatus.notDeployed,
+      dspDeploymentRecord: record,
+      updatedAt: record.attemptedAt,
+    );
+    state = next;
+    try {
+      await _persist();
+    } catch (_) {
+      state = previous;
+      rethrow;
+    }
   }
 
   Future<void> deactivateAll() async {

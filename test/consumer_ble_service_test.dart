@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
 import 'package:tunai/features/ble/consumer_ble_service.dart';
 import 'package:tunai/features/ble/icp5_consumer_frame_codec.dart';
+import 'package:tunai/features/ble/icp5_peq_command_builder.dart';
 import 'package:tunai/features/ble/consumer_product_identity.dart';
 import 'package:tunai/features/connect/connect_screen.dart';
 
@@ -39,6 +40,7 @@ class _FakeConnection implements ConsumerBleConnection {
   final List<int> identity;
   final bool splitIdentity;
   final bool respond;
+  List<int>? applicationResponse;
   bool notifySubscribed = true;
   int closeCalls = 0;
 
@@ -56,7 +58,8 @@ class _FakeConnection implements ConsumerBleConnection {
     expect(notifySubscribed, isTrue);
     writes.add(List.unmodifiable(bytes));
     if (!respond) return;
-    final response = identity;
+    final response =
+        writes.length == 1 ? identity : (applicationResponse ?? identity);
     if (splitIdentity) {
       _controller.add(response.sublist(0, 7));
       _controller.add(response.sublist(7));
@@ -175,6 +178,28 @@ void main() {
       0x76,
     ]);
     expect(Icp5ConsumerFrameCodec.isSupportedIdentity(_validIdentity), isTrue);
+  });
+
+  test('application write awaits the next complete notification frame',
+      () async {
+    final connection = _FakeConnection()
+      ..applicationResponse = Icp5PeqCommandBuilder.peqAck;
+    final device = _device('icp5-1', 'WONDOM ICP5');
+    final service = _service(
+      _FakeDriver(devices: [device], connection: connection),
+    );
+    await service.scan();
+    await service.connect();
+
+    final response = await service.sendApplicationFrameAndAwaitResponse(
+      [0x55, 0x01, 0x56],
+      timeout: const Duration(milliseconds: 40),
+    );
+
+    expect(service.supportedIdentityValidated, isTrue);
+    expect(service.validatedDeviceIdentifier, 'icp5-1');
+    expect(response, Icp5PeqCommandBuilder.peqAck);
+    await service.disconnect();
   });
 
   test('short and Bluetooth Base UUID forms resolve only required GATT IDs',

@@ -78,6 +78,8 @@ class ConsumerBleService extends ChangeNotifier {
   ConsumerBleConnection? _connection;
   StreamSubscription<List<int>>? _notificationSubscription;
   Completer<List<int>>? _handshakeResponse;
+  Completer<List<int>>? _applicationResponse;
+  bool _supportedIdentityValidated = false;
   final List<int> _receiveBuffer = [];
 
   ConsumerBleService({
@@ -86,6 +88,10 @@ class ConsumerBleService extends ChangeNotifier {
   }) : _driver = driver ?? FlutterBluePlusConsumerGattDriver();
 
   ConsumerBleState get state => _state;
+  bool get supportedIdentityValidated =>
+      _state.connected && _supportedIdentityValidated;
+  String? get validatedDeviceIdentifier =>
+      supportedIdentityValidated ? _state.selectedDevice?.identifier : null;
 
   Future<void> scan() async {
     if (_state.busy || _state.connected) return;
@@ -198,6 +204,7 @@ class ConsumerBleService extends ChangeNotifier {
         );
         return;
       }
+      _supportedIdentityValidated = true;
       _handshakeResponse = null;
       _setState(
         ConsumerBleState(
@@ -237,6 +244,32 @@ class ConsumerBleService extends ChangeNotifier {
     await _connection!.write(bytes);
   }
 
+  /// Writes one application frame and returns the next complete notification.
+  /// Only one request may be awaiting a response at a time.
+  Future<List<int>> sendApplicationFrameAndAwaitResponse(
+    List<int> bytes, {
+    required Duration timeout,
+  }) async {
+    if (!_state.connected ||
+        _connection == null ||
+        !_supportedIdentityValidated) {
+      throw StateError('Bluetooth device is not connected and validated.');
+    }
+    if (_applicationResponse != null) {
+      throw StateError('Another Bluetooth command is awaiting a response.');
+    }
+    final response = Completer<List<int>>();
+    _applicationResponse = response;
+    try {
+      await _connection!.write(bytes);
+      return await response.future.timeout(timeout);
+    } finally {
+      if (identical(_applicationResponse, response)) {
+        _applicationResponse = null;
+      }
+    }
+  }
+
   Future<void> disconnect() async {
     await _closeConnection();
     _setState(
@@ -259,7 +292,14 @@ class ConsumerBleService extends ChangeNotifier {
     final frame = List<int>.of(_receiveBuffer.take(frameLength));
     _receiveBuffer.removeRange(0, frameLength);
     final completer = _handshakeResponse;
-    if (completer != null && !completer.isCompleted) completer.complete(frame);
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(frame);
+      return;
+    }
+    final application = _applicationResponse;
+    if (application != null && !application.isCompleted) {
+      application.complete(frame);
+    }
   }
 
   void _onConnectionError(Object error, StackTrace stackTrace) {
@@ -267,6 +307,10 @@ class ConsumerBleService extends ChangeNotifier {
     if (completer != null && !completer.isCompleted) {
       completer.completeError(error, stackTrace);
       return;
+    }
+    final application = _applicationResponse;
+    if (application != null && !application.isCompleted) {
+      application.completeError(error, stackTrace);
     }
     _failClosedAfterDisconnect();
   }
@@ -277,12 +321,17 @@ class ConsumerBleService extends ChangeNotifier {
       completer.completeError(StateError('Bluetooth disconnected.'));
       return;
     }
+    final application = _applicationResponse;
+    if (application != null && !application.isCompleted) {
+      application.completeError(StateError('Bluetooth disconnected.'));
+    }
     _failClosedAfterDisconnect();
   }
 
   void _failClosedAfterDisconnect() {
     if (!_state.connected) return;
     _connection = null;
+    _supportedIdentityValidated = false;
     _setState(
       ConsumerBleState(
         status: ConsumerBleStatus.disconnected,
@@ -299,6 +348,12 @@ class ConsumerBleService extends ChangeNotifier {
     final connection = _connection;
     _connection = null;
     _handshakeResponse = null;
+    final application = _applicationResponse;
+    _applicationResponse = null;
+    if (application != null && !application.isCompleted) {
+      application.completeError(StateError('Bluetooth disconnected.'));
+    }
+    _supportedIdentityValidated = false;
     _receiveBuffer.clear();
     await connection?.close();
   }
