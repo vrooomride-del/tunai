@@ -32,6 +32,7 @@ class ConsumerDspDeploymentResult {
   final int acknowledgedCommandCount;
   final bool rollbackAttempted;
   final bool rollbackSucceeded;
+  final List<ConsumerDspCommandDiagnostic> commandDiagnostics;
 
   const ConsumerDspDeploymentResult({
     required this.outcome,
@@ -40,9 +41,42 @@ class ConsumerDspDeploymentResult {
     this.acknowledgedCommandCount = 0,
     this.rollbackAttempted = false,
     this.rollbackSucceeded = false,
+    this.commandDiagnostics = const [],
   });
 
   bool get dspApplied => outcome == ConsumerDspDeploymentOutcome.applied;
+}
+
+enum ConsumerDspCommandProperty { frequency, gain, q }
+
+class ConsumerDspCommandDiagnostic {
+  final int commandIndex;
+  final ConsumerDspCommandProperty property;
+  final List<int> txPacket;
+  final bool gattWriteCompleted;
+  final List<List<int>> rawRxNotifications;
+  final List<int> rawRxElapsedMilliseconds;
+  final List<int> responseBytes;
+  final bool ackParserResult;
+  final String? transportError;
+  final int elapsedMilliseconds;
+
+  const ConsumerDspCommandDiagnostic({
+    required this.commandIndex,
+    required this.property,
+    required this.txPacket,
+    required this.gattWriteCompleted,
+    required this.rawRxNotifications,
+    this.rawRxElapsedMilliseconds = const [],
+    required this.responseBytes,
+    required this.ackParserResult,
+    required this.elapsedMilliseconds,
+    this.transportError,
+  });
+
+  static String hex(Iterable<int> bytes) => bytes
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0').toUpperCase())
+      .join(' ');
 }
 
 abstract interface class ConsumerDspTransport {
@@ -76,6 +110,20 @@ class ConsumerBleDspTransport implements ConsumerDspTransport {
         command,
         timeout: timeout,
       );
+
+  Future<ConsumerBleApplicationExchange> writeAndAwaitExchange(
+    List<int> command, {
+    required Duration timeout,
+  }) =>
+      service.sendApplicationFrameAndAwaitExchange(
+        command,
+        timeout: timeout,
+        // Select only a PEQ response-shaped frame. The executor still applies
+        // the unchanged byte-for-byte ACK validator and rejects any malformed
+        // candidate as invalidAck.
+        frameMatcher: (frame) =>
+            frame.length >= 7 && frame[2] == 0xe1 && frame[6] == 0x18,
+      );
 }
 
 class ConsumerDspDeploymentExecutor {
@@ -106,15 +154,52 @@ class ConsumerDspDeploymentExecutor {
         .map((plan) => plan.copyWith(state: TuneDeploymentState.CREATED))
         .toList();
     final acknowledged = <_DeploymentCommand>[];
+    final diagnostics = <ConsumerDspCommandDiagnostic>[];
     try {
       final commands = _commands(current);
       for (final command in commands) {
         current[command.planIndex] = current[command.planIndex]
             .copyWith(state: TuneDeploymentState.SENT);
-        final ack = await transport.writeAndAwaitResponse(
-          command.apply,
-          timeout: commandTimeout,
-        );
+        List<int> ack;
+        if (transport is ConsumerBleDspTransport) {
+          try {
+            final exchange = await (transport as ConsumerBleDspTransport)
+                .writeAndAwaitExchange(
+              command.apply,
+              timeout: commandTimeout,
+            );
+            ack = exchange.matchedFrame;
+            diagnostics.add(_diagnostic(
+              command,
+              diagnostics.length + 1,
+              exchange,
+            ));
+          } on ConsumerBleApplicationException catch (error) {
+            diagnostics.add(_diagnostic(
+              command,
+              diagnostics.length + 1,
+              error.exchange,
+              transportError: error.cause.toString(),
+            ));
+            throw error.cause;
+          }
+        } else {
+          ack = await transport.writeAndAwaitResponse(
+            command.apply,
+            timeout: commandTimeout,
+          );
+          diagnostics.add(ConsumerDspCommandDiagnostic(
+            commandIndex: diagnostics.length + 1,
+            property: command.property,
+            txPacket: List.unmodifiable(command.apply),
+            gattWriteCompleted: true,
+            rawRxNotifications: [List.unmodifiable(ack)],
+            rawRxElapsedMilliseconds: const [0],
+            responseBytes: List.unmodifiable(ack),
+            ackParserResult: Icp5PeqCommandBuilder.isValidPeqAck(ack),
+            elapsedMilliseconds: 0,
+          ));
+        }
         if (!Icp5PeqCommandBuilder.isValidPeqAck(ack)) {
           throw const _DeploymentException(
             ConsumerDspDeploymentFailure.invalidAck,
@@ -132,6 +217,7 @@ class ConsumerDspDeploymentExecutor {
         outcome: ConsumerDspDeploymentOutcome.applied,
         plans: List.unmodifiable(current),
         acknowledgedCommandCount: acknowledged.length,
+        commandDiagnostics: List.unmodifiable(diagnostics),
       );
     } catch (error) {
       final failure = _classify(error);
@@ -158,6 +244,7 @@ class ConsumerDspDeploymentExecutor {
         acknowledgedCommandCount: acknowledged.length,
         rollbackAttempted: acknowledged.isNotEmpty,
         rollbackSucceeded: rollbackSucceeded && acknowledged.isNotEmpty,
+        commandDiagnostics: List.unmodifiable(diagnostics),
       );
     } finally {
       _inProgress = false;
@@ -221,6 +308,7 @@ class ConsumerDspDeploymentExecutor {
         for (var index = 0; index < plans.length; index++) ...[
           _DeploymentCommand(
             index,
+            ConsumerDspCommandProperty.frequency,
             Icp5PeqCommandBuilder.frequency(
               channel: plans[index].channel,
               bandId: plans[index].bandId,
@@ -234,6 +322,7 @@ class ConsumerDspDeploymentExecutor {
           ),
           _DeploymentCommand(
             index,
+            ConsumerDspCommandProperty.gain,
             Icp5PeqCommandBuilder.gain(
               channel: plans[index].channel,
               bandId: plans[index].bandId,
@@ -247,6 +336,7 @@ class ConsumerDspDeploymentExecutor {
           ),
           _DeploymentCommand(
             index,
+            ConsumerDspCommandProperty.q,
             Icp5PeqCommandBuilder.q(
               channel: plans[index].channel,
               bandId: plans[index].bandId,
@@ -260,6 +350,26 @@ class ConsumerDspDeploymentExecutor {
           ),
         ],
       ];
+
+  ConsumerDspCommandDiagnostic _diagnostic(
+    _DeploymentCommand command,
+    int commandIndex,
+    ConsumerBleApplicationExchange exchange, {
+    String? transportError,
+  }) =>
+      ConsumerDspCommandDiagnostic(
+        commandIndex: commandIndex,
+        property: command.property,
+        txPacket: List.unmodifiable(command.apply),
+        gattWriteCompleted: exchange.gattWriteCompleted,
+        rawRxNotifications: exchange.rawNotifications,
+        rawRxElapsedMilliseconds: exchange.rawNotificationElapsedMilliseconds,
+        responseBytes: exchange.matchedFrame,
+        ackParserResult:
+            Icp5PeqCommandBuilder.isValidPeqAck(exchange.matchedFrame),
+        transportError: transportError,
+        elapsedMilliseconds: exchange.elapsedMilliseconds,
+      );
 
   Future<bool> _rollback(List<_DeploymentCommand> acknowledged) async {
     if (acknowledged.isEmpty) return true;
@@ -289,9 +399,15 @@ class ConsumerDspDeploymentExecutor {
 
 class _DeploymentCommand {
   final int planIndex;
+  final ConsumerDspCommandProperty property;
   final List<int> apply;
   final List<int> restore;
-  const _DeploymentCommand(this.planIndex, this.apply, this.restore);
+  const _DeploymentCommand(
+    this.planIndex,
+    this.property,
+    this.apply,
+    this.restore,
+  );
 }
 
 class _DeploymentException implements Exception {

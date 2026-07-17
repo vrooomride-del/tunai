@@ -509,6 +509,120 @@ void main() {
 
   // ── Stale ACK Protection (Finding 1) ────────────────────────────────────────
 
+  group('application frame extraction diagnostics', () {
+    Future<
+        ({
+          ConsumerBleService service,
+          StreamController<List<int>> stream,
+        })> connectedService() async {
+      final stream = StreamController<List<int>>.broadcast(sync: true);
+      final connection = _ControlledConnection(
+        streamCtrl: stream,
+        shouldRespondToApp: () => false,
+        writes: [],
+        identity: _validIdentity,
+      );
+      final service = _service(
+        _FakeDriver(
+          devices: [_device('d1', 'WONDOM ICP5')],
+          connection: connection,
+        ),
+        quarantine: const Duration(milliseconds: 1),
+      );
+      await service.scan();
+      await service.connect();
+      return (service: service, stream: stream);
+    }
+
+    Future<ConsumerBleApplicationExchange> awaitPeqAck(
+      ConsumerBleService service,
+      void Function() notify,
+    ) async {
+      final pending = service.sendApplicationFrameAndAwaitExchange(
+        [0x55, 0x01, 0x56],
+        timeout: const Duration(milliseconds: 50),
+        frameMatcher: Icp5PeqCommandBuilder.isValidPeqAck,
+      );
+      await Future<void>.delayed(Duration.zero);
+      notify();
+      return pending;
+    }
+
+    test('complete ACK in one notification is accepted unchanged', () async {
+      final test = await connectedService();
+      final exchange = await awaitPeqAck(
+        test.service,
+        () => test.stream.add(Icp5PeqCommandBuilder.peqAck),
+      );
+      expect(exchange.matchedFrame, Icp5PeqCommandBuilder.peqAck);
+      expect(exchange.rawNotifications, [Icp5PeqCommandBuilder.peqAck]);
+      test.service.dispose();
+    });
+
+    test('ACK split across two notifications is buffered and accepted',
+        () async {
+      final test = await connectedService();
+      const ack = Icp5PeqCommandBuilder.peqAck;
+      final exchange = await awaitPeqAck(test.service, () {
+        test.stream.add(ack.sublist(0, 4));
+        test.stream.add(ack.sublist(4));
+      });
+      expect(exchange.matchedFrame, ack);
+      expect(exchange.rawNotifications, [ack.sublist(0, 4), ack.sublist(4)]);
+      test.service.dispose();
+    });
+
+    test('two concatenated frames are both extracted from one callback',
+        () async {
+      final test = await connectedService();
+      const status = [0x55, 0x02, 0xe2, 0x39];
+      const ack = Icp5PeqCommandBuilder.peqAck;
+      final combined = [...status, ...ack];
+      final exchange = await awaitPeqAck(
+        test.service,
+        () => test.stream.add(combined),
+      );
+      expect(exchange.matchedFrame, ack);
+      expect(exchange.rawNotifications, [combined]);
+      test.service.dispose();
+    });
+
+    test('unrelated status frame is ignored until exact PEQ ACK arrives',
+        () async {
+      final test = await connectedService();
+      const status = [0x55, 0x02, 0xe2, 0x39];
+      const ack = Icp5PeqCommandBuilder.peqAck;
+      final exchange = await awaitPeqAck(test.service, () {
+        test.stream.add(status);
+        test.stream.add(ack);
+      });
+      expect(exchange.matchedFrame, ack);
+      expect(exchange.rawNotifications, [status, ack]);
+      test.service.dispose();
+    });
+
+    test('malformed response is logged but never falsely accepted', () async {
+      final test = await connectedService();
+      final pending = test.service.sendApplicationFrameAndAwaitExchange(
+        [0x55, 0x01, 0x56],
+        timeout: const Duration(milliseconds: 5),
+        frameMatcher: Icp5PeqCommandBuilder.isValidPeqAck,
+      );
+      await Future<void>.delayed(Duration.zero);
+      const malformed = [0x55, 0x07, 0xe1, 0, 0, 0, 0x18, 0, 0x54];
+      test.stream.add(malformed);
+      try {
+        await pending;
+        fail('Malformed ACK must not complete the request.');
+      } on ConsumerBleApplicationException catch (error) {
+        expect(error.cause, isA<TimeoutException>());
+        expect(error.exchange.rawNotifications, [malformed]);
+        expect(error.exchange.matchedFrame, isEmpty);
+      }
+      test.service.dispose();
+    });
+  });
+
   group('stale ACK protection', () {
     // A controlled connection where each write can be individually governed.
     // write 1 = handshake (always responds with identity)
@@ -663,7 +777,8 @@ void main() {
       service.dispose();
     });
 
-    test('unexpected disconnect completes pending application request with error',
+    test(
+        'unexpected disconnect completes pending application request with error',
         () async {
       // Connection that passes handshake but does not respond to application writes.
       final streamCtrl = StreamController<List<int>>.broadcast(sync: true);
@@ -697,7 +812,8 @@ void main() {
   // ── Handshake Completer Cleanup (Finding 3) ──────────────────────────────────
 
   group('handshake Completer cleanup', () {
-    test('disconnect during handshake fails immediately, not after handshakeTimeout',
+    test(
+        'disconnect during handshake fails immediately, not after handshakeTimeout',
         () async {
       // Connection never responds to the handshake write.
       final conn = _FakeConnection(respond: false);
@@ -725,7 +841,8 @@ void main() {
       expect(sw.elapsedMilliseconds, lessThan(500));
       expect(
         service.state.status,
-        anyOf(ConsumerBleStatus.connectionFailed, ConsumerBleStatus.disconnected),
+        anyOf(
+            ConsumerBleStatus.connectionFailed, ConsumerBleStatus.disconnected),
       );
       service.dispose();
     });

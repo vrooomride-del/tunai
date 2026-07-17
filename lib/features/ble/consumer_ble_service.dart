@@ -67,6 +67,33 @@ abstract interface class ConsumerBleGattDriver {
   Future<ConsumerBleConnection> connect(ConsumerBleDevice device);
 }
 
+@immutable
+class ConsumerBleApplicationExchange {
+  final List<int> matchedFrame;
+  final List<List<int>> rawNotifications;
+  final List<int> rawNotificationElapsedMilliseconds;
+  final bool gattWriteCompleted;
+  final int elapsedMilliseconds;
+
+  const ConsumerBleApplicationExchange({
+    required this.matchedFrame,
+    required this.rawNotifications,
+    required this.rawNotificationElapsedMilliseconds,
+    required this.gattWriteCompleted,
+    required this.elapsedMilliseconds,
+  });
+}
+
+class ConsumerBleApplicationException implements Exception {
+  final Object cause;
+  final ConsumerBleApplicationExchange exchange;
+
+  const ConsumerBleApplicationException(this.cause, this.exchange);
+
+  @override
+  String toString() => cause.toString();
+}
+
 /// Consumer-safe connection facade for the capture-proven ICP5 BLE channel.
 ///
 /// UUIDs, frames, profile text, and raw notifications remain below this API.
@@ -95,6 +122,11 @@ class ConsumerBleService extends ChangeNotifier {
   // Set to -1 when no request is active or during the stale-ACK quarantine.
   int _applicationGeneration = 0;
   int _activeGeneration = -1;
+  bool Function(List<int>)? _applicationFrameMatcher;
+  List<List<int>>? _applicationRawNotifications;
+  List<int>? _applicationRawNotificationElapsedMilliseconds;
+  Stopwatch? _applicationStopwatch;
+  bool _applicationWriteCompleted = false;
 
   ConsumerBleService({
     ConsumerBleGattDriver? driver,
@@ -270,6 +302,25 @@ class ConsumerBleService extends ChangeNotifier {
     List<int> bytes, {
     required Duration timeout,
   }) async {
+    try {
+      return (await sendApplicationFrameAndAwaitExchange(
+        bytes,
+        timeout: timeout,
+        frameMatcher: (_) => true,
+      ))
+          .matchedFrame;
+    } on ConsumerBleApplicationException catch (error, stackTrace) {
+      Error.throwWithStackTrace(error.cause, stackTrace);
+    }
+  }
+
+  /// Records every raw notification callback, extracts all complete length-
+  /// framed messages, and completes only when [frameMatcher] accepts a frame.
+  Future<ConsumerBleApplicationExchange> sendApplicationFrameAndAwaitExchange(
+    List<int> bytes, {
+    required Duration timeout,
+    required bool Function(List<int>) frameMatcher,
+  }) async {
     if (!_state.connected ||
         _connection == null ||
         !_supportedIdentityValidated) {
@@ -280,27 +331,68 @@ class ConsumerBleService extends ChangeNotifier {
     }
     final generation = ++_applicationGeneration;
     _activeGeneration = generation;
+    _applicationFrameMatcher = frameMatcher;
+    _applicationRawNotifications = <List<int>>[];
+    _applicationRawNotificationElapsedMilliseconds = <int>[];
+    _applicationStopwatch = Stopwatch()..start();
+    _applicationWriteCompleted = false;
     final response = Completer<List<int>>();
     _applicationResponse = response;
     try {
       // Subscribe (Completer set above) before write — never after.
       await _connection!.write(bytes);
-      return await response.future.timeout(timeout);
-    } on TimeoutException {
+      _applicationWriteCompleted = true;
+      final frame = await response.future.timeout(timeout);
+      return _currentApplicationExchange(frame);
+    } on TimeoutException catch (error) {
+      final exchange = _currentApplicationExchange(const []);
       // Invalidate the generation first so any in-flight notification is
       // discarded immediately, then quarantine to absorb delayed BLE frames
       // that arrive before the caller can issue a rollback write.
       _clearApplicationRequest(generation, response);
       await Future<void>.delayed(staleAckQuarantine);
-      rethrow;
+      _receiveBuffer.clear();
+      throw ConsumerBleApplicationException(error, exchange);
+    } catch (error) {
+      if (error is ConsumerBleApplicationException) rethrow;
+      throw ConsumerBleApplicationException(
+        error,
+        _currentApplicationExchange(const []),
+      );
     } finally {
       _clearApplicationRequest(generation, response);
     }
   }
 
+  ConsumerBleApplicationExchange _currentApplicationExchange(
+    List<int> matchedFrame,
+  ) =>
+      ConsumerBleApplicationExchange(
+        matchedFrame: List.unmodifiable(matchedFrame),
+        rawNotifications: List.unmodifiable([
+          for (final notification in _applicationRawNotifications ?? const [])
+            List<int>.unmodifiable(notification),
+        ]),
+        rawNotificationElapsedMilliseconds: List.unmodifiable(
+          _applicationRawNotificationElapsedMilliseconds ?? const [],
+        ),
+        gattWriteCompleted: _applicationWriteCompleted,
+        elapsedMilliseconds: _applicationStopwatch?.elapsedMilliseconds ?? 0,
+      );
+
   void _clearApplicationRequest(int generation, Completer<List<int>> response) {
     if (_activeGeneration == generation) _activeGeneration = -1;
-    if (identical(_applicationResponse, response)) _applicationResponse = null;
+    if (_applicationGeneration == generation &&
+        (_applicationResponse == null ||
+            identical(_applicationResponse, response))) {
+      _applicationResponse = null;
+      _applicationFrameMatcher = null;
+      _applicationRawNotifications = null;
+      _applicationRawNotificationElapsedMilliseconds = null;
+      _applicationStopwatch?.stop();
+      _applicationStopwatch = null;
+      _applicationWriteCompleted = false;
+    }
   }
 
   Future<void> disconnect() async {
@@ -315,27 +407,37 @@ class ConsumerBleService extends ChangeNotifier {
   }
 
   void _onNotification(List<int> bytes) {
+    if (_activeGeneration >= 0 && _applicationResponse != null) {
+      _applicationRawNotifications?.add(List<int>.unmodifiable(bytes));
+      _applicationRawNotificationElapsedMilliseconds
+          ?.add(_applicationStopwatch?.elapsedMilliseconds ?? 0);
+    }
     _receiveBuffer.addAll(bytes);
-    while (_receiveBuffer.isNotEmpty && _receiveBuffer.first != 0x55) {
-      _receiveBuffer.removeAt(0);
-    }
-    if (_receiveBuffer.length < 2) return;
-    final frameLength = _receiveBuffer[1] + 2;
-    if (_receiveBuffer.length < frameLength) return;
-    final frame = List<int>.of(_receiveBuffer.take(frameLength));
-    _receiveBuffer.removeRange(0, frameLength);
-    final completer = _handshakeResponse;
-    if (completer != null && !completer.isCompleted) {
-      completer.complete(frame);
-      return;
-    }
-    // Only route to the application Completer when an active, valid generation
-    // exists. A frame that arrives with _activeGeneration == -1 (after timeout,
-    // disconnect, or during quarantine) is discarded rather than allowed to
-    // satisfy a later rollback request.
-    final application = _applicationResponse;
-    if (application != null && !application.isCompleted && _activeGeneration >= 0) {
-      application.complete(frame);
+    while (true) {
+      while (_receiveBuffer.isNotEmpty && _receiveBuffer.first != 0x55) {
+        _receiveBuffer.removeAt(0);
+      }
+      if (_receiveBuffer.length < 2) return;
+      final frameLength = _receiveBuffer[1] + 2;
+      if (_receiveBuffer.length < frameLength) return;
+      final frame = List<int>.of(_receiveBuffer.take(frameLength));
+      _receiveBuffer.removeRange(0, frameLength);
+      final completer = _handshakeResponse;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(frame);
+        continue;
+      }
+      // Unrelated complete frames are retained in the raw notification log but
+      // cannot satisfy this request. Exact PEQ ACK validation is unchanged.
+      final application = _applicationResponse;
+      final matcher = _applicationFrameMatcher;
+      if (application != null &&
+          !application.isCompleted &&
+          _activeGeneration >= 0 &&
+          matcher != null &&
+          matcher(frame)) {
+        application.complete(frame);
+      }
     }
   }
 

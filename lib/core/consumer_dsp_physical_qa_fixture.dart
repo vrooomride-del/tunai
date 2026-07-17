@@ -1,5 +1,6 @@
 import 'consumer_dsp_deployment.dart';
 import 'tune_deployment_plan.dart';
+import '../features/ble/icp5_peq_command_builder.dart';
 
 /// Developer-only, single-band physical ICP5 QA input.
 ///
@@ -118,6 +119,7 @@ class ConsumerDspPhysicalQaResultLog {
   final bool rollbackSucceeded;
   final String failureCategory;
   final String finalConfidence;
+  final List<ConsumerDspCommandDiagnostic> commandDiagnostics;
 
   const ConsumerDspPhysicalQaResultLog({
     required this.guardResult,
@@ -128,6 +130,7 @@ class ConsumerDspPhysicalQaResultLog {
     required this.rollbackSucceeded,
     required this.failureCategory,
     required this.finalConfidence,
+    this.commandDiagnostics = const [],
   });
 
   factory ConsumerDspPhysicalQaResultLog.fromDeployment(
@@ -150,6 +153,7 @@ class ConsumerDspPhysicalQaResultLog {
           ConsumerDspDeploymentOutcome.blocked => 'notDeployed',
           ConsumerDspDeploymentOutcome.failed => 'unknown',
         },
+        commandDiagnostics: result.commandDiagnostics,
       );
 
   String get displayText => 'Guard: $guardResult\n'
@@ -161,5 +165,33 @@ class ConsumerDspPhysicalQaResultLog {
       'Failure category: $failureCategory\n'
       'Final confidence: $finalConfidence\n'
       'Audible verification: not performed\n'
-      'Physical speaker mapping: not verified';
+      'Physical speaker mapping: not verified'
+      '${commandDiagnostics.isEmpty ? "" : "\n\n${commandDiagnostics.map(_formatCommand).join("\n\n")}"}';
+
+  static String _formatCommand(ConsumerDspCommandDiagnostic diagnostic) {
+    final rx = diagnostic.rawRxNotifications.isEmpty
+        ? 'RX: none\nRX length: 0'
+        : [
+            for (var index = 0;
+                index < diagnostic.rawRxNotifications.length;
+                index++) ...[
+              'RX[${index + 1}]: ${ConsumerDspCommandDiagnostic.hex(diagnostic.rawRxNotifications[index])}',
+              'RX[${index + 1}] length: ${diagnostic.rawRxNotifications[index].length}',
+              'RX[${index + 1}] elapsed: ${index < diagnostic.rawRxElapsedMilliseconds.length ? diagnostic.rawRxElapsedMilliseconds[index] : diagnostic.elapsedMilliseconds} ms',
+            ],
+          ].join('\n');
+    final property = switch (diagnostic.property) {
+      ConsumerDspCommandProperty.frequency => 'Frequency',
+      ConsumerDspCommandProperty.gain => 'Gain',
+      ConsumerDspCommandProperty.q => 'Q',
+    };
+    return 'Command ${diagnostic.commandIndex} — $property\n'
+        'TX: ${ConsumerDspCommandDiagnostic.hex(diagnostic.txPacket)}\n'
+        'GATT write completion: ${diagnostic.gattWriteCompleted}\n'
+        '$rx\n'
+        'Expected ACK: ${ConsumerDspCommandDiagnostic.hex(Icp5PeqCommandBuilder.peqAck)}\n'
+        'Validation: ${diagnostic.ackParserResult ? "validAck" : "invalidAck"}\n'
+        'Transport error: ${diagnostic.transportError ?? "none"}\n'
+        'Elapsed: ${diagnostic.elapsedMilliseconds} ms';
+  }
 }

@@ -127,6 +127,16 @@ void main() {
     expect(result.acknowledgedCommandCount, 3);
     expect(result.plans.single.state, TuneDeploymentState.ACKED);
     expect(transport.writes, Icp5PeqCommandBuilder.commandsFor([_plan()]));
+    expect(result.commandDiagnostics, hasLength(3));
+    expect(result.commandDiagnostics.first.property,
+        ConsumerDspCommandProperty.frequency);
+    expect(
+      ConsumerDspCommandDiagnostic.hex(
+          result.commandDiagnostics.first.txPacket),
+      matches(RegExp(r'^[0-9A-F]{2}( [0-9A-F]{2})+$')),
+    );
+    expect(result.commandDiagnostics.first.gattWriteCompleted, isTrue);
+    expect(result.commandDiagnostics.first.ackParserResult, isTrue);
   });
 
   test('invalid ACK stops writes and restores ACKed commands in reverse order',
@@ -148,6 +158,14 @@ void main() {
 
     expect(result.outcome, ConsumerDspDeploymentOutcome.restored);
     expect(result.failure, ConsumerDspDeploymentFailure.invalidAck);
+    expect(result.commandDiagnostics, hasLength(3));
+    final failedDiagnostic = result.commandDiagnostics.last;
+    expect(failedDiagnostic.property, ConsumerDspCommandProperty.q);
+    expect(failedDiagnostic.responseBytes, [0x55]);
+    expect(failedDiagnostic.rawRxNotifications, [
+      [0x55],
+    ]);
+    expect(failedDiagnostic.ackParserResult, isFalse);
     expect(result.rollbackSucceeded, isTrue);
     expect(transport.writes.sublist(3), [
       Icp5PeqCommandBuilder.gain(

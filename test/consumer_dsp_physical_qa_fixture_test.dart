@@ -101,6 +101,20 @@ void main() {
         failure: ConsumerDspDeploymentFailure.rollbackFailed,
         acknowledgedCommandCount: 1,
         rollbackAttempted: true,
+        commandDiagnostics: [
+          ConsumerDspCommandDiagnostic(
+            commandIndex: 1,
+            property: ConsumerDspCommandProperty.frequency,
+            txPacket: [0x55, 0x01, 0x56],
+            gattWriteCompleted: true,
+            rawRxNotifications: [
+              [0x55, 0x01, 0x55],
+            ],
+            responseBytes: [0x55, 0x01, 0x55],
+            ackParserResult: false,
+            elapsedMilliseconds: 12,
+          ),
+        ],
       );
 
       expect(
@@ -122,6 +136,11 @@ void main() {
           failedLog.displayText, contains('Failure category: rollbackFailed'));
       expect(failedLog.displayText,
           contains('Audible verification: not performed'));
+      expect(failedLog.displayText, contains('Command 1 — Frequency'));
+      expect(failedLog.displayText, contains('TX: 55 01 56'));
+      expect(failedLog.displayText, contains('RX[1]: 55 01 55'));
+      expect(failedLog.displayText, contains('RX[1] length: 3'));
+      expect(failedLog.displayText, contains('Validation: invalidAck'));
     });
   });
 }
