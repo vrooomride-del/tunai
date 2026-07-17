@@ -15,15 +15,13 @@ void main() {
       home: OnboardingScreen(onComplete: () => completed = true),
     ));
 
-    expect(find.text('The audio paradigm is changing.'), findsOneWidget);
+    expect(find.text('Your speaker learns your room.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(find.text('Space changes.\nPlacement changes.\nTaste changes.'),
-        findsOneWidget);
+    expect(find.text('AI creates your personal sound.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(find.text('The controls disappear.\nThe sound remains.'),
-        findsOneWidget);
+    expect(find.text('Enjoy music designed for your space.'), findsOneWidget);
     await tester.tap(find.text('Get Started'));
     await tester.pumpAndSettle();
 
@@ -36,7 +34,7 @@ void main() {
     await markOnboardingComplete();
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
     await tester.pumpAndSettle();
-    expect(find.text('The audio paradigm is changing.'), findsNothing);
+    expect(find.text('Your speaker learns your room.'), findsNothing);
     expect(find.byType(BottomNavigationBar), findsOneWidget);
   });
 
@@ -48,14 +46,12 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
     await tester.pumpAndSettle();
-    expect(find.text('The audio paradigm is changing.'), findsOneWidget);
+    expect(find.text('Your speaker learns your room.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(find.text('Space changes.\nPlacement changes.\nTaste changes.'),
-        findsOneWidget);
+    expect(find.text('AI creates your personal sound.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(find.text('The controls disappear.\nThe sound remains.'),
-        findsOneWidget);
+    expect(find.text('Enjoy music designed for your space.'), findsOneWidget);
   });
 }

@@ -34,16 +34,16 @@ class AcousticTimeline extends StatelessWidget {
     if (ko) {
       return switch (step) {
         AcousticTimelineStep.factorySound => '처음 소리',
-        AcousticTimelineStep.roomScan => 'Room Scan',
-        AcousticTimelineStep.acousticTune => 'Acoustic Tune',
+        AcousticTimelineStep.roomScan => 'Room Analysis',
+        AcousticTimelineStep.acousticTune => 'Your Sound',
         AcousticTimelineStep.listen => '비교 청취',
         AcousticTimelineStep.savedProfile => '저장됨',
       };
     }
     return switch (step) {
       AcousticTimelineStep.factorySound => 'Factory Sound',
-      AcousticTimelineStep.roomScan => 'Room Scan',
-      AcousticTimelineStep.acousticTune => 'Acoustic Tune',
+      AcousticTimelineStep.roomScan => 'Room Analysis',
+      AcousticTimelineStep.acousticTune => 'Your Sound',
       AcousticTimelineStep.listen => 'Listen',
       AcousticTimelineStep.savedProfile => 'Saved Profile',
     };

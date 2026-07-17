@@ -82,7 +82,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
                     Text('취향을 선택하세요', style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 1)),
                   ]),
                   const SizedBox(height: 2),
-                  const Text('Acoustic Tune 위에 취향을 더합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  const Text('Your Sound 위에 취향을 더합니다.', style: TextStyle(color: Colors.white38, fontSize: 11)),
                   const SizedBox(height: 12),
                   ...kTastePresets.map((preset) {
                     final isSelected = selected?.id == preset.id;
@@ -112,7 +112,7 @@ class _FineTuneScreenState extends ConsumerState<FineTuneScreen> {
                   }),
                   const SizedBox(height: 16),
                   OutlineButton(
-                    label: _applying ? (ko ? '적용 중...' : 'Sending...') : (ko ? '적용' : 'Apply'),
+                    label: _applying ? (ko ? '적용 중...' : 'Sending...') : (ko ? '스피커에 적용' : 'Apply to Speaker'),
                     loading: _applying,
                     enabled: selected != null && isConnected && !_applying,
                     onTap: selected == null || !isConnected ? null : () => _apply(selected),

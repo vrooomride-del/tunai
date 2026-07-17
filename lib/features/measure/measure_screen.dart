@@ -203,7 +203,7 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _BigButton(
-                label: ko ? '공간 스캔 시작' : 'Start Room Scan',
+                label: ko ? '공간 분석 시작' : 'Start Room Analysis',
                 onTap: isConnected
                     ? () => setState(() => _showMicCheck = true)
                     : null,
@@ -318,7 +318,7 @@ class _MicCheckView extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
               child: _BigButton(
-                label: ko ? '공간 스캔 시작' : 'Start Room Scan',
+                label: ko ? '공간 분석 시작' : 'Start Room Analysis',
                 onTap: onContinue,
               ),
             ),
@@ -415,7 +415,7 @@ class _MeasuringViewState extends State<_MeasuringView> {
       ('Checking bass response', '저역 반응을 확인하고 있습니다'),
       ('Detecting room reflections', '공간 반사를 감지하고 있습니다'),
       ('Balancing stereo image', '스테레오 이미지를 정렬하고 있습니다'),
-      ('Creating your Acoustic Tune', '어쿠스틱 튠을 생성하고 있습니다'),
+      ('Creating Your Sound', '나만의 사운드를 생성하고 있습니다'),
     ];
     _tick();
   }
@@ -580,7 +580,7 @@ class _ResultView extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
               child: _BigButton(
-                label: ko ? '어쿠스틱 튠 생성' : 'Create Acoustic Tune',
+                label: ko ? '나만의 사운드 생성' : 'Create Your Sound',
                 onTap: onOptimize,
               ),
             ),
@@ -590,7 +590,7 @@ class _ResultView extends ConsumerWidget {
                 onTap: onReMeasure,
                 child: Center(
                   child: Text(
-                    ko ? '다시 공간 스캔' : 'Scan again',
+                    ko ? '다시 공간 분석' : 'Scan again',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.3),
                       fontSize: 13,

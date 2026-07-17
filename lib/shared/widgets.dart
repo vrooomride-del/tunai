@@ -43,23 +43,31 @@ class TunaiTopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       child: Row(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               const Text('TUNAI', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w200, letterSpacing: 8)),
               if (subtitle != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(subtitle!, style: const TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 2)),
                 ),
-            ],
+              ],
+            ),
           ),
-          const Spacer(),
           Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: isConnected ? Colors.white : Colors.white24)),
-          const SizedBox(width: 8),
-          Text(isConnected ? (bState.deviceName ?? 'CONNECTED') : 'NO DEVICE',
-              style: TextStyle(color: isConnected ? Colors.white54 : Colors.white24, fontSize: 10, letterSpacing: 2)),
-          const SizedBox(width: 16),
+          if (isConnected) ...[
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 88),
+              child: Text(bState.deviceName ?? 'CONNECTED',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 2)),
+            ),
+          ],
+          const SizedBox(width: 12),
           GestureDetector(
             onTap: () {
               if (auth.isLoggedIn) {

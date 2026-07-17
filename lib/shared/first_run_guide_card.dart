@@ -68,8 +68,8 @@ class FirstRunGuideCard extends ConsumerWidget {
   String _stepLabel(FirstRunState s, bool ko) {
     switch (s) {
       case FirstRunState.noDeviceConnected:         return ko ? '1단계 · 연결' : 'STEP 1 · CONNECT';
-      case FirstRunState.deviceConnectedNoRoomScan: return ko ? '2단계 · 공간 스캔' : 'STEP 2 · ROOM SCAN';
-      case FirstRunState.roomScanCompleteNoTune:    return ko ? '3단계 · 어쿠스틱 튠' : 'STEP 3 · ACOUSTIC TUNE';
+      case FirstRunState.deviceConnectedNoRoomScan: return ko ? '2단계 · 공간 분석' : 'STEP 2 · ROOM SCAN';
+      case FirstRunState.roomScanCompleteNoTune:    return ko ? '3단계 · 나만의 사운드' : 'STEP 3 · ACOUSTIC TUNE';
       case FirstRunState.acousticTuneReadyNotApplied: return ko ? '4단계 · 적용' : 'STEP 4 · APPLY';
       case FirstRunState.acousticTuneApplied:       return ko ? '완료' : 'COMPLETE';
     }
@@ -88,36 +88,36 @@ class FirstRunGuideCard extends ConsumerWidget {
         return _CardData(
           title: ko ? 'TUNAI ONE이 연결되었습니다.' : 'TUNAI ONE is connected.',
           subtitle: ko
-              ? '이제 당신의 공간에 맞는 사운드 프로파일을 만들어보세요.'
-              : 'Now let\'s create a Sound Profile for your room.',
+              ? '이제 당신의 공간에 맞는 나만의 사운드를 만들어보세요.'
+              : 'Now let\'s create a personal sound for your room.',
           buttons: [
-            _BtnData(label: ko ? '공간 스캔 시작' : 'Start Room Scan', tabIndex: 1, primary: true),
+            _BtnData(label: ko ? '공간 분석 시작' : 'Start Room Analysis', tabIndex: 1, primary: true),
           ],
         );
       case FirstRunState.roomScanCompleteNoTune:
         return _CardData(
-          title: ko ? '공간 스캔이 완료되었습니다.' : 'Room Scan complete.',
+          title: ko ? '공간 분석이 완료되었습니다.' : 'Room Analysis complete.',
           subtitle: ko
-              ? '이제 어쿠스틱 튠을 생성할 수 있습니다.'
-              : 'TUNAI can now create your Acoustic Tune.',
+              ? '이제 나만의 사운드를 생성할 수 있습니다.'
+              : 'TUNAI can now create Your Sound.',
           buttons: [
-            _BtnData(label: ko ? '어쿠스틱 튠 생성' : 'Create Acoustic Tune', tabIndex: 2, primary: true),
+            _BtnData(label: ko ? '나만의 사운드 생성' : 'Create Your Sound', tabIndex: 2, primary: true),
           ],
         );
       case FirstRunState.acousticTuneReadyNotApplied:
         return _CardData(
-          title: ko ? '어쿠스틱 튠이 준비되었습니다.' : 'Your Acoustic Tune is ready.',
+          title: ko ? '나만의 사운드가 준비되었습니다.' : 'Your Sound is ready.',
           subtitle: ko
               ? '적용하기 전에 차이를 들어보세요.'
               : 'Hear the difference before applying it.',
           buttons: [
             _BtnData(label: ko ? 'Before·After 듣기' : 'Hear Before / After', tabIndex: 3, primary: false),
-            _BtnData(label: ko ? '사운드 프로파일 적용' : 'Apply Sound Profile', tabIndex: 2, primary: true),
+            _BtnData(label: ko ? '나만의 사운드 적용' : 'Apply to Speaker', tabIndex: 2, primary: true),
           ],
         );
       case FirstRunState.acousticTuneApplied:
         return _CardData(
-          title: ko ? '어쿠스틱 튠이 적용되었습니다.' : 'Acoustic Tune applied.',
+          title: ko ? '나만의 사운드가 적용되었습니다.' : 'Your Sound applied.',
           subtitle: ko
               ? '이제 스피커가 이 공간에 맞춰졌습니다.'
               : 'Your speaker is now matched to this room.',

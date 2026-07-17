@@ -39,14 +39,14 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
     if (active == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(ko
-            ? '저장할 Sound Profile이 없습니다. 먼저 TUNE에서 Acoustic Tune을 만들어 주세요.'
-            : 'No Sound Profile to save. Create an Acoustic Tune in TUNE first.'),
+            ? '저장할 나만의 사운드가 없습니다. 먼저 TUNE에서 만들어 주세요.'
+            : 'There is no sound to save. Create Your Sound in TUNE first.'),
         duration: const Duration(seconds: 3),
       ));
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ko ? 'Sound Profile이 저장되었습니다.' : 'Sound Profile saved.'),
+      content: Text(ko ? '나만의 사운드가 저장되었습니다.' : 'Your Sound was saved.'),
       duration: const Duration(seconds: 2),
     ));
   }
@@ -91,7 +91,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
               child: Builder(builder: (ctx) {
                 final ko = Localizations.localeOf(ctx).languageCode == 'ko';
                 return Text(
-                  ko ? '현재 사운드 프로파일로 들어보세요.' : 'Listen with your current Sound Profile.',
+                  ko ? '현재 나만의 사운드로 들어보세요.' : 'Listen with your current saved sound.',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.5),
                 );
               }),
@@ -126,7 +126,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             Builder(builder: (ctx) {
                               final ko = Localizations.localeOf(ctx).languageCode == 'ko';
                               return Text(
-                                _showAfter && hasAfter ? 'Acoustic Tune' : (ko ? '기본 사운드' : 'Original Sound'),
+                                _showAfter && hasAfter ? 'Your Sound' : (ko ? '기본 사운드' : 'Original Sound'),
                                 style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2),
                               );
                             }),
@@ -150,8 +150,8 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             const SizedBox(height: 2),
                             Text(
                               ko
-                                  ? '원래 소리와 TUNAI Sound Profile을 비교해 보세요.'
-                                  : 'Compare the original sound with your TUNAI Sound Profile.',
+                                  ? '원래 소리와 TUNAI saved sound을 비교해 보세요.'
+                                  : 'Compare the original sound with your TUNAI saved sound.',
                               style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11, height: 1.4),
                             ),
                           ]);
@@ -279,17 +279,17 @@ class _CurrentProfileSection extends ConsumerWidget {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
-            ko ? '사운드 프로파일' : 'Sound Profile',
+            ko ? '나만의 사운드' : 'saved sound',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
           ),
           const SizedBox(height: 8),
           Text(
-            ko ? '적용된 사운드 프로파일이 없습니다.' : 'No Sound Profile applied.',
+            ko ? '적용된 나만의 사운드가 없습니다.' : 'No sound is applied.',
             style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w300),
           ),
           const SizedBox(height: 4),
           Text(
-            ko ? '공간 스캔으로 어쿠스틱 튠을 만들어 저장해보세요.' : 'Run a Room Scan to create your Acoustic Tune.',
+            ko ? '공간 분석으로 나만의 사운드를 만들어 저장해보세요.' : 'Run a Room Analysis to create Your Sound.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5),
           ),
         ]),
@@ -306,7 +306,7 @@ class _CurrentProfileSection extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(
-            ko ? '현재 사운드 프로파일' : 'Current Sound Profile',
+            ko ? '현재 나만의 사운드' : 'Current saved sound',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
           ),
           const Spacer(),
@@ -383,14 +383,14 @@ class _EmptyState extends StatelessWidget {
         const Icon(Icons.graphic_eq, color: Colors.white24, size: 32),
         const SizedBox(height: 12),
         Text(
-          ko ? '아직 사운드 프로파일이 없습니다.' : 'No Sound Profile yet.',
+          ko ? '아직 나만의 사운드가 없습니다.' : 'No saved sound yet.',
           style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w300),
         ),
         const SizedBox(height: 8),
         Text(
           ko
-              ? 'Room Scan을 완료한 후 Acoustic Tune을 만들어보세요.\n원본 사운드와 Acoustic Tune을 여기서 비교할 수 있습니다.'
-              : 'Run a Room Scan first, then create an Acoustic Tune.\nOriginal Sound and Acoustic Tune will appear here for comparison.',
+              ? '공간 분석을 완료한 후 나만의 사운드를 만들어보세요.\n원본 사운드와 나만의 사운드를 여기서 비교할 수 있습니다.'
+              : 'Run a Room Analysis first, then create Your Sound.\nOriginal Sound and Your Sound will appear here for comparison.',
           style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.6),
           textAlign: TextAlign.center,
         ),
@@ -399,7 +399,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── Consumer Sound Profile active view ───────────────────────────────────────
+// ── Consumer saved sound active view ───────────────────────────────────────
 
 class _ConsumerActiveView extends ConsumerWidget {
   final ConsumerSoundProfile profile;
@@ -421,7 +421,7 @@ class _ConsumerActiveView extends ConsumerWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Text(
-              ko ? '현재 사운드 프로파일' : 'Current Sound Profile',
+              ko ? '현재 나만의 사운드' : 'Current saved sound',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
             ),
             const Spacer(),
@@ -502,8 +502,8 @@ class _ConsumerActiveView extends ConsumerWidget {
             Expanded(
               child: Text(
                 ko
-                    ? 'Sound Profile이 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
-                    : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
+                    ? '나만의 사운드가 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                    : 'Your Sound is ready. Connect your speaker to listen with it.',
                 style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
               ),
             ),
@@ -640,7 +640,7 @@ class _Legend extends StatelessWidget {
     return Row(children: [
       _LegendDot(color: Colors.white38, label: ko ? '원본 사운드' : 'Original Sound'),
       const SizedBox(width: 16),
-      const _LegendDot(color: Colors.greenAccent, label: 'Acoustic Tune'),
+      const _LegendDot(color: Colors.greenAccent, label: 'Your Sound'),
       const SizedBox(width: 16),
       _LegendDot(color: Colors.lightBlueAccent, label: ko ? '현재' : 'Current'),
     ]);

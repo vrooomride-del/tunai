@@ -9,7 +9,7 @@ extension PresetBarSelectionLabel on PresetBarSelection {
   String get label => switch (this) {
         PresetBarSelection.factory => 'Factory',
         PresetBarSelection.reference => 'Reference',
-        PresetBarSelection.aiTune => 'Acoustic Tune',
+        PresetBarSelection.aiTune => 'Your Sound',
         PresetBarSelection.myTune => 'My Tune',
         PresetBarSelection.nearWall => 'Near Wall',
         PresetBarSelection.desk => 'Desk',
@@ -19,7 +19,7 @@ extension PresetBarSelectionLabel on PresetBarSelection {
   String get labelKo => switch (this) {
         PresetBarSelection.factory => '기본',
         PresetBarSelection.reference => 'Reference',
-        PresetBarSelection.aiTune => 'Acoustic Tune',
+        PresetBarSelection.aiTune => 'Your Sound',
         PresetBarSelection.myTune => 'My Tune',
         PresetBarSelection.nearWall => '벽 가까이',
         PresetBarSelection.desk => '책상 위',

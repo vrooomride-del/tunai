@@ -225,8 +225,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             const SizedBox(height: 24),
                             _BoardBanner(
                               text: ko
-                                  ? 'TUNAI ONE이 준비되었습니다. 이제 Room Scan을 시작할 수 있습니다.'
-                                  : 'TUNAI ONE is ready. You can start Room Scan now.',
+                                  ? 'TUNAI ONE이 준비되었습니다. 이제 공간 분석을 시작할 수 있습니다.'
+                                  : 'TUNAI ONE is ready. You can start Room Analysis now.',
                               color: Colors.white24,
                               icon: Icons.check_circle_outline,
                             ),
@@ -425,7 +425,7 @@ class _ConnectedBody extends StatelessWidget {
 
           _FullWidthButton(
             key: const Key('consumer_start_room_button'),
-            label: ko ? '공간 스캔 시작' : 'Start Room Scan',
+            label: ko ? '공간 분석 시작' : 'Start Room Analysis',
             onTap: onStartMeasure,
           ),
           const SizedBox(height: 12),

@@ -7,7 +7,7 @@ import '../../core/room_measurement.dart';
 import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
 
-/// TUNE 탭 — Consumer Acoustic Tune 6-state flow.
+/// TUNE 탭 — Consumer Your Sound 6-state flow.
 /// No DSP, no EQ, no PEQ, no frequency data exposed.
 class AiScreen extends ConsumerStatefulWidget {
   final VoidCallback onApplied;
@@ -29,11 +29,11 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     TunePlan? plan;
     try {
       if (!scan.validatedMeasurement || scan.measurementId == null) {
-        throw StateError('A validated Room Scan is required.');
+        throw StateError('A validated Room Analysis is required.');
       }
       final measurement = await RoomMeasurementStore.load();
       if (measurement == null || measurement.id != scan.measurementId) {
-        throw StateError('The validated Room Scan measurement is unavailable.');
+        throw StateError('The validated Room Analysis measurement is unavailable.');
       }
       plan = const TunePlanner(now: DateTime.now).generate(measurement);
       await TunePlanStore.save(plan);
@@ -42,7 +42,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       final now = DateTime.now();
       final profile = ConsumerSoundProfile(
         id: plan.id,
-        name: '$roomLabel Acoustic Tune',
+        name: '$roomLabel Your Sound',
         roomType: scan.roomType,
         createdAt: now,
         updatedAt: now,
@@ -182,8 +182,8 @@ class _StateA extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 ko
-                    ? 'TUNAI 스피커와 연결하면 공간을 학습하고\n나만의 사운드 프로파일을 만들 수 있습니다.'
-                    : 'Connect your TUNAI speaker to let TUNAI\nlearn your room and create your Sound Profile.',
+                    ? 'TUNAI 스피커와 연결하면 공간을 학습하고\n나만의 사운드를 만들 수 있습니다.'
+                    : 'Connect your TUNAI speaker to let TUNAI\nlearn your room and create your personal sound.',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
                     fontSize: 14,
@@ -203,7 +203,7 @@ class _StateA extends StatelessWidget {
   }
 }
 
-// ── State B — No Room Scan ────────────────────────────────────────────────────
+// ── State B — No Room Analysis ────────────────────────────────────────────────────
 
 class _StateB extends StatelessWidget {
   final bool ko;
@@ -222,7 +222,7 @@ class _StateB extends StatelessWidget {
             children: [
               const Spacer(flex: 2),
               Text(
-                ko ? '아직 공간 스캔이 없습니다.' : 'No Room Scan yet.',
+                ko ? '아직 공간 분석이 없습니다.' : 'No Room Analysis yet.',
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -232,8 +232,8 @@ class _StateB extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 ko
-                    ? 'Room Scan을 먼저 완료하면\nAcoustic Tune을 만들 수 있습니다.'
-                    : 'Run a Room Scan first to create\nyour Acoustic Tune.',
+                    ? '공간 분석을 먼저 완료하면\n나만의 사운드를 만들 수 있습니다.'
+                    : 'Run a Room Analysis first to create\nYour Sound.',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
                     fontSize: 14,
@@ -242,7 +242,7 @@ class _StateB extends StatelessWidget {
               const SizedBox(height: 36),
               if (onGoRoom != null)
                 _TuneBigButton(
-                    label: ko ? 'Room Scan 시작' : 'Start Room Scan',
+                    label: ko ? 'Room Analysis 시작' : 'Start Room Analysis',
                     onTap: onGoRoom!),
               const Spacer(flex: 3),
             ],
@@ -280,7 +280,7 @@ class _StateC extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ko ? 'Room Scan 완료' : 'Room Scan Complete',
+                      ko ? 'Room Analysis 완료' : 'Room Analysis Complete',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.4),
                           fontSize: 11,
@@ -289,8 +289,8 @@ class _StateC extends StatelessWidget {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? '공간에 맞는\nAcoustic Tune을 만들 준비가 됐습니다.'
-                          : 'Ready to create your\nAcoustic Tune for this room.',
+                          ? '공간에 맞는\n나만의 사운드를 만들 준비가 됐습니다.'
+                          : 'Ready to create your\nYour Sound for this room.',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -301,8 +301,8 @@ class _StateC extends StatelessWidget {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? 'TUNAI가 공간 특성에 맞는 안전한 사운드 프로파일을 만듭니다.\n복잡한 설정 없이, 그저 좋은 소리를 들으면 됩니다.'
-                          : 'TUNAI creates a safe, room-matched Sound Profile.\nNo complex settings — just better sound.',
+                          ? 'TUNAI가 공간 특성에 맞는 안전한 나만의 사운드를 만듭니다.\n복잡한 설정 없이, 그저 좋은 소리를 들으면 됩니다.'
+                          : 'TUNAI creates a safe, room-matched personal sound.\nNo complex settings — just better sound.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14,
@@ -321,7 +321,7 @@ class _StateC extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _TuneBigButton(
-                label: ko ? 'Acoustic Tune 만들기' : 'Create Acoustic Tune',
+                label: ko ? '나만의 사운드 만들기' : 'Create Your Sound',
                 onTap: onCreate,
               ),
             ),
@@ -398,8 +398,8 @@ class _StateD extends StatelessWidget {
             children: [
               Text(
                 ko
-                    ? '이 공간에 맞는 안전한\n사운드 프로파일을 만들고 있습니다.'
-                    : 'Creating a safe Sound Profile\nfor this room.',
+                    ? '이 공간에 맞는 안전한\n나만의 사운드를 만들고 있습니다.'
+                    : 'Creating a safe personal sound\nfor this room.',
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -476,8 +476,8 @@ class _StateE extends StatelessWidget {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? '사운드 프로파일이 준비되었습니다.'
-                          : 'Your Sound Profile is ready.',
+                          ? '나만의 사운드가 준비되었습니다.'
+                          : 'Your Sound is ready.',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -488,8 +488,8 @@ class _StateE extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                       ko
-                          ? '이 공간에 맞게 안전하게 조정된 사운드 프로파일입니다.\n적용하면 바로 들을 수 있습니다.'
-                          : 'A safe, room-matched Sound Profile has been created.\nApply it to start listening.',
+                          ? '이 공간에 맞게 안전하게 조정된 나만의 사운드입니다.\n적용하면 바로 들을 수 있습니다.'
+                          : 'A safe, room-matched personal sound has been created.\nApply it to start listening.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14,
@@ -531,7 +531,7 @@ class _StateE extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _TuneBigButton(
-                label: ko ? 'Sound Profile 적용' : 'Apply Sound Profile',
+                label: ko ? '스피커에 적용' : 'Apply to Speaker',
                 onTap: onApply,
               ),
             ),
@@ -615,7 +615,7 @@ class _StateF extends StatelessWidget {
                               color: Color(0xFF69F0AE),
                               shape: BoxShape.circle)),
                       const SizedBox(width: 10),
-                      Text(ko ? '사운드 프로파일 활성화됨' : 'Sound Profile Active',
+                      Text(ko ? '나만의 사운드 적용됨' : 'Your Sound Active',
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.45),
                               fontSize: 11,
@@ -709,8 +709,8 @@ class _StateF extends StatelessWidget {
             style: const TextStyle(color: Colors.white, fontSize: 15)),
         content: Text(
           ko
-              ? '현재 사운드 프로파일을 비활성화하고 새로 만들겠습니까?'
-              : 'Deactivate the current Sound Profile and create a new one?',
+              ? '현재 나만의 사운드를 비활성화하고 새로 만들겠습니까?'
+              : 'Deactivate the current personal sound and create a new one?',
           style:
               const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
         ),
@@ -750,8 +750,8 @@ class _ConnectionNotice extends StatelessWidget {
         Expanded(
           child: Text(
             ko
-                ? 'Sound Profile이 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
-                : 'Sound Profile is ready. Connect your speaker to listen with this profile.',
+                ? '나만의 사운드가 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
+                : 'Your Sound is ready. Connect your speaker to listen with it.',
             style: const TextStyle(
                 color: Colors.white38, fontSize: 11, height: 1.5),
           ),

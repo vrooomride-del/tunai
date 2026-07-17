@@ -41,7 +41,7 @@ class AdvancedScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'For the mobile app, TUNAI creates safe room-matched sound profiles through Room Scan and Acoustic Tune.',
+                      'For the mobile app, TUNAI creates safe room-matched sound profiles through Room Analysis and Your Sound.',
                       style: TextStyle(
                         color: Color(0x99FFFFFF),
                         fontSize: 14,

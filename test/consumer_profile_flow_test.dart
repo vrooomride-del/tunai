@@ -214,7 +214,7 @@ void main() {
       ],
       child: _app(AiScreen(onApplied: () {})),
     ));
-    await tester.tap(find.text('Create Acoustic Tune'));
+    await tester.tap(find.text('Create Your Sound'));
     await tester.pump();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 3));
@@ -222,13 +222,13 @@ void main() {
     expect(prefs.getString('tunai_consumer_sound_profiles'), isNull);
   });
 
-  testWidgets('original onboarding and About TUNAI planning are restored',
+  testWidgets('release onboarding and About TUNAI copy is present',
       (tester) async {
     await tester.pumpWidget(_app(OnboardingScreen(onComplete: () {})));
-    expect(find.text('The audio paradigm is changing.'), findsOneWidget);
+    expect(find.text('Your speaker learns your room.'), findsOneWidget);
     expect(
       find.text(
-        'For too long,\nwe listened to sound locked inside the speaker.\n\nTUNAI opens that sound again\nfor your space and your taste.',
+        'Room Analysis listens from where you enjoy music and understands your space.',
       ),
       findsOneWidget,
     );
@@ -241,23 +241,18 @@ void main() {
     expect(find.textContaining('factory-tuned sound'), findsNothing);
   });
 
-  testWidgets('original MORE navigation and approved entries are restored',
+  testWidgets('release MORE navigation contains consumer entries only',
       (tester) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: MoreScreen())),
     );
     await tester.pump();
-    expect(find.text('COMMUNITY'), findsOneWidget);
-    expect(find.text('TUNAI PRO'), findsOneWidget);
-    expect(find.text('PROFILE LIBRARY'), findsOneWidget);
-    expect(find.text('FINE TUNE'), findsOneWidget);
+    expect(find.text('CONNECTED DEVICE'), findsOneWidget);
+    expect(find.text('SOUND PROFILES'), findsOneWidget);
+    expect(find.text('HELP & SUPPORT'), findsOneWidget);
     expect(find.text('ABOUT TUNAI'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('FACTORY MODE'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('FACTORY MODE'), findsOneWidget);
+    expect(find.text('SETTINGS'), findsOneWidget);
+    expect(find.textContaining('FACTORY'), findsNothing);
   });
 
   testWidgets('original ROOM and TUNE copy is restored', (tester) async {
@@ -282,7 +277,7 @@ void main() {
     ));
     expect(
       find.text(
-        'TUNAI creates a safe, room-matched Sound Profile.\nNo complex settings — just better sound.',
+        'TUNAI creates a safe, room-matched personal sound.\nNo complex settings — just better sound.',
       ),
       findsOneWidget,
     );

@@ -67,33 +67,6 @@ class FactoryScreen extends ConsumerWidget {
         child: Column(
           children: [
             const TunaiTopBar(subtitle: 'FACTORY'),
-            // Dev Simulation — debug builds only, hidden behind PIN-protected factory screen
-            if (kDebugMode)
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const DevSimulationScreen(
-                      physicalQaFixture: ConsumerDspPhysicalQaFixture(),
-                    ),
-                  ),
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  color: const Color(0xFF080C10),
-                  child: const Row(children: [
-                    Icon(Icons.science_outlined,
-                        color: Color(0xFF4A9EFF), size: 14),
-                    SizedBox(width: 8),
-                    Text('Developer Simulation',
-                        style: TextStyle(
-                            color: Color(0xFF4A9EFF),
-                            fontSize: 11,
-                            letterSpacing: 1)),
-                  ]),
-                ),
-              ),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -110,6 +83,40 @@ class FactoryScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const _FactoryServiceSections(),
+                    const SizedBox(height: 16),
+                    ExpansionTile(
+                      key: const Key('factory_engineering_section'),
+                      initiallyExpanded: false,
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      title: const Text('ENGINEERING',
+                          style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 13,
+                              letterSpacing: 2)),
+                      subtitle: const Text(
+                        'Developer Simulation · DSP QA · packet logs · PEQ test',
+                        style: TextStyle(color: Colors.white24, fontSize: 10),
+                      ),
+                      children: [
+                    if (kDebugMode)
+                      ListTile(
+                        key: const Key('factory_developer_simulation'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.science_outlined,
+                            color: Color(0xFF4A9EFF), size: 16),
+                        title: const Text('Developer Simulation',
+                            style: TextStyle(
+                                color: Color(0xFF4A9EFF), fontSize: 11)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DevSimulationScreen(
+                              physicalQaFixture: ConsumerDspPhysicalQaFixture(),
+                            ),
+                          ),
+                        ),
+                      ),
                     if (!isAdau1466) ...[
                       _Adau1701FactoryContent(),
                       const SizedBox(height: 24),
@@ -216,6 +223,8 @@ class FactoryScreen extends ConsumerWidget {
                         ]),
                       ),
                     ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -225,6 +234,73 @@ class FactoryScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _FactoryServiceSections extends StatelessWidget {
+  const _FactoryServiceSections();
+
+  @override
+  Widget build(BuildContext context) => const Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _FactoryGroup(
+        title: 'DEVICE INFORMATION',
+        items: [
+          'Product identity · TUNAI ONE',
+          'Firmware version · validated during service connection',
+          'Hardware revision · service record',
+          'Device ID · available after connection',
+        ],
+      ),
+      _FactoryGroup(
+        title: 'PRODUCTION TEST',
+        items: ['Speaker / channel test', 'BLE test', 'Microphone test'],
+      ),
+      _FactoryGroup(
+        title: 'CALIBRATION',
+        items: ['Factory calibration', 'Reset calibration data'],
+      ),
+      _FactoryGroup(
+        title: 'MAINTENANCE',
+        items: [
+          'Restore factory profile',
+          'Clear user data',
+          'Forget device',
+        ],
+      ),
+    ],
+  );
+}
+
+class _FactoryGroup extends StatelessWidget {
+  final String title;
+  final List<String> items;
+  const _FactoryGroup({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 18),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _SecLabel(title),
+      const SizedBox(height: 8),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: items.map((item) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Text(item,
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          )).toList(growable: false),
+        ),
+      ),
+    ]),
+  );
 }
 
 class _FactoryContent extends ConsumerWidget {

@@ -53,7 +53,7 @@ class PresetBar extends ConsumerWidget {
       case PresetBarSelection.aiTune:
         final result = ref.read(lastAiResultProvider);
         if (result == null) {
-          _snack(context, 'Acoustic Tune 결과가 없습니다 — TUNE 탭에서 먼저 생성하세요');
+          _snack(context, 'Your Sound 결과가 없습니다 — TUNE 탭에서 먼저 생성하세요');
           return;
         }
         peaks = result.bands
