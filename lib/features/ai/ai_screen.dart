@@ -33,7 +33,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       }
       final measurement = await RoomMeasurementStore.load();
       if (measurement == null || measurement.id != scan.measurementId) {
-        throw StateError('The validated Room Analysis measurement is unavailable.');
+        throw StateError(
+            'The validated Room Analysis measurement is unavailable.');
       }
       plan = const TunePlanner(now: DateTime.now).generate(measurement);
       await TunePlanStore.save(plan);
@@ -475,9 +476,7 @@ class _StateE extends StatelessWidget {
                     ]),
                     const SizedBox(height: 20),
                     Text(
-                      ko
-                          ? '나만의 사운드가 준비되었습니다.'
-                          : 'Your Sound is ready.',
+                      ko ? '나만의 사운드가 준비되었습니다.' : 'Your Sound is ready.',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -524,6 +523,8 @@ class _StateE extends StatelessWidget {
                       const SizedBox(height: 16),
                       _ConnectionNotice(ko: ko),
                     ],
+                    const SizedBox(height: 16),
+                    _StateVerificationNotice(ko: ko),
                   ],
                 ),
               ),
@@ -531,7 +532,7 @@ class _StateE extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _TuneBigButton(
-                label: ko ? '스피커에 적용' : 'Apply to Speaker',
+                label: ko ? '스피커 상태 확인 필요' : 'Verification Required',
                 onTap: onApply,
               ),
             ),
@@ -540,6 +541,33 @@ class _StateE extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StateVerificationNotice extends StatelessWidget {
+  final bool ko;
+  const _StateVerificationNotice({required this.ko});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const Key('consumer_dsp_state_verification_required'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          ko
+              ? '적용하기 전에 스피커 상태 확인이 필요합니다.'
+              : 'Speaker state verification required before applying.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.55),
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+      );
 }
 
 class _ResultCard extends StatelessWidget {
