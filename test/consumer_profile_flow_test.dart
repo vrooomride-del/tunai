@@ -225,10 +225,10 @@ void main() {
   testWidgets('release onboarding and About TUNAI copy is present',
       (tester) async {
     await tester.pumpWidget(_app(OnboardingScreen(onComplete: () {})));
-    expect(find.text('Your speaker learns your room.'), findsOneWidget);
+    expect(find.text('Your room shapes your sound.'), findsOneWidget);
     expect(
       find.text(
-        'Room Analysis listens from where you enjoy music and understands your space.',
+        'The same speaker can sound different in every room.\nTUNAI analyzes your listening space and creates a personalized sound profile.',
       ),
       findsOneWidget,
     );
@@ -255,18 +255,16 @@ void main() {
     expect(find.textContaining('FACTORY'), findsNothing);
   });
 
-  testWidgets('original ROOM and TUNE copy is restored', (tester) async {
+  testWidgets('Room Analysis introduction is visible before measurement', (tester) async {
     await tester.pumpWidget(
       ProviderScope(child: _app(const MeasureScreen(onMeasured: _noop))),
     );
     expect(
-        find.text(
-            'Sit where you usually listen.\nKeep the room quiet for a moment.'),
+        find.text('Your room shapes your sound.'),
         findsOneWidget);
     expect(
-        find.textContaining(
-            'Place your phone at your normal listening position.'),
-        findsNothing);
+        find.text('Walls, furniture, and placement affect how your speaker sounds.\n\nTUNAI analyzes your listening space and creates a personalized sound profile.'),
+        findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
 
     final scanNotifier = RoomScanResultNotifier();

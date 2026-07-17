@@ -1,12 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import '../ble/ble_controller.dart';
 import '../ble/consumer_product_identity.dart';
-import '../../core/tone_generator.dart';
 import '../../shared/first_run_guide_card.dart';
 import '../../core/consumer_input_source.dart';
 
@@ -25,15 +21,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   bool _isKo(BuildContext ctx) =>
       Localizations.localeOf(ctx).languageCode == 'ko';
 
-  Future<void> _runTestToneFlow() async {
-    final proceed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const _TestToneDialog(),
-    );
-    if (proceed == true) widget.onConnected();
-  }
-
   @override
   Widget build(BuildContext context) {
     final bState = ref.watch(bleProvider);
@@ -43,10 +30,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       if (next.connection == BleConnectionState.bluetoothOff &&
           prev?.connection != BleConnectionState.bluetoothOff) {
         _showBluetoothOffDialog(context);
-      }
-      if (next.connection == BleConnectionState.connected &&
-          prev?.connection != BleConnectionState.connected) {
-        _runTestToneFlow();
       }
     });
 
@@ -91,11 +74,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          ko
-                              ? 'TUNAI 스피커를 찾고 있습니다'
-                              : 'Looking for your TUNAI speaker',
-                          style: const TextStyle(
+                        const Text(
+                          'TUNAI ONE',
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 26,
                             fontWeight: FontWeight.w300,
@@ -106,8 +87,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                         const SizedBox(height: 20),
                         Text(
                           ko
-                              ? '스피커 전원이 켜져 있고 가까이에 있는지 확인해주세요.\n연결이 완료되면 TUNAI가 당신의 공간을 학습합니다.'
-                              : 'Make sure your speaker is powered on and nearby.\nOnce connected, TUNAI will learn your room.',
+                              ? '스피커를 연결해주세요\nBluetooth로 TUNAI 스피커를 연결합니다.'
+                              : 'Connect your speaker\nConnect your TUNAI speaker with Bluetooth.',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.45),
                             fontSize: 14,
@@ -266,7 +247,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                         else if (isIdle || notFound || hasSafeError)
                           _FullWidthButton(
                             key: const Key('consumer_ble_scan_button'),
-                            label: ko ? '스캔 시작' : 'Start Scan',
+                            label: ko ? '연결 시작' : 'Start Connection',
                             onTap: () => ref.read(bleProvider.notifier).scan(),
                           ),
                         if (!isConnected &&
@@ -387,7 +368,7 @@ class _ConnectedBody extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(
-                ko ? '연결됨' : 'Connected',
+                ko ? '연결됨 ✓' : 'Connected ✓',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.45),
                   fontSize: 12,
@@ -400,7 +381,7 @@ class _ConnectedBody extends StatelessWidget {
 
           // 타이틀
           Text(
-            ko ? '$name이 연결되었습니다.' : '$name is connected.',
+            name,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
@@ -412,8 +393,8 @@ class _ConnectedBody extends StatelessWidget {
           const SizedBox(height: 20),
           Text(
             ko
-                ? '이제 당신의 공간을 알려주세요.'
-                : "Now let's create a sound profile for your room.",
+                ? '나만의 사운드를 만들 준비가 되었습니다.'
+                : 'Ready to create your personal sound.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.45),
               fontSize: 15,
@@ -684,141 +665,6 @@ class _FullWidthButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// 연결 직후 테스트 톤(1kHz, 1초) 재생 확인 다이얼로그.
-/// pop(true) → MEASURE로 진행, pop(null/false 없음) → 안 닫힘(재시도/건너뛰기로만 진행)
-class _TestToneDialog extends StatefulWidget {
-  const _TestToneDialog();
-  @override
-  State<_TestToneDialog> createState() => _TestToneDialogState();
-}
-
-class _TestToneDialogState extends State<_TestToneDialog> {
-  final _player = AudioPlayer();
-  bool _playing = true;
-  bool _showTrouble = false;
-  String? _playError;
-
-  @override
-  void initState() {
-    super.initState();
-    _play();
-  }
-
-  Future<void> _play() async {
-    setState(() {
-      _playing = true;
-      _showTrouble = false;
-      _playError = null;
-    });
-    try {
-      final bytes = const ToneGenerator(
-        frequencyHz: 1000,
-        durationSeconds: 1,
-      ).generateWav();
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/tunai_test_tone.wav');
-      await file.writeAsBytes(bytes);
-      await _player.setFilePath(file.path);
-      await _player.play();
-      await Future.delayed(const Duration(milliseconds: 1000));
-    } catch (e) {
-      _playError = '$e';
-    }
-    if (mounted) setState(() => _playing = false);
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ko = Localizations.localeOf(context).languageCode == 'ko';
-    return AlertDialog(
-      backgroundColor: const Color(0xFF1A1A1A),
-      title: Text(
-        ko ? '소리 확인' : 'Sound Check',
-        style: const TextStyle(color: Colors.white, fontSize: 16),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _playing
-                ? (ko
-                    ? '처음 소리는 낮은 볼륨에서 시작됩니다.'
-                    : 'The first sound starts at a safe volume.')
-                : (ko
-                    ? '스피커에서 짧은 소리가 들리나요?'
-                    : 'Do you hear the test sound from your speaker?'),
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-          if (_playError != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              ko ? '재생 오류: $_playError' : 'Playback error: $_playError',
-              style: const TextStyle(color: Colors.redAccent, fontSize: 11),
-            ),
-          ],
-          if (_showTrouble) ...[
-            const SizedBox(height: 12),
-            Text(
-              ko ? '확인해보세요:' : 'Try these steps:',
-              style: const TextStyle(color: Colors.white38, fontSize: 11),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              ko
-                  ? '• 스피커 볼륨이 켜져 있는지 확인\n• 스피커 전원/연결 케이블 확인\n• 앰프 입력 소스가 맞는지 확인'
-                  : '• Check that the speaker volume is on\n• Check speaker power and cables\n• Make sure the amplifier input is correct',
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
-                height: 1.6,
-              ),
-            ),
-          ],
-        ],
-      ),
-      actions: [
-        if (_showTrouble)
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              ko ? '건너뛰기' : 'Skip',
-              style: const TextStyle(color: Colors.white24),
-            ),
-          ),
-        if (_showTrouble)
-          TextButton(
-            onPressed: _play,
-            child: Text(
-              ko ? '다시 시도' : 'Try Again',
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ),
-        if (!_playing) ...[
-          TextButton(
-            onPressed: () => setState(() => _showTrouble = true),
-            child: const Text('NO', style: TextStyle(color: Colors.white38)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('YES', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ],
     );
   }
 }

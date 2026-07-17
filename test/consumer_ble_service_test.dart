@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -491,6 +492,13 @@ void main() {
       ),
     );
 
+    expect(find.text('TUNAI ONE'), findsOneWidget);
+    expect(
+        find.text(
+            'Connect your speaker\nConnect your TUNAI speaker with Bluetooth.'),
+        findsOneWidget);
+    expect(find.text('Start Connection'), findsOneWidget);
+
     expect(find.text('PASS_ACK'), findsNothing);
     expect(find.text('PASS_HANDSHAKE'), findsNothing);
     expect(find.text('DSP1701.100.00.01'), findsNothing);
@@ -503,7 +511,7 @@ void main() {
     await tester.pump();
     expect(
         find.byKey(const Key('consumer_ble_device_selector')), findsOneWidget);
-    expect(find.text('TUNAI ONE'), findsOneWidget);
+    expect(find.text('TUNAI ONE'), findsNWidgets(2));
     expect(find.text('Strong signal'), findsOneWidget);
     expect(find.text('WONDOM ICP5'), findsNothing);
     expect(find.text('-42 dBm'), findsNothing);
@@ -516,11 +524,35 @@ void main() {
     expect(find.text('DSP1701.100.00.01'), findsNothing);
     expect(find.text('WONDOM ICP5'), findsNothing);
 
-    final dialog = find.byType(AlertDialog);
-    expect(dialog, findsOneWidget);
-    Navigator.of(tester.element(dialog)).pop(true);
-    await tester.pump();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Connected ✓'), findsOneWidget);
+    expect(find.text('Ready to create your personal sound.'), findsOneWidget);
+    expect(roomRequested, isFalse);
+    await tester.tap(find.byKey(const Key('consumer_start_room_button')));
     expect(roomRequested, isTrue);
+    service.dispose();
+  });
+
+  testWidgets('Korean CONNECT copy separates status and action',
+      (tester) async {
+    final service = _service(_FakeDriver(devices: []));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [consumerBleServiceProvider.overrideWithValue(service)],
+      child: MaterialApp(
+        locale: const Locale('ko', 'KR'),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('en'), Locale('ko')],
+        home: ConnectScreen(onConnected: () {}),
+      ),
+    ));
+    expect(find.text('TUNAI ONE'), findsOneWidget);
+    expect(
+        find.text('스피커를 연결해주세요\nBluetooth로 TUNAI 스피커를 연결합니다.'), findsOneWidget);
+    expect(find.text('연결 시작'), findsOneWidget);
     service.dispose();
   });
 

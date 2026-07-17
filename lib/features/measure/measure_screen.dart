@@ -142,7 +142,7 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
                   children: [
                     const SizedBox(height: 48),
                     Text(
-                      ko ? 'TUNAI가 당신의 공간을 배웁니다.' : 'Let TUNAI learn your room.',
+                      ko ? '당신의 공간이 소리를 결정합니다.' : 'Your room shapes your sound.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -154,8 +154,8 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? '평소 듣는 자리에 앉아 주세요.\n잠시 공간을 조용히 유지해 주세요.'
-                          : 'Sit where you usually listen.\nKeep the room quiet for a moment.',
+                          ? '벽, 가구, 스피커 배치에 따라 소리는 달라집니다.\n\nTUNAI가 공간을 분석하고 당신만의 사운드를 만들어드립니다.'
+                          : 'Walls, furniture, and placement affect how your speaker sounds.\n\nTUNAI analyzes your listening space and creates a personalized sound profile.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.45),
                         fontSize: 14,
