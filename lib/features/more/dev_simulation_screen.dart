@@ -18,6 +18,7 @@ import '../../core/consumer_sound_profile.dart';
 import '../../core/install_location.dart';
 import '../../core/consumer_dsp_deployment.dart';
 import '../../core/consumer_dsp_physical_qa_fixture.dart';
+import '../../core/consumer_dsp_physical_qa_setup.dart';
 import '../../core/tune_deployment_plan.dart';
 import '../../core/tune_plan.dart';
 import '../ble/ble_controller.dart';
@@ -45,11 +46,19 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
   String _dspResultDetails = 'No physical QA result in this session.';
   late ConsumerDspPhysicalQaFixture? _physicalQaFixture;
   final _originalGainController = TextEditingController();
+  ConsumerDspQaPairStatus _qaPairStatus = const ConsumerDspQaPairStatus(
+    storedTunePlanId: null,
+    selectedProfileId: null,
+    selectedProfileTunePlanId: null,
+    matches: false,
+    blockReason: 'notChecked',
+  );
 
   @override
   void initState() {
     super.initState();
     _physicalQaFixture = widget.physicalQaFixture;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshQaPairStatus());
   }
 
   @override
@@ -78,6 +87,15 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     });
   }
 
+  Future<ConsumerDspQaPairStatus> _refreshQaPairStatus() async {
+    final status = ConsumerDspQaPairStatus.evaluate(
+      storedTunePlan: await TunePlanStore.load(),
+      selectedProfile: ref.read(selectedConsumerProfileProvider),
+    );
+    if (mounted) setState(() => _qaPairStatus = status);
+    return status;
+  }
+
   Future<void> _applyDspTest() async {
     final plans = _validatedDspTestPlans;
     if (plans.isEmpty) {
@@ -98,14 +116,15 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
       _appendErr('DSP test blocked — no captured original-value snapshot');
       return;
     }
+    final pairStatus = await _refreshQaPairStatus();
     final profile = ref.read(selectedConsumerProfileProvider);
     final tunePlan = await TunePlanStore.load();
-    if (profile == null ||
-        tunePlan == null ||
-        profile.tunePlanId != tunePlan.id) {
+    if (!pairStatus.matches || profile == null || tunePlan == null) {
       _blockDsp('TUNE PLAN MISMATCH', 'tunePlanMismatch');
-      _appendErr(
-          'DSP test blocked — selected profile and TunePlan do not match');
+      _appendErr('DSP test blocked — ${pairStatus.blockReason}: '
+          'stored=${pairStatus.storedTunePlanId}, '
+          'profile=${pairStatus.selectedProfileId}, '
+          'profilePlan=${pairStatus.selectedProfileTunePlanId}');
       return;
     }
     final service = ref.read(consumerBleServiceProvider);
@@ -234,27 +253,18 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
         _appendErr('No room scan — run Simulate Room Scan first');
         return;
       }
-      _appendLog('Simulate Acoustic Tune creation started...');
+      _appendLog('Prepare developer QA TunePlan/profile pair started...');
       await Future.delayed(const Duration(milliseconds: 400));
-      final profile = ConsumerSoundProfile(
-        id: 'sim_${DateTime.now().millisecondsSinceEpoch}',
-        name: 'Living Room Acoustic Tune',
-        roomType: scan.roomType,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        micProfileName: scan.micProfileName,
-        confidence: scan.confidence,
-        isActive: false,
-        status: ConsumerProfileStatus.ready,
-        resultCards: scan.cards,
-        soundScoreBefore: 82,
-        soundScoreAfter: 94,
-        profileType: ConsumerProfileType.tunaiTune,
+      final status = await ConsumerDspPhysicalQaSetup.prepare(
+        scan: scan,
+        profiles: ref.read(consumerSoundProfileProvider.notifier),
+        now: DateTime.now(),
       );
-      await ref.read(consumerSoundProfileProvider.notifier).add(profile);
-      final profiles = ref.read(consumerSoundProfileProvider);
-      _appendLog(
-          'consumerSoundProfileProvider → ${profiles.length} profile(s), latest: ${profiles.first.name} (status: ready)');
+      setState(() => _qaPairStatus = status);
+      _appendLog('Stored TunePlan=${status.storedTunePlanId}; '
+          'selectedProfile=${status.selectedProfileId}; '
+          'selectedProfileTunePlan=${status.selectedProfileTunePlanId}; '
+          'match=${status.matches}');
     } catch (e) {
       _appendErr('Simulate Create Tune failed: $e');
       rethrow;
@@ -264,9 +274,12 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
   Future<void> _simulateApplyProfile() async {
     try {
       final profiles = ref.read(consumerSoundProfileProvider);
-      final ready = profiles
-          .where((p) => p.status == ConsumerProfileStatus.ready)
-          .toList();
+      final selected = ref.read(selectedConsumerProfileProvider);
+      final ready = selected?.status == ConsumerProfileStatus.ready
+          ? [selected!]
+          : profiles
+              .where((p) => p.status == ConsumerProfileStatus.ready)
+              .toList();
       if (ready.isEmpty) {
         _appendErr('No ready profile — run Simulate Acoustic Tune first');
         return;
@@ -275,6 +288,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
       await ref
           .read(consumerSoundProfileProvider.notifier)
           .setActive(ready.first.id);
+      await _refreshQaPairStatus();
       final active = ref.read(activeConsumerProfileProvider);
       if (active == null) {
         _appendErr(
@@ -319,6 +333,8 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     } catch (e) {
       _appendErr('Clear install location failed: $e');
     }
+    await TunePlanStore.clear();
+    await _refreshQaPairStatus();
     final afterScan = ref.read(roomScanResultProvider);
     final afterProfiles = ref.read(consumerSoundProfileProvider);
     final afterActive = ref.read(activeConsumerProfileProvider);
@@ -343,6 +359,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
         await ref.read(consumerSoundProfileProvider.notifier).delete(id);
       }
       ref.read(installLocationProvider.notifier).state = null;
+      await TunePlanStore.clear();
       _appendLog('Previous state cleared');
     } catch (e) {
       _appendErr('Reset failed: $e — continuing anyway');
@@ -372,6 +389,7 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
         'activeProfile: ${active?.name ?? "null"} (status: ${active?.status.name ?? "-"})');
     _appendLog(
         '=== Done. Navigate to TUNE → State F, LISTEN → ConsumerActiveView. ===');
+    await _refreshQaPairStatus();
   }
 
   void _verifyCurrentState() {
@@ -498,6 +516,45 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
     );
   }
 
+  Widget _qaPairPanel() => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'PERSISTED QA PAIR',
+              style: TextStyle(color: Colors.white54, fontSize: 10),
+            ),
+            _StatusRow(
+              label: 'Stored TunePlan ID',
+              value: _qaPairStatus.storedTunePlanId ?? 'missing',
+            ),
+            _StatusRow(
+              label: 'Selected profile ID',
+              value: _qaPairStatus.selectedProfileId ?? 'missing',
+            ),
+            _StatusRow(
+              label: 'Selected profile TunePlan ID',
+              value: _qaPairStatus.selectedProfileTunePlanId ?? 'missing',
+            ),
+            _StatusRow(
+              label: 'Match',
+              value: _qaPairStatus.matches ? 'yes' : 'no',
+            ),
+            _StatusRow(
+              label: 'Block reason',
+              value: _qaPairStatus.blockReason,
+            ),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final scan = ref.watch(roomScanResultProvider);
@@ -569,7 +626,15 @@ class _DevSimulationScreenState extends ConsumerState<DevSimulationScreen> {
                       color: const Color(0xFFFFD700),
                       onTap: _verifyCurrentState),
                   if (_physicalQaFixture != null) _physicalQaPanel(),
+                  if (_physicalQaFixture != null) _qaPairPanel(),
+                  if (_physicalQaFixture != null)
+                    _DevButton(
+                      label: 'Prepare Physical QA Profile + TunePlan',
+                      color: const Color(0xFF22C55E),
+                      onTap: _simulateCreateTune,
+                    ),
                   _DevButton(
+                    key: const ValueKey('apply_dsp_test'),
                     label: 'Apply DSP Test',
                     color: const Color(0xFFFF8A00),
                     onTap: _applyDspTest,
@@ -669,8 +734,12 @@ class _DevButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color color;
-  const _DevButton(
-      {required this.label, required this.onTap, this.color = Colors.white54});
+  const _DevButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.color = Colors.white54,
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(

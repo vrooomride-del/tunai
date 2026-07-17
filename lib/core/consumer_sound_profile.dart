@@ -275,6 +275,14 @@ class ConsumerSoundProfileNotifier
 
   late final Future<void> _hydrated;
 
+  ConsumerSoundProfile? get selectedProfile =>
+      state.where((profile) => profile.isSelected).firstOrNull;
+
+  Future<void> reload() async {
+    await _hydrated;
+    await _load();
+  }
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kKey);
@@ -410,12 +418,17 @@ class ConsumerSoundProfileNotifier
   ///                              is uncertain — never claim notDeployed)
   static TuneDeploymentStatus _deploymentStatusFor(
     ConsumerDspDeploymentRecord record,
-  ) => switch (record.result) {
-    ConsumerDspDeploymentRecordResult.applied => TuneDeploymentStatus.applied,
-    ConsumerDspDeploymentRecordResult.restored => TuneDeploymentStatus.notDeployed,
-    ConsumerDspDeploymentRecordResult.blocked => TuneDeploymentStatus.notDeployed,
-    ConsumerDspDeploymentRecordResult.failed => TuneDeploymentStatus.unknown,
-  };
+  ) =>
+      switch (record.result) {
+        ConsumerDspDeploymentRecordResult.applied =>
+          TuneDeploymentStatus.applied,
+        ConsumerDspDeploymentRecordResult.restored =>
+          TuneDeploymentStatus.notDeployed,
+        ConsumerDspDeploymentRecordResult.blocked =>
+          TuneDeploymentStatus.notDeployed,
+        ConsumerDspDeploymentRecordResult.failed =>
+          TuneDeploymentStatus.unknown,
+      };
 
   Future<void> deactivateAll() async {
     await _hydrated;

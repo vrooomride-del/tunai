@@ -75,6 +75,30 @@ void main() {
         findsOneWidget);
   });
 
+  testWidgets('Run Full Flow persists and selects a matching QA pair',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: DevSimulationScreen()),
+      ),
+    );
+    await tester.tap(find.text('Run Full Flow (A→F)'));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(DevSimulationScreen)),
+    );
+    final selected = container.read(selectedConsumerProfileProvider);
+    final storedPlan = await TunePlanStore.load();
+    expect(storedPlan, isNotNull);
+    expect(selected, isNotNull);
+    expect(selected!.tunePlanId, storedPlan!.id);
+    expect(selected.isSelected, isTrue);
+    expect(selected.isActive, isTrue);
+  });
+
   testWidgets('manual gain still requires explicit snapshot confirmation',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -88,8 +112,18 @@ void main() {
       ),
     );
     await tester.enterText(find.byType(TextField), '-1.0');
-    final applyButton = find.text('Apply DSP Test').first;
-    await tester.drag(find.byType(ListView), const Offset(0, -160));
+    final applyButton = find.byKey(const ValueKey('apply_dsp_test'));
+    await tester.scrollUntilVisible(
+      applyButton,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -24));
     await tester.pump();
     await tester.tap(applyButton);
     await tester.pump();
