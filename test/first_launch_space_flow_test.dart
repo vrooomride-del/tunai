@@ -72,31 +72,38 @@ void main() {
 
   // ── C.3 Connect UX step hierarchy ────────────────────────────────────────
 
-  group('Connect screen — STEP 1 / STEP 2 hierarchy', () {
-    testWidgets('EN: STEP 1 and STEP 2 labels visible when disconnected',
+  group('Connect screen — step progress indicators (non-interactive)', () {
+    testWidgets('EN: step labels and single CTA visible when disconnected',
         (tester) async {
       await tester.pumpWidget(ProviderScope(
         child: _en(ConnectScreen(onConnected: () {})),
       ));
       await tester.pump();
 
-      expect(find.text('STEP 1'), findsOneWidget);
-      expect(find.text('Connect Speaker'), findsWidgets); // appears in step label and guide card button
-      expect(find.text('STEP 2'), findsOneWidget);
-      expect(find.text('Analyze Space'), findsOneWidget);
+      // Step indicator labels (non-interactive text, no buttons)
+      expect(find.text('Connect Speaker'), findsWidgets); // step label + CTA
+      expect(find.text('Analyze Space'), findsOneWidget); // step label only
+      // Single primary CTA at bottom
+      expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
+      // Informational card with no button inside
+      expect(find.byKey(const Key('consumer_connect_info_card')), findsOneWidget);
+      // No old-style STEP badge text
+      expect(find.text('STEP 1'), findsNothing);
+      expect(find.text('STEP 2'), findsNothing);
     });
 
-    testWidgets('KO: 1단계 / 2단계 labels visible when disconnected',
+    testWidgets('KO: step labels and single CTA visible when disconnected',
         (tester) async {
       await tester.pumpWidget(ProviderScope(
         child: _ko(ConnectScreen(onConnected: () {})),
       ));
       await tester.pump();
 
-      expect(find.text('1단계'), findsOneWidget);
-      expect(find.text('스피커 연결'), findsWidgets); // appears in step label and guide card button
-      expect(find.text('2단계'), findsOneWidget);
-      expect(find.text('공간 분석'), findsWidgets); // appears in step label and guide card label
+      expect(find.text('스피커 연결'), findsWidgets); // step label + CTA
+      expect(find.text('공간 분석'), findsOneWidget); // step label only
+      expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
+      expect(find.text('스피커 연결하기'), findsOneWidget); // bottom CTA
+      expect(find.byKey(const Key('consumer_connect_info_card')), findsOneWidget);
     });
 
     testWidgets('No old "Bluetooth로 TUNAI" subtitle visible', (tester) async {
@@ -106,6 +113,24 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('Bluetooth로 TUNAI'), findsNothing);
+    });
+
+    testWidgets('Step rows have no GestureDetector (non-interactive)',
+        (tester) async {
+      await tester.pumpWidget(ProviderScope(
+        child: _en(ConnectScreen(onConnected: () {})),
+      ));
+      await tester.pump();
+
+      // _StepRow builds a Row with no GestureDetector — verify step text is
+      // not wrapped in any tappable widget by checking the widget key.
+      // The only GestureDetectors on screen should be the bottom CTA and Cancel.
+      final gestureDetectors = tester
+          .widgetList<GestureDetector>(find.byType(GestureDetector))
+          .toList();
+      // Should have at most 1 primary CTA GestureDetector (scan button)
+      // No step row GestureDetectors
+      expect(gestureDetectors.length, lessThanOrEqualTo(2));
     });
   });
 

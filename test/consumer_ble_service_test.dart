@@ -492,11 +492,14 @@ void main() {
       ),
     );
 
-    expect(find.text('STEP 1'), findsOneWidget);
+    // Step progress indicators (non-interactive circles + labels)
+    expect(find.text('Connect Speaker'), findsWidgets); // step label + CTA
+    expect(find.text('Analyze Space'), findsOneWidget); // step label only
+    // Single primary CTA at bottom
+    expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
     expect(find.text('Connect Speaker'), findsWidgets);
-    expect(find.text('STEP 2'), findsOneWidget);
-    expect(find.text('Analyze Space'), findsOneWidget);
-    expect(find.text('Start Connection'), findsOneWidget);
+    // Informational card visible, no card button
+    expect(find.byKey(const Key('consumer_connect_info_card')), findsOneWidget);
 
     expect(find.text('PASS_ACK'), findsNothing);
     expect(find.text('PASS_HANDSHAKE'), findsNothing);
@@ -548,11 +551,14 @@ void main() {
         home: ConnectScreen(onConnected: () {}),
       ),
     ));
-    expect(find.text('1단계'), findsOneWidget);
-    expect(find.text('스피커 연결'), findsWidgets);
-    expect(find.text('2단계'), findsOneWidget);
-    expect(find.text('공간 분석'), findsWidgets);
-    expect(find.text('연결 시작'), findsOneWidget);
+    // Step progress indicators
+    expect(find.text('스피커 연결'), findsWidgets); // step label + CTA
+    expect(find.text('공간 분석'), findsOneWidget); // step label only
+    // Single primary CTA
+    expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
+    expect(find.text('스피커 연결하기'), findsOneWidget);
+    // Informational card
+    expect(find.byKey(const Key('consumer_connect_info_card')), findsOneWidget);
     service.dispose();
   });
 

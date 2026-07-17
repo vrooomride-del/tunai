@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../ble/ble_controller.dart';
 import '../ble/consumer_product_identity.dart';
-import '../../shared/first_run_guide_card.dart';
 
 /// CONNECT 탭 — 스피커 BLE 스캔/연결만 담당.
 /// 연결 성공 시 [onConnected]로 MEASURE 탭 자동 전환을 요청한다.
@@ -45,84 +44,41 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         bState.connection == BleConnectionState.unsupported ||
         bState.connection == BleConnectionState.connectionLost;
 
-    final goTo = widget.onGoTo ?? (_) {};
-
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: isConnected
-            ? _ConnectedView(
+            ? _ConnectedLayout(
                 deviceName: bState.deviceName,
+                detectedBoard: bState.detectedBoard,
                 onStartMeasure: widget.onConnected,
-                onDisconnect: () => ref.read(bleProvider.notifier).disconnect(),
+                onDisconnect: () =>
+                    ref.read(bleProvider.notifier).disconnect(),
                 onForget: () => ref.read(bleProvider.notifier).forgetDevice(),
                 ko: ko,
-                onGoTo: goTo,
               )
             : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── 퍼스트런 안내 카드 ────────────────────────────
+                  // ── 비대화형 단계 진행 표시 ────────────────────────
                   Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: FirstRunGuideCard(onGoTo: goTo),
-                  ),
-
-                  // ── 상단 헤더 (스텝 계층) ────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 16, 32, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // STEP 1 — active
-                        Row(children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              ko ? '1단계' : 'STEP 1',
-                              style: const TextStyle(color: Colors.black, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              ko ? '스피커 연결' : 'Connect Speaker',
-                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w300, letterSpacing: 0.2),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(height: 14),
-                        // STEP 2 — upcoming / dimmed
-                        Row(children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white24),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              ko ? '2단계' : 'STEP 2',
-                              style: const TextStyle(color: Colors.white38, fontSize: 9, letterSpacing: 1.5),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              ko ? '공간 분석' : 'Analyze Space',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15, fontWeight: FontWeight.w300),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ]),
-                      ],
+                    padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+                    child: _StepProgress(
+                      step1Done: false,
+                      step2Active: false,
+                      ko: ko,
                     ),
                   ),
 
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 24),
+
+                  // ── 안내 카드 (버튼 없음) ─────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: _ConnectInfoCard(ko: ko),
+                  ),
+
+                  const SizedBox(height: 24),
 
                   // ── 스캔 상태 ─────────────────────────────────────
                   Expanded(
@@ -156,15 +112,13 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                               decoration: InputDecoration(
                                 enabledBorder: OutlineInputBorder(
                                   borderSide: BorderSide(
-                                    color: Colors.white.withValues(
-                                      alpha: 0.2,
-                                    ),
+                                    color:
+                                        Colors.white.withValues(alpha: 0.2),
                                   ),
                                 ),
                                 focusedBorder: const OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Colors.white54,
-                                  ),
+                                  borderSide:
+                                      BorderSide(color: Colors.white54),
                                 ),
                               ),
                               style: const TextStyle(color: Colors.white),
@@ -242,18 +196,18 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     ),
                   ),
 
-                  // ── 하단 버튼 ─────────────────────────────────────
+                  // ── 하단 단일 CTA ─────────────────────────────────
                   Padding(
                     padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
                     child: Column(
                       children: [
                         if (isScanning || isConnecting || isReconnecting)
                           _FullWidthButton(
-                            label: isConnecting || isReconnecting
-                                ? (isReconnecting
-                                    ? (ko ? '재연결 중...' : 'Reconnecting...')
-                                    : (ko ? '연결 중...' : 'Connecting...'))
-                                : (ko ? '검색 중...' : 'Searching...'),
+                            label: isReconnecting
+                                ? (ko ? '재연결 중...' : 'Reconnecting...')
+                                : isConnecting
+                                    ? (ko ? '연결 중...' : 'Connecting...')
+                                    : (ko ? '검색 중...' : 'Searching...'),
                             filled: false,
                             onTap: null,
                           )
@@ -270,8 +224,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                         else if (isIdle || notFound || hasSafeError)
                           _FullWidthButton(
                             key: const Key('consumer_ble_scan_button'),
-                            label: ko ? '연결 시작' : 'Start Connection',
-                            onTap: () => ref.read(bleProvider.notifier).scan(),
+                            label: ko ? '스피커 연결하기' : 'Connect Speaker',
+                            onTap: () =>
+                                ref.read(bleProvider.notifier).scan(),
                           ),
                         if (!isConnected &&
                             bState.hasKnownDevice &&
@@ -285,7 +240,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                 ref.read(bleProvider.notifier).forgetDevice(),
                             child: Text(
                               ko ? '저장된 기기 지우기' : 'Forget saved device',
-                              style: const TextStyle(color: Colors.white38),
+                              style:
+                                  const TextStyle(color: Colors.white38),
                             ),
                           ),
                         ],
@@ -317,139 +273,285 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   }
 }
 
-// ── Connected 전체화면 뷰 ─────────────────────────────────────────────────────
-class _ConnectedView extends StatelessWidget {
+// ── 연결됨 전체 레이아웃 ─────────────────────────────────────────────────────────
+class _ConnectedLayout extends StatelessWidget {
   final String? deviceName;
+  final DetectedBoard? detectedBoard;
   final VoidCallback onStartMeasure;
   final VoidCallback onDisconnect;
   final VoidCallback onForget;
   final bool ko;
-  final void Function(int) onGoTo;
-  const _ConnectedView({
+  const _ConnectedLayout({
     required this.deviceName,
+    required this.detectedBoard,
     required this.onStartMeasure,
     required this.onDisconnect,
     required this.onForget,
     required this.ko,
-    required this.onGoTo,
   });
 
   @override
   Widget build(BuildContext context) {
     final name = deviceName ?? 'TUNAI ONE';
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(0, 24, 0, 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FirstRunGuideCard(onGoTo: onGoTo),
-          const SizedBox(height: 8),
-          _ConnectedBody(
-            name: name,
-            onStartMeasure: onStartMeasure,
-            onDisconnect: onDisconnect,
-            onForget: onForget,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── 단계 진행 (1단계 완료, 2단계 활성) ──────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+          child: _StepProgress(
+            step1Done: true,
+            step2Active: true,
             ko: ko,
           ),
-        ],
-      ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── 연결됨 정보 + 보조 액션 (스크롤 가능) ────────────────────
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 연결 상태 인디케이터
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF69F0AE),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      ko ? '연결됨 ✓' : 'Connected ✓',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.45),
+                        fontSize: 12,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w300,
+                    height: 1.35,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  ko
+                      ? '나만의 사운드를 만들 준비가 되었습니다.'
+                      : 'Ready to create your personal sound.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 15,
+                    height: 1.6,
+                  ),
+                ),
+
+                if (detectedBoard == DetectedBoard.adau1466) ...[
+                  const SizedBox(height: 20),
+                  _BoardBanner(
+                    text: ko
+                        ? 'TUNAI ONE이 준비되었습니다. 이제 공간 분석을 시작할 수 있습니다.'
+                        : 'TUNAI ONE is ready. You can start Space Analysis now.',
+                    color: Colors.white24,
+                    icon: Icons.check_circle_outline,
+                  ),
+                ],
+
+                const SizedBox(height: 28),
+                _InputSourceSection(ko: ko, isConnected: true),
+
+                const SizedBox(height: 28),
+                _FullWidthButton(
+                  key: const Key('consumer_ble_disconnect_button'),
+                  label: ko ? '연결 해제' : 'Disconnect',
+                  filled: false,
+                  onTap: onDisconnect,
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  key: const Key('consumer_ble_forget_button'),
+                  onPressed: onForget,
+                  child: Text(
+                    ko ? '기기 지우기' : 'Forget Device',
+                    style: const TextStyle(color: Colors.white38),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ── 단일 기본 CTA ─────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+          child: _FullWidthButton(
+            key: const Key('consumer_start_room_button'),
+            label: ko ? '공간 분석하기' : 'Analyze Your Space',
+            onTap: onStartMeasure,
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _ConnectedBody extends StatelessWidget {
-  final String name;
-  final VoidCallback onStartMeasure;
-  final VoidCallback onDisconnect;
-  final VoidCallback onForget;
+// ── 비대화형 단계 진행 표시 ───────────────────────────────────────────────────────
+class _StepProgress extends StatelessWidget {
+  final bool step1Done;
+  final bool step2Active;
   final bool ko;
-  const _ConnectedBody({
-    required this.name,
-    required this.onStartMeasure,
-    required this.onDisconnect,
-    required this.onForget,
+  const _StepProgress({
+    required this.step1Done,
+    required this.step2Active,
     required this.ko,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 12, 32, 0),
+    final step1Active = !step1Done;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _StepRow(
+          number: '1',
+          label: ko ? '스피커 연결' : 'Connect Speaker',
+          done: step1Done,
+          active: step1Active,
+        ),
+        const SizedBox(height: 14),
+        _StepRow(
+          number: '2',
+          label: ko ? '공간 분석' : 'Analyze Space',
+          done: false,
+          active: step2Active,
+        ),
+      ],
+    );
+  }
+}
+
+class _StepRow extends StatelessWidget {
+  final String number;
+  final String label;
+  final bool done;
+  final bool active;
+  const _StepRow({
+    required this.number,
+    required this.label,
+    required this.done,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final circleColor = done
+        ? const Color(0xFF69F0AE)
+        : active
+            ? Colors.white
+            : Colors.transparent;
+    final circleBorder = done || active ? null : Border.all(color: Colors.white24);
+    final numberColor = done
+        ? Colors.black
+        : active
+            ? Colors.black
+            : Colors.white24;
+    final labelColor = done || active
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.3);
+
+    return Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: circleColor,
+            border: circleBorder,
+          ),
+          alignment: Alignment.center,
+          child: done
+              ? const Icon(Icons.check, size: 12, color: Colors.black)
+              : Text(
+                  number,
+                  style: TextStyle(
+                    color: numberColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: labelColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w300,
+              letterSpacing: 0.1,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 안내 카드 (버튼 없음) ─────────────────────────────────────────────────────────
+class _ConnectInfoCard extends StatelessWidget {
+  final bool ko;
+  const _ConnectInfoCard({required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('consumer_connect_info_card'),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 연결 상태 인디케이터
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF69F0AE),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                ko ? '연결됨 ✓' : 'Connected ✓',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-
-          // 타이틀
           Text(
-            name,
+            ko ? 'TUNAI 스피커를 연결해주세요.' : 'Connect your TUNAI speaker.',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 28,
+              fontSize: 15,
               fontWeight: FontWeight.w300,
-              height: 1.35,
-              letterSpacing: -0.2,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 6),
           Text(
             ko
-                ? '나만의 사운드를 만들 준비가 되었습니다.'
-                : 'Ready to create your personal sound.',
+                ? '스피커를 연결하면 공간 분석을 시작할 수 있습니다.'
+                : 'Space analysis becomes available after connection.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.45),
-              fontSize: 15,
-              height: 1.6,
+              fontSize: 12,
+              height: 1.55,
             ),
           ),
-
-          const SizedBox(height: 32),
-
-          _FullWidthButton(
-            key: const Key('consumer_start_room_button'),
-            label: ko ? '공간 분석 시작' : 'Start Space Analysis',
-            onTap: onStartMeasure,
-          ),
-          const SizedBox(height: 12),
-          _FullWidthButton(
-            key: const Key('consumer_ble_disconnect_button'),
-            label: ko ? '연결 해제' : 'Disconnect',
-            filled: false,
-            onTap: onDisconnect,
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            key: const Key('consumer_ble_forget_button'),
-            onPressed: onForget,
-            child: Text(
-              ko ? '기기 지우기' : 'Forget Device',
-              style: const TextStyle(color: Colors.white38),
-            ),
-          ),
-          const SizedBox(height: 36),
-          _InputSourceSection(ko: ko, isConnected: true),
         ],
       ),
     );
@@ -492,34 +594,29 @@ class _ScanningAnimationState extends State<_ScanningAnimation>
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FadeTransition(
-            opacity: _fade,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: Colors.white.withValues(alpha: 0.5),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  widget.message,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.6),
-                    fontSize: 13,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ],
+      child: FadeTransition(
+        opacity: _fade,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Text(
+              widget.message,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 13,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -575,7 +672,8 @@ class _ScanFailureGuide extends StatelessWidget {
               : 'Turn on speaker and check the power cable',
         ),
         _Tip(ko ? '스피커와 더 가까이서 시도해보세요' : 'Move closer to your speaker'),
-        _Tip(ko ? '블루투스가 켜져 있는지 확인해주세요' : 'Make sure Bluetooth is enabled'),
+        _Tip(
+            ko ? '블루투스가 켜져 있는지 확인해주세요' : 'Make sure Bluetooth is enabled'),
       ],
     );
   }
@@ -704,7 +802,8 @@ Future<void> _showBluetoothOffDialog(BuildContext context) async {
       ),
       content: const Text(
         '블루투스가 꺼져 있습니다. 설정에서 켜주세요.',
-        style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+        style:
+            TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
       ),
       actions: [
         TextButton(
@@ -726,8 +825,7 @@ Future<void> _showBluetoothOffDialog(BuildContext context) async {
   );
 }
 
-// ── Measurement Device Section ────────────────────────────────────────────────
-
+// ── 측정 장치 표시 ─────────────────────────────────────────────────────────────
 class _InputSourceSection extends StatelessWidget {
   final bool ko;
   final bool isConnected;
@@ -750,20 +848,32 @@ class _InputSourceSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.white.withValues(alpha: isConnected ? 0.2 : 0.07)),
+            border: Border.all(
+                color: Colors.white
+                    .withValues(alpha: isConnected ? 0.2 : 0.07)),
             borderRadius: BorderRadius.circular(6),
-            color: isConnected ? Colors.white.withValues(alpha: 0.04) : Colors.transparent,
+            color: isConnected
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.transparent,
           ),
           child: Row(children: [
-            Icon(Icons.smartphone, color: isConnected ? Colors.white70 : Colors.white24, size: 16),
+            Icon(
+              Icons.smartphone,
+              color: isConnected ? Colors.white70 : Colors.white24,
+              size: 16,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 isConnected
                     ? (ko ? '✓ 스마트폰 마이크' : '✓ Smartphone microphone')
-                    : (ko ? '스피커를 연결하면 측정 장치를 확인할 수 있습니다.' : 'Connect your speaker to view measurement device.'),
+                    : (ko
+                        ? '스피커를 연결하면 측정 장치를 확인할 수 있습니다.'
+                        : 'Connect your speaker to view measurement device.'),
                 style: TextStyle(
-                  color: isConnected ? Colors.white : Colors.white.withValues(alpha: 0.28),
+                  color: isConnected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.28),
                   fontSize: 12,
                   height: 1.5,
                 ),
