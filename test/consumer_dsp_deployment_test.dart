@@ -163,12 +163,11 @@ void main() {
     ]);
   });
 
-  test('concurrent deployment is blocked while the first command waits',
-      () async {
+  test('concurrent execution on the same executor is blocked', () async {
     final response = Completer<List<int>>();
-    final firstTransport = _FakeTransport(responses: [response.future]);
+    final transport = _FakeTransport(responses: [response.future]);
     final executor = ConsumerDspDeploymentExecutor(
-      transport: firstTransport,
+      transport: transport,
       commandTimeout: const Duration(seconds: 1),
     );
     final first = executor.execute(
@@ -178,16 +177,60 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    final second = await ConsumerDspDeploymentExecutor(
-      transport: _FakeTransport(),
-    ).execute(
+    // Second call on the SAME executor must be blocked — the lock is instance-owned.
+    final second = await executor.execute(
       plans: [_plan()],
       expectedDeviceIdentifier: 'device-1',
       explicitlyConfirmed: true,
     );
     expect(second.failure, ConsumerDspDeploymentFailure.concurrentDeployment);
+
+    // Complete the pending first command; remaining 2 commands use default ACK.
     response.complete(Icp5PeqCommandBuilder.peqAck);
     expect((await first).outcome, ConsumerDspDeploymentOutcome.applied);
+  });
+
+  test('lock is released after successful execution', () async {
+    final executor = ConsumerDspDeploymentExecutor(transport: _FakeTransport());
+    await executor.execute(
+      plans: [_plan()],
+      expectedDeviceIdentifier: 'device-1',
+      explicitlyConfirmed: true,
+    );
+    final second = await executor.execute(
+      plans: [_plan()],
+      expectedDeviceIdentifier: 'device-1',
+      explicitlyConfirmed: true,
+    );
+    expect(second.outcome, ConsumerDspDeploymentOutcome.applied);
+  });
+
+  test('lock is released after rollback failure', () async {
+    final transport = _FakeTransport(responses: [
+      Icp5PeqCommandBuilder.peqAck, // freq ACK
+      Icp5PeqCommandBuilder.peqAck, // gain ACK
+      [0x55], // q → invalid ACK, rollback begins
+      Icp5PeqCommandBuilder.peqAck, // restore gain
+      [0x55], // restore freq → rollback fails
+    ]);
+    final executor = ConsumerDspDeploymentExecutor(
+      transport: transport,
+      commandTimeout: const Duration(seconds: 1),
+    );
+    final result = await executor.execute(
+      plans: [_plan()],
+      expectedDeviceIdentifier: 'device-1',
+      explicitlyConfirmed: true,
+    );
+    expect(result.failure, ConsumerDspDeploymentFailure.rollbackFailed);
+
+    // Lock must be released in finally regardless of rollback outcome.
+    final second = await executor.execute(
+      plans: [_plan()],
+      expectedDeviceIdentifier: 'device-1',
+      explicitlyConfirmed: true,
+    );
+    expect(second.outcome, ConsumerDspDeploymentOutcome.applied);
   });
 
   test('timeout is categorized and does not claim a rollback without an ACK',

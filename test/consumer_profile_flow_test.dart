@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
 import 'package:tunai/core/room_scan_result.dart';
+import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
 import 'package:tunai/features/ble/consumer_ble_service.dart';
@@ -100,6 +101,44 @@ class _Driver implements ConsumerBleGattDriver {
   Future<ConsumerBleConnection> connect(ConsumerBleDevice device) async =>
       _Connection();
 }
+
+// ── Deployment persistence helpers ───────────────────────────────────────────
+
+ConsumerDspDeploymentRecord _record({
+  required ConsumerDspDeploymentRecordResult result,
+  bool dspApplied = false,
+}) => ConsumerDspDeploymentRecord(
+      tunePlanId: 'plan-1',
+      deviceIdentifier: 'device-1',
+      attemptedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      bandCount: 1,
+      result: result,
+      dspApplied: dspApplied,
+    );
+
+void _expectStatus(
+  ConsumerSoundProfileNotifier notifier,
+  String profileId,
+  TuneDeploymentStatus expected,
+) {
+  final profile = notifier.state.firstWhere((p) => p.id == profileId);
+  expect(profile.deploymentStatus, expected);
+}
+
+ConsumerSoundProfile _profileWithId(String id) => ConsumerSoundProfile(
+      id: id,
+      name: 'Test Profile $id',
+      roomType: 'Living Room',
+      createdAt: _created,
+      updatedAt: _created,
+      micProfileName: 'Generic',
+      confidence: 'High',
+      isActive: false,
+      status: ConsumerProfileStatus.ready,
+      resultCards: kDefaultResultCards,
+    );
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -299,4 +338,119 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // ── Deployment persistence truth (Findings 4 & 5) ──────────────────────────
+
+  group('deployment persistence truth', () {
+
+  test('blocked result persists notDeployed', () async {
+    final notifier = ConsumerSoundProfileNotifier();
+    await notifier.add(_profileWithId('p1'));
+    await notifier.recordDspDeployment(
+      'p1',
+      _record(result: ConsumerDspDeploymentRecordResult.blocked),
+    );
+    _expectStatus(notifier, 'p1', TuneDeploymentStatus.notDeployed);
+  });
+
+  test('restored result (rollback succeeded) persists notDeployed', () async {
+    final notifier = ConsumerSoundProfileNotifier();
+    await notifier.add(_profileWithId('p2'));
+    await notifier.recordDspDeployment(
+      'p2',
+      _record(result: ConsumerDspDeploymentRecordResult.restored),
+    );
+    _expectStatus(notifier, 'p2', TuneDeploymentStatus.notDeployed);
+  });
+
+  test('applied result persists applied and preserves history', () async {
+    final notifier = ConsumerSoundProfileNotifier();
+    await notifier.add(_profileWithId('p3'));
+    final rec = _record(
+      result: ConsumerDspDeploymentRecordResult.applied,
+      dspApplied: true,
+    );
+    await notifier.recordDspDeployment('p3', rec);
+    _expectStatus(notifier, 'p3', TuneDeploymentStatus.applied);
+    final profile = notifier.state.firstWhere((p) => p.id == 'p3');
+    expect(profile.dspDeploymentRecord?.dspApplied, isTrue);
+  });
+
+  test('failed result (rollback failed) persists unknown, never dspApplied',
+      () async {
+    final notifier = ConsumerSoundProfileNotifier();
+    await notifier.add(_profileWithId('p4'));
+    await notifier.recordDspDeployment(
+      'p4',
+      _record(result: ConsumerDspDeploymentRecordResult.failed),
+    );
+    final profile = notifier.state.firstWhere((p) => p.id == 'p4');
+    expect(profile.deploymentStatus, TuneDeploymentStatus.unknown);
+    expect(profile.dspDeploymentRecord?.dspApplied, isFalse);
+  });
+
+  test('persisted applied reloads as unknown on app restart', () async {
+    final notifier1 = ConsumerSoundProfileNotifier();
+    await notifier1.add(_profileWithId('p5'));
+    await notifier1.recordDspDeployment(
+      'p5',
+      _record(
+        result: ConsumerDspDeploymentRecordResult.applied,
+        dspApplied: true,
+      ),
+    );
+    _expectStatus(notifier1, 'p5', TuneDeploymentStatus.applied);
+
+    // Simulate app restart: a new notifier hydrates from SharedPreferences.
+    final notifier2 = ConsumerSoundProfileNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final reloaded = notifier2.state.firstWhere((p) => p.id == 'p5');
+    // After restart, applied → unknown (device may have been power-cycled).
+    expect(reloaded.deploymentStatus, TuneDeploymentStatus.unknown);
+    // Historical success metadata must remain intact.
+    expect(reloaded.dspDeploymentRecord?.dspApplied, isTrue);
+    expect(reloaded.dspDeploymentRecord?.result,
+        ConsumerDspDeploymentRecordResult.applied);
+  });
+
+  test('notDeployed reloads as notDeployed (restart does not change it)',
+      () async {
+    final notifier1 = ConsumerSoundProfileNotifier();
+    await notifier1.add(_profileWithId('p6'));
+    await notifier1.recordDspDeployment(
+      'p6',
+      _record(result: ConsumerDspDeploymentRecordResult.blocked),
+    );
+    final notifier2 = ConsumerSoundProfileNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _expectStatus(notifier2, 'p6', TuneDeploymentStatus.notDeployed);
+  });
+
+  test('explicit reapplication in current session returns to applied', () async {
+    final notifier1 = ConsumerSoundProfileNotifier();
+    await notifier1.add(_profileWithId('p7'));
+    await notifier1.recordDspDeployment(
+      'p7',
+      _record(
+        result: ConsumerDspDeploymentRecordResult.applied,
+        dspApplied: true,
+      ),
+    );
+
+    // After restart, status becomes unknown.
+    final notifier2 = ConsumerSoundProfileNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _expectStatus(notifier2, 'p7', TuneDeploymentStatus.unknown);
+
+    // Explicit reapplication in the current session → applied again.
+    await notifier2.recordDspDeployment(
+      'p7',
+      _record(
+        result: ConsumerDspDeploymentRecordResult.applied,
+        dspApplied: true,
+      ),
+    );
+    _expectStatus(notifier2, 'p7', TuneDeploymentStatus.applied);
+  });
+});
 }

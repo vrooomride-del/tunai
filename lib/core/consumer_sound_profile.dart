@@ -221,9 +221,19 @@ class ConsumerSoundProfile {
         generationStatus: ConsumerProfileGenerationStatus.values.byName(
           j['generationStatus'] as String? ?? 'legacy',
         ),
-        deploymentStatus: TuneDeploymentStatus.values.byName(
-          j['deploymentStatus'] as String? ?? 'unknown',
-        ),
+        // A persisted `applied` status is historical — it records that DSP was
+        // applied in a prior session. On load the device may have been reset or
+        // power-cycled, so the current confidence is unknown until the user
+        // explicitly reapplies in the current session. The dspDeploymentRecord
+        // below preserves the historical success metadata unchanged.
+        deploymentStatus: () {
+          final persisted = TuneDeploymentStatus.values.byName(
+            j['deploymentStatus'] as String? ?? 'unknown',
+          );
+          return persisted == TuneDeploymentStatus.applied
+              ? TuneDeploymentStatus.unknown
+              : persisted;
+        }(),
         dspDeploymentRecord: j['dspDeploymentRecord'] == null
             ? null
             : ConsumerDspDeploymentRecord.fromJson(
@@ -377,9 +387,7 @@ class ConsumerSoundProfileNotifier
     final previous = state;
     final next = [...state];
     next[index] = next[index].copyWith(
-      deploymentStatus: record.dspApplied
-          ? TuneDeploymentStatus.applied
-          : TuneDeploymentStatus.notDeployed,
+      deploymentStatus: _deploymentStatusFor(record),
       dspDeploymentRecord: record,
       updatedAt: record.attemptedAt,
     );
@@ -391,6 +399,23 @@ class ConsumerSoundProfileNotifier
       rethrow;
     }
   }
+
+  /// Maps a deployment record to the correct current-confidence status.
+  ///
+  /// Rules:
+  ///   applied  → applied        (full success in this session)
+  ///   restored → notDeployed    (rollback succeeded, DSP is back to baseline)
+  ///   blocked  → notDeployed    (nothing was written)
+  ///   failed   → unknown        (partial write + failed rollback; device state
+  ///                              is uncertain — never claim notDeployed)
+  static TuneDeploymentStatus _deploymentStatusFor(
+    ConsumerDspDeploymentRecord record,
+  ) => switch (record.result) {
+    ConsumerDspDeploymentRecordResult.applied => TuneDeploymentStatus.applied,
+    ConsumerDspDeploymentRecordResult.restored => TuneDeploymentStatus.notDeployed,
+    ConsumerDspDeploymentRecordResult.blocked => TuneDeploymentStatus.notDeployed,
+    ConsumerDspDeploymentRecordResult.failed => TuneDeploymentStatus.unknown,
+  };
 
   Future<void> deactivateAll() async {
     await _hydrated;

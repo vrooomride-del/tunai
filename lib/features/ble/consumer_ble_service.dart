@@ -74,6 +74,14 @@ abstract interface class ConsumerBleGattDriver {
 class ConsumerBleService extends ChangeNotifier {
   final ConsumerBleGattDriver _driver;
   final Duration handshakeTimeout;
+
+  /// How long to discard incoming notifications after a command timeout before
+  /// allowing the next request. The ICP5 protocol carries no per-command
+  /// sequence identifier, so this is a bounded fail-closed mitigation rather
+  /// than cryptographic command correlation. The window must exceed the maximum
+  /// expected BLE round-trip delay (~30 ms on most stacks).
+  final Duration staleAckQuarantine;
+
   ConsumerBleState _state = const ConsumerBleState();
   ConsumerBleConnection? _connection;
   StreamSubscription<List<int>>? _notificationSubscription;
@@ -82,9 +90,16 @@ class ConsumerBleService extends ChangeNotifier {
   bool _supportedIdentityValidated = false;
   final List<int> _receiveBuffer = [];
 
+  // Monotonically increasing request generation. A notification is only routed
+  // to _applicationResponse when _activeGeneration matches _applicationGeneration.
+  // Set to -1 when no request is active or during the stale-ACK quarantine.
+  int _applicationGeneration = 0;
+  int _activeGeneration = -1;
+
   ConsumerBleService({
     ConsumerBleGattDriver? driver,
     this.handshakeTimeout = const Duration(seconds: 10),
+    this.staleAckQuarantine = const Duration(milliseconds: 50),
   }) : _driver = driver ?? FlutterBluePlusConsumerGattDriver();
 
   ConsumerBleState get state => _state;
@@ -246,6 +261,11 @@ class ConsumerBleService extends ChangeNotifier {
 
   /// Writes one application frame and returns the next complete notification.
   /// Only one request may be awaiting a response at a time.
+  ///
+  /// On timeout the generation is invalidated immediately and a bounded
+  /// stale-ACK quarantine drains any delayed notification from the timed-out
+  /// command before the caller can issue a rollback write. See
+  /// [staleAckQuarantine] for the rationale.
   Future<List<int>> sendApplicationFrameAndAwaitResponse(
     List<int> bytes, {
     required Duration timeout,
@@ -258,16 +278,29 @@ class ConsumerBleService extends ChangeNotifier {
     if (_applicationResponse != null) {
       throw StateError('Another Bluetooth command is awaiting a response.');
     }
+    final generation = ++_applicationGeneration;
+    _activeGeneration = generation;
     final response = Completer<List<int>>();
     _applicationResponse = response;
     try {
+      // Subscribe (Completer set above) before write — never after.
       await _connection!.write(bytes);
       return await response.future.timeout(timeout);
+    } on TimeoutException {
+      // Invalidate the generation first so any in-flight notification is
+      // discarded immediately, then quarantine to absorb delayed BLE frames
+      // that arrive before the caller can issue a rollback write.
+      _clearApplicationRequest(generation, response);
+      await Future<void>.delayed(staleAckQuarantine);
+      rethrow;
     } finally {
-      if (identical(_applicationResponse, response)) {
-        _applicationResponse = null;
-      }
+      _clearApplicationRequest(generation, response);
     }
+  }
+
+  void _clearApplicationRequest(int generation, Completer<List<int>> response) {
+    if (_activeGeneration == generation) _activeGeneration = -1;
+    if (identical(_applicationResponse, response)) _applicationResponse = null;
   }
 
   Future<void> disconnect() async {
@@ -296,8 +329,12 @@ class ConsumerBleService extends ChangeNotifier {
       completer.complete(frame);
       return;
     }
+    // Only route to the application Completer when an active, valid generation
+    // exists. A frame that arrives with _activeGeneration == -1 (after timeout,
+    // disconnect, or during quarantine) is discarded rather than allowed to
+    // satisfy a later rollback request.
     final application = _applicationResponse;
-    if (application != null && !application.isCompleted) {
+    if (application != null && !application.isCompleted && _activeGeneration >= 0) {
       application.complete(frame);
     }
   }
@@ -330,6 +367,17 @@ class ConsumerBleService extends ChangeNotifier {
 
   void _failClosedAfterDisconnect() {
     if (!_state.connected) return;
+    // Cancel subscription so reconnect does not accumulate a second listener.
+    _notificationSubscription?.cancel();
+    _notificationSubscription = null;
+    // Invalidate any active request generation so in-flight notifications
+    // from the old connection are discarded even if delivered asynchronously.
+    _activeGeneration = -1;
+    final application = _applicationResponse;
+    _applicationResponse = null;
+    if (application != null && !application.isCompleted) {
+      application.completeError(StateError('Bluetooth disconnected.'));
+    }
     _connection = null;
     _supportedIdentityValidated = false;
     _setState(
@@ -347,7 +395,14 @@ class ConsumerBleService extends ChangeNotifier {
     await subscription?.cancel();
     final connection = _connection;
     _connection = null;
+    _activeGeneration = -1;
+    // Complete both pending operations with an error immediately so callers
+    // do not stall until their individual timeouts fire.
+    final handshake = _handshakeResponse;
     _handshakeResponse = null;
+    if (handshake != null && !handshake.isCompleted) {
+      handshake.completeError(StateError('Bluetooth disconnected.'));
+    }
     final application = _applicationResponse;
     _applicationResponse = null;
     if (application != null && !application.isCompleted) {

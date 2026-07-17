@@ -83,7 +83,7 @@ class _FakeDriver implements ConsumerBleGattDriver {
   bool available;
   bool permissions;
   List<ConsumerBleDevice> devices;
-  _FakeConnection connection;
+  ConsumerBleConnection connection;
   Object? connectError;
   int scanCalls = 0;
   int connectCalls = 0;
@@ -96,7 +96,7 @@ class _FakeDriver implements ConsumerBleGattDriver {
     this.available = true,
     this.permissions = true,
     required this.devices,
-    _FakeConnection? connection,
+    ConsumerBleConnection? connection,
     this.connectError,
   }) : connection = connection ?? _FakeConnection();
 
@@ -133,10 +133,82 @@ ConsumerBleDevice _device(String id, String name, {int? rssi}) =>
     );
 
 ConsumerBleService _service(
-  _FakeDriver driver, {
+  ConsumerBleGattDriver driver, {
   Duration timeout = const Duration(milliseconds: 40),
+  Duration quarantine = const Duration(milliseconds: 5),
 }) =>
-    ConsumerBleService(driver: driver, handshakeTimeout: timeout);
+    ConsumerBleService(
+      driver: driver,
+      handshakeTimeout: timeout,
+      staleAckQuarantine: quarantine,
+    );
+
+// ── Test helpers for stale-ACK and reconnect tests ──────────────────────────
+
+/// A connection whose responses are fully controlled by the caller.
+/// write 1 = handshake → responds with [identity]
+/// write 2 = application command → responds only if [shouldRespondToApp()] is true
+/// write 3+ = responds immediately with peqAck
+class _ControlledConnection implements ConsumerBleConnection {
+  final StreamController<List<int>> streamCtrl;
+  final bool Function() shouldRespondToApp;
+  final List<List<int>> writes;
+  final List<int> identity;
+
+  _ControlledConnection({
+    required this.streamCtrl,
+    required this.shouldRespondToApp,
+    required this.writes,
+    required this.identity,
+  });
+
+  @override
+  Stream<List<int>> get notifications => streamCtrl.stream;
+
+  @override
+  Future<void> write(List<int> bytes) async {
+    writes.add(List.unmodifiable(bytes));
+    if (writes.length == 1) {
+      streamCtrl.add(identity);
+    } else if (writes.length == 2) {
+      if (shouldRespondToApp()) streamCtrl.add(Icp5PeqCommandBuilder.peqAck);
+      // else: no response → caller times out
+    } else {
+      streamCtrl.add(Icp5PeqCommandBuilder.peqAck);
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    if (!streamCtrl.isClosed) await streamCtrl.close();
+  }
+}
+
+/// A driver that vends connections from a list in order, for reconnect tests.
+class _MultiConnectionDriver implements ConsumerBleGattDriver {
+  final List<ConsumerBleDevice> devices;
+  final List<ConsumerBleConnection> connections;
+  final void Function() onConnect;
+  int _index = 0;
+
+  _MultiConnectionDriver({
+    required this.devices,
+    required this.connections,
+    required this.onConnect,
+  });
+
+  @override
+  Future<bool> isBluetoothAvailable() async => true;
+  @override
+  Future<bool> requestPermissions() async => true;
+  @override
+  Future<List<ConsumerBleDevice>> scan() async => devices;
+  @override
+  Future<ConsumerBleConnection> connect(ConsumerBleDevice device) async {
+    onConnect();
+    return connections[_index++];
+  }
+}
 
 void main() {
   test('Consumer identity confirms TUNAI ONE only after validation', () {
@@ -433,5 +505,229 @@ void main() {
     await tester.pump();
     expect(roomRequested, isTrue);
     service.dispose();
+  });
+
+  // ── Stale ACK Protection (Finding 1) ────────────────────────────────────────
+
+  group('stale ACK protection', () {
+    // A controlled connection where each write can be individually governed.
+    // write 1 = handshake (always responds with identity)
+    // write 2 = application command (controlled by respondToApp)
+    // write 3+ = any further writes respond with peqAck immediately
+    late StreamController<List<int>> streamCtrl;
+    late bool respondToApp;
+    late List<List<int>> writes;
+
+    _ControlledConnection makeControlledConnection() {
+      streamCtrl = StreamController<List<int>>.broadcast(sync: true);
+      respondToApp = false;
+      writes = [];
+      return _ControlledConnection(
+        streamCtrl: streamCtrl,
+        shouldRespondToApp: () => respondToApp,
+        writes: writes,
+        identity: _validIdentity,
+      );
+    }
+
+    test('timeout clears active generation; subsequent write gets its own ACK',
+        () async {
+      final conn = makeControlledConnection();
+      final service = _service(
+        _FakeDriver(devices: [_device('d1', 'WONDOM ICP5')], connection: conn),
+        timeout: const Duration(milliseconds: 100),
+        quarantine: const Duration(milliseconds: 10),
+      );
+      await service.scan();
+      await service.connect();
+
+      // Application command — no response → TimeoutException after 5 ms.
+      await expectLater(
+        service.sendApplicationFrameAndAwaitResponse(
+          [0x55, 0x01, 0x56],
+          timeout: const Duration(milliseconds: 5),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      // After quarantine the rollback write must succeed with its own ACK.
+      respondToApp = true;
+      final result = await service.sendApplicationFrameAndAwaitResponse(
+        [0x55, 0x02, 0x57],
+        timeout: const Duration(milliseconds: 50),
+      );
+      expect(result, Icp5PeqCommandBuilder.peqAck);
+      expect(writes.length, 3); // handshake + app + rollback
+      service.dispose();
+    });
+
+    test(
+        'notification injected during quarantine is discarded; '
+        'rollback awaits its own ACK', () async {
+      final conn = makeControlledConnection();
+      final service = _service(
+        _FakeDriver(devices: [_device('d1', 'WONDOM ICP5')], connection: conn),
+        timeout: const Duration(milliseconds: 100),
+        quarantine: const Duration(milliseconds: 30),
+      );
+      await service.scan();
+      await service.connect();
+
+      // Start application command (will not get a response).
+      final appFuture = service.sendApplicationFrameAndAwaitResponse(
+        [0x55, 0x01, 0x56],
+        timeout: const Duration(milliseconds: 5),
+      );
+
+      // After timeout fires, inject a stale ACK while still in quarantine.
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+      streamCtrl.add(Icp5PeqCommandBuilder.peqAck); // stale — must be discarded
+
+      // Application command throws; quarantine ends after ~35 ms total.
+      await expectLater(appFuture, throwsA(isA<TimeoutException>()));
+
+      // Rollback write — enable response now.
+      respondToApp = true;
+      final rollback = await service.sendApplicationFrameAndAwaitResponse(
+        [0x55, 0x02, 0x57],
+        timeout: const Duration(milliseconds: 50),
+      );
+      expect(rollback, Icp5PeqCommandBuilder.peqAck);
+      // 3 writes: handshake, application, rollback (stale did not count).
+      expect(writes.length, 3);
+      service.dispose();
+    });
+
+    test('timeout leaves no active pending request', () async {
+      final conn = makeControlledConnection();
+      final service = _service(
+        _FakeDriver(devices: [_device('d1', 'WONDOM ICP5')], connection: conn),
+        timeout: const Duration(milliseconds: 100),
+        quarantine: const Duration(milliseconds: 10),
+      );
+      await service.scan();
+      await service.connect();
+
+      await expectLater(
+        service.sendApplicationFrameAndAwaitResponse(
+          [0x55, 0x01, 0x56],
+          timeout: const Duration(milliseconds: 5),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      // No pending request: a notification now must not throw or hang.
+      streamCtrl.add(Icp5PeqCommandBuilder.peqAck);
+      await Future<void>.delayed(Duration.zero);
+      // If we reach here without exception the test passes.
+      service.dispose();
+    });
+  });
+
+  // ── Disconnect Subscription Cleanup (Finding 2) ──────────────────────────────
+
+  group('disconnect subscription cleanup', () {
+    test('reconnect has exactly one notification listener', () async {
+      final conn1 = _FakeConnection();
+      final conn2 = _FakeConnection()
+        ..applicationResponse = Icp5PeqCommandBuilder.peqAck;
+      int connectCalls = 0;
+      final driver = _MultiConnectionDriver(
+        devices: [_device('d1', 'WONDOM ICP5')],
+        connections: [conn1, conn2],
+        onConnect: () => connectCalls++,
+      );
+      final service = _service(driver);
+
+      await service.scan();
+      await service.connect();
+      expect(service.state.status, ConsumerBleStatus.connected);
+
+      // Simulate unexpected disconnect.
+      conn1.disconnectUnexpectedly();
+      await Future<void>.delayed(Duration.zero);
+      expect(service.state.status, ConsumerBleStatus.disconnected);
+
+      // Reconnect using the second connection.
+      await service.connect();
+      expect(service.state.status, ConsumerBleStatus.connected);
+      expect(connectCalls, 2);
+
+      // A single notification must be processed exactly once.
+      conn2.applicationResponse = Icp5PeqCommandBuilder.peqAck;
+      final result = await service.sendApplicationFrameAndAwaitResponse(
+        [0x55, 0x01, 0x56],
+        timeout: const Duration(milliseconds: 50),
+      );
+      expect(result, Icp5PeqCommandBuilder.peqAck);
+      service.dispose();
+    });
+
+    test('unexpected disconnect completes pending application request with error',
+        () async {
+      // Connection that passes handshake but does not respond to application writes.
+      final streamCtrl = StreamController<List<int>>.broadcast(sync: true);
+      bool respondToApp = false;
+      final writes = <List<int>>[];
+      final conn = _ControlledConnection(
+        streamCtrl: streamCtrl,
+        shouldRespondToApp: () => respondToApp,
+        writes: writes,
+        identity: _validIdentity,
+      );
+      final service = _service(
+        _FakeDriver(devices: [_device('d1', 'WONDOM ICP5')], connection: conn),
+      );
+      await service.scan();
+      await service.connect();
+      expect(service.state.status, ConsumerBleStatus.connected);
+
+      final pending = service.sendApplicationFrameAndAwaitResponse(
+        [0x55, 0x01, 0x56],
+        timeout: const Duration(seconds: 5),
+      );
+      await Future<void>.delayed(Duration.zero); // let write start
+
+      streamCtrl.addError(StateError('disconnected'));
+      await expectLater(pending, throwsStateError);
+      service.dispose();
+    });
+  });
+
+  // ── Handshake Completer Cleanup (Finding 3) ──────────────────────────────────
+
+  group('handshake Completer cleanup', () {
+    test('disconnect during handshake fails immediately, not after handshakeTimeout',
+        () async {
+      // Connection never responds to the handshake write.
+      final conn = _FakeConnection(respond: false);
+      final service = ConsumerBleService(
+        driver: _FakeDriver(
+          devices: [_device('d1', 'WONDOM ICP5')],
+          connection: conn,
+        ),
+        handshakeTimeout: const Duration(seconds: 30), // very long
+        staleAckQuarantine: const Duration(milliseconds: 5),
+      );
+      await service.scan();
+
+      // Start connect (will block in handshake).
+      final connectFuture = service.connect();
+
+      // Let the connection start, then disconnect immediately.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      conn.disconnectUnexpectedly();
+
+      // connect() must resolve well before the 30 s handshakeTimeout.
+      final sw = Stopwatch()..start();
+      await connectFuture;
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(500));
+      expect(
+        service.state.status,
+        anyOf(ConsumerBleStatus.connectionFailed, ConsumerBleStatus.disconnected),
+      );
+      service.dispose();
+    });
   });
 }

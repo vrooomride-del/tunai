@@ -80,12 +80,12 @@ class ConsumerBleDspTransport implements ConsumerDspTransport {
 
 class ConsumerDspDeploymentExecutor {
   static const confirmedTunePlanChannel = 1;
-  static bool _deploymentInProgress = false;
 
   final ConsumerDspTransport transport;
   final Duration commandTimeout;
+  bool _inProgress = false;
 
-  const ConsumerDspDeploymentExecutor({
+  ConsumerDspDeploymentExecutor({
     required this.transport,
     this.commandTimeout = const Duration(seconds: 3),
   });
@@ -101,7 +101,7 @@ class ConsumerDspDeploymentExecutor {
       explicitlyConfirmed: explicitlyConfirmed,
     );
     if (guard != null) return guard;
-    _deploymentInProgress = true;
+    _inProgress = true;
     var current = plans
         .map((plan) => plan.copyWith(state: TuneDeploymentState.CREATED))
         .toList();
@@ -160,7 +160,7 @@ class ConsumerDspDeploymentExecutor {
         rollbackSucceeded: rollbackSucceeded && acknowledged.isNotEmpty,
       );
     } finally {
-      _deploymentInProgress = false;
+      _inProgress = false;
     }
   }
 
@@ -170,7 +170,7 @@ class ConsumerDspDeploymentExecutor {
     required bool explicitlyConfirmed,
   }) {
     ConsumerDspDeploymentFailure? failure;
-    if (_deploymentInProgress) {
+    if (_inProgress) {
       failure = ConsumerDspDeploymentFailure.concurrentDeployment;
     } else if (!transport.connected) {
       failure = ConsumerDspDeploymentFailure.disconnected;
