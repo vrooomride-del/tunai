@@ -376,20 +376,38 @@ class _ConnectedLayout extends StatelessWidget {
                 _InputSourceSection(ko: ko, isConnected: true),
 
                 const SizedBox(height: 28),
-                _FullWidthButton(
-                  key: const Key('consumer_ble_disconnect_button'),
-                  label: ko ? '연결 해제' : 'Disconnect',
-                  filled: false,
-                  onTap: onDisconnect,
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  key: const Key('consumer_ble_forget_button'),
-                  onPressed: onForget,
-                  child: Text(
-                    ko ? '기기 지우기' : 'Forget Device',
-                    style: const TextStyle(color: Colors.white38),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      key: const Key('consumer_ble_disconnect_button'),
+                      onTap: onDisconnect,
+                      child: Text(
+                        ko ? '연결 해제' : 'Disconnect',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          fontSize: 13,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '  ·  ',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 13),
+                    ),
+                    GestureDetector(
+                      key: const Key('consumer_ble_forget_button'),
+                      onTap: onForget,
+                      child: Text(
+                        ko ? '기기 지우기' : 'Forget Device',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          fontSize: 13,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -436,7 +454,7 @@ class _StepProgress extends StatelessWidget {
         const SizedBox(height: 14),
         _StepRow(
           number: '2',
-          label: ko ? '공간 분석' : 'Analyze Space',
+          label: ko ? '공간 분석' : 'Space Analysis',
           done: false,
           active: step2Active,
         ),

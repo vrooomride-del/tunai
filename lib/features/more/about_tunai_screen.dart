@@ -22,7 +22,7 @@ class AboutTunaiScreen extends StatelessWidget {
         ko ? 'TUNAI는 그 소리를 다시 엽니다.' : 'TUNAI opens that sound again.',
         ko
             ? '스피커가 놓인 환경,\n청취 위치,\n그리고 당신이 좋아하는 소리까지.\n\n공간 분석과 나만의 사운드 만들기는\n당신의 공간과 취향을 이해합니다.'
-            : 'The environment around the speaker,\nthe place where you listen,\nand the sound you prefer.\n\nRoom Analysis helps TUNAI create sound for your space and taste.',
+            : 'The environment around the speaker,\nthe place where you listen,\nand the sound you prefer.\n\nSpace Analysis helps TUNAI create sound for your space and taste.',
       ),
       (
         ko ? '좋은 소리를 찾는 일을\n더 이상 당신에게 떠넘기지 않습니다.' : 'Finding good sound should no longer\nbe left to you.',

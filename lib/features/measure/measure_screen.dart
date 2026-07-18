@@ -657,132 +657,37 @@ class ConsumerMicStrategySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(
-        ko ? '측정 마이크' : 'Measurement Mic',
+        ko ? '측정 장치' : 'Measurement Device',
         style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
       ),
       const SizedBox(height: 10),
-      // Phone Mic — default, active
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white38),
+          border: Border.all(color: Colors.white24),
           borderRadius: BorderRadius.circular(6),
-          color: Colors.white.withValues(alpha: 0.04),
+          color: Colors.white.withValues(alpha: 0.03),
         ),
-        child: LayoutBuilder(builder: (context, constraints) {
-          final details = Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Phone Mic', style: TextStyle(color: Colors.white, fontSize: 13)),
+        child: Row(children: [
+          const Icon(Icons.smartphone, color: Colors.white70, size: 16),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              ko ? '스마트폰 마이크' : 'Smartphone Microphone',
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
             const SizedBox(height: 2),
-            Text(ko ? '빠른 측정에 적합합니다.' : 'Best for quick setup.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11, height: 1.4)),
-          ]));
-          final badge = Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
-              border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.35)),
-              borderRadius: BorderRadius.circular(20),
+            Text(
+              ko ? '현재는 스마트폰 마이크로 진행합니다.' : 'Currently using your smartphone microphone.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11, height: 1.4),
             ),
-            child: Text(
-              ko ? '사용 중' : 'Active',
-              maxLines: 1,
-              style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
-            ),
-          );
-          final detailsRow = Row(children: [
-            const Icon(Icons.smartphone, color: Colors.white70, size: 16),
-            const SizedBox(width: 12),
-            details,
-          ]);
-          if (constraints.maxWidth < 250) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              detailsRow,
-              const SizedBox(height: 8),
-              Align(alignment: Alignment.centerRight, child: badge),
-            ]);
-          }
-          return Row(children: [
-            const Icon(Icons.smartphone, color: Colors.white70, size: 16),
-            const SizedBox(width: 12),
-            details,
-            const SizedBox(width: 8),
-            badge,
-          ]);
-        }),
-      ),
-      const SizedBox(height: 6),
-      // USB Measurement Mic — optional
-      _MicOptionRow(
-        ko: ko,
-        icon: Icons.usb,
-        nameEn: 'USB Measurement Mic',
-        nameKo: 'USB Measurement Mic',
-        descEn: 'Optional mode for more precise measurement.',
-        descKo: '더 정확한 측정을 위한 옵션입니다.',
-      ),
-      const SizedBox(height: 6),
-      // TUNAI CAL-MIC — optional
-      _MicOptionRow(
-        ko: ko,
-        icon: Icons.mic_external_on,
-        nameEn: 'TUNAI CAL-MIC',
-        nameKo: 'TUNAI CAL-MIC',
-        descEn: 'Supports automatic calibration.',
-        descKo: '자동 캘리브레이션을 지원합니다.',
-      ),
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          ko
-              ? '정밀 측정을 원하시나요? 지원되는 USB 측정 마이크를 연결하면 Precision Scan을 사용할 수 있습니다.'
-              : 'Want a more precise scan? Connect a supported USB measurement microphone for Precision Scan.',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, height: 1.5),
-        ),
+          ])),
+        ]),
       ),
     ]);
   }
 }
 
-class _MicOptionRow extends StatelessWidget {
-  final bool ko;
-  final IconData icon;
-  final String nameEn;
-  final String nameKo;
-  final String descEn;
-  final String descKo;
-  const _MicOptionRow({
-    required this.ko,
-    required this.icon,
-    required this.nameEn,
-    required this.nameKo,
-    required this.descEn,
-    required this.descKo,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: BoxDecoration(
-      border: Border.all(color: Colors.white12),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Row(children: [
-      Icon(icon, color: Colors.white24, size: 16),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(ko ? nameKo : nameEn, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-        const SizedBox(height: 2),
-        Text(ko ? descKo : descEn,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.4)),
-      ])),
-    ]),
-  );
-}
 
 // ── 공용 위젯 ──────────────────────────────────────────────────────────────────
 class _BigButton extends StatelessWidget {

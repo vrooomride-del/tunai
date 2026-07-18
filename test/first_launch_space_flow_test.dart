@@ -82,7 +82,7 @@ void main() {
 
       // Step indicator labels (non-interactive text, no buttons)
       expect(find.text('Connect Speaker'), findsWidgets); // step label + CTA
-      expect(find.text('Analyze Space'), findsOneWidget); // step label only
+      expect(find.text('Space Analysis'), findsOneWidget); // step label only
       // Single primary CTA at bottom
       expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
       // Informational card with no button inside

@@ -197,7 +197,7 @@ void main() {
 
       // Labels visible
       expect(find.text('Connect Speaker'), findsWidgets);
-      expect(find.text('Analyze Space'), findsOneWidget);
+      expect(find.text('Space Analysis'), findsOneWidget);
 
       // No "STEP 1" / "STEP 2" button-badge text
       expect(find.text('STEP 1'), findsNothing);

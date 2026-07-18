@@ -397,8 +397,10 @@ void main() {
         ),
         locale: locale,
       ));
-      expect(find.text(locale.languageCode == 'ko' ? '사용 중' : 'Active'),
-          findsOneWidget);
+      expect(
+        find.text(locale.languageCode == 'ko' ? '스마트폰 마이크' : 'Smartphone Microphone'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }

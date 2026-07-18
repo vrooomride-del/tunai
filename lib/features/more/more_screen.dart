@@ -54,7 +54,7 @@ class MoreScreen extends StatelessWidget {
                         title: ko ? '도움말 및 지원' : 'Help & Support',
                         body: ko
                             ? '연결, 공간 분석, 나만의 사운드 만들기에 대한 도움을 확인하세요.'
-                            : 'Find help with connection, Room Analysis, and creating your sound.',
+                            : 'Find help with connection, Space Analysis, and creating your sound.',
                       )),
                 ),
                 _MenuItem(

@@ -494,7 +494,7 @@ void main() {
 
     // Step progress indicators (non-interactive circles + labels)
     expect(find.text('Connect Speaker'), findsWidgets); // step label + CTA
-    expect(find.text('Analyze Space'), findsOneWidget); // step label only
+    expect(find.text('Space Analysis'), findsOneWidget); // step label only
     // Single primary CTA at bottom
     expect(find.byKey(const Key('consumer_ble_scan_button')), findsOneWidget);
     expect(find.text('Connect Speaker'), findsWidgets);
