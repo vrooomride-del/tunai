@@ -33,10 +33,17 @@ void main() {
   }
 
   test('Consumer launcher icon assets use the approved non-PRO source', () {
-    final source = File('assets/images/consumer_icon_source.png');
+    final source = File('assets/images/icon.png');
     expect(source.existsSync(), isTrue);
     expect(
       sha256.convert(source.readAsBytesSync()).toString(),
+      '4c908791bc1149061b402d4c4bd659623fac1247cff3248b0792fced12a90e3d',
+    );
+
+    final proSource = File('assets/images/pro_icon_source.png');
+    expect(proSource.existsSync(), isTrue);
+    expect(
+      sha256.convert(proSource.readAsBytesSync()).toString(),
       'a797c5b36f07d86c1af4d20e552692c50c4bd8f8af8063cf187499f8c8a1ace3',
     );
 
@@ -70,9 +77,20 @@ void main() {
           .existsSync(),
       isTrue,
     );
+    for (final webIcon in [
+      'web/favicon.png',
+      'web/icons/Icon-192.png',
+      'web/icons/Icon-512.png',
+      'web/icons/Icon-maskable-192.png',
+      'web/icons/Icon-maskable-512.png',
+    ]) {
+      expect(File(webIcon).existsSync(), isTrue);
+    }
 
     final launcherConfig = File('pubspec.yaml').readAsStringSync();
-    expect(launcherConfig, contains('consumer_icon_source.png'));
-    expect(launcherConfig.toLowerCase(), isNot(contains('pro_icon')));
+    expect(launcherConfig, contains('image_path: "assets/images/icon.png"'));
+    expect(launcherConfig, isNot(contains('consumer_icon_source.png')));
+    expect(launcherConfig, isNot(contains('pro_icon_source.png')));
+    expect(launcherConfig, contains('image: assets/images/splash_icon.png'));
   });
 }
