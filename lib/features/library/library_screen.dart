@@ -30,7 +30,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ko
               ? '고급 프로파일은 TUNAI PRO에서 검토 후 적용할 수 있습니다.'
               : 'Advanced profiles can be reviewed and applied in TUNAI PRO.',
-          style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+          style:
+              const TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
         ),
         actions: [
           TextButton(
@@ -50,27 +51,39 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(ko ? '이름 변경' : 'Rename', style: const TextStyle(color: Colors.white, fontSize: 15)),
+        title: Text(ko ? '이름 변경' : 'Rename',
+            style: const TextStyle(color: Colors.white, fontSize: 15)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: const InputDecoration(
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white70)),
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24)),
+            focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white70)),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38))),
           TextButton(
-            onPressed: () { final n = ctrl.text.trim(); if (n.isNotEmpty) Navigator.pop(ctx, n); },
-            child: Text(ko ? '저장' : 'Save', style: const TextStyle(color: Colors.white70)),
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(ko ? '취소' : 'Cancel',
+                  style: const TextStyle(color: Colors.white38))),
+          TextButton(
+            onPressed: () {
+              final n = ctrl.text.trim();
+              if (n.isNotEmpty) Navigator.pop(ctx, n);
+            },
+            child: Text(ko ? '저장' : 'Save',
+                style: const TextStyle(color: Colors.white70)),
           ),
         ],
       ),
     );
     if (name != null) {
-      await ref.read(soundProfileStoreProvider.notifier).rename(profile.id, name);
+      await ref
+          .read(soundProfileStoreProvider.notifier)
+          .rename(profile.id, name);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(ko ? '프로파일 이름이 변경되었습니다.' : 'Profile renamed.'),
@@ -91,10 +104,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         content: Text(ko ? '이 작업은 되돌릴 수 없습니다.' : 'This cannot be undone.',
             style: const TextStyle(color: Colors.white54, fontSize: 13)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ko ? '취소' : 'Cancel', style: const TextStyle(color: Colors.white38))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ko ? '취소' : 'Cancel',
+                  style: const TextStyle(color: Colors.white38))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child:
+                const Text('Delete', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -115,27 +132,42 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const SizedBox(height: 8),
-          Container(width: 36, height: 3, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          Container(
+              width: 36,
+              height: 3,
+              decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
           _ActionTile(
             icon: Icons.open_in_new,
             label: ko ? 'TUNAI PRO에서 관리' : 'Manage in TUNAI PRO',
-            onTap: () { Navigator.pop(ctx); _showProRedirect(ko); },
+            onTap: () {
+              Navigator.pop(ctx);
+              _showProRedirect(ko);
+            },
           ),
           _ActionTile(
             icon: Icons.drive_file_rename_outline,
             label: ko ? '이름 변경' : 'Rename',
-            onTap: () { Navigator.pop(ctx); _renameProfile(profile); },
+            onTap: () {
+              Navigator.pop(ctx);
+              _renameProfile(profile);
+            },
           ),
           _ActionTile(
             icon: Icons.delete_outline,
             label: ko ? '삭제' : 'Delete',
             color: Colors.redAccent,
-            onTap: () { Navigator.pop(ctx); _deleteProfile(profile); },
+            onTap: () {
+              Navigator.pop(ctx);
+              _deleteProfile(profile);
+            },
           ),
           const SizedBox(height: 8),
         ]),
@@ -177,41 +209,47 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   // Empty state — shown when no user profiles saved yet
                   if (!hasUserProfiles) ...[
                     const SizedBox(height: 60),
-                    _EmptyLibraryState(ko: ko, onGoToRoomScan: widget.onGoToRoomScan),
+                    _EmptyLibraryState(
+                        ko: ko, onGoToRoomScan: widget.onGoToRoomScan),
                     const SizedBox(height: 40),
                   ],
 
                   // ── TUNAI Tune ─────────────────────────────────────────
                   if (tunaiTunes.isNotEmpty) ...[
                     _SectionHeader(ko ? 'TUNAI Tune' : 'TUNAI Tune'),
-                    ...tunaiTunes.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    ...tunaiTunes
+                        .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
                     const SizedBox(height: 20),
                   ],
 
                   // ── My Tune ────────────────────────────────────────────
                   if (myTunes.isNotEmpty) ...[
                     _SectionHeader(ko ? 'My Tune' : 'My Tune'),
-                    ...myTunes.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    ...myTunes
+                        .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
                     const SizedBox(height: 20),
                   ],
 
                   // ── Room Profile ───────────────────────────────────────
                   if (roomProfiles.isNotEmpty) ...[
-                    _SectionHeader(ko ? '공간 프로파일' : 'Room Profile'),
-                    ...roomProfiles.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    _SectionHeader(ko ? '공간 프로파일' : 'Space Profile'),
+                    ...roomProfiles
+                        .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
                     const SizedBox(height: 20),
                   ],
 
                   // ── Reference ──────────────────────────────────────────
                   if (references.isNotEmpty) ...[
                     _SectionHeader(ko ? '레퍼런스' : 'Reference'),
-                    ...references.map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    ...references
+                        .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
                     const SizedBox(height: 20),
                   ],
 
                   // ── PRO Sound Profiles (from advanced tuning) ──────────
                   if (profiles.isNotEmpty) ...[
-                    _SectionHeader(ko ? '고급 사운드 프로파일' : 'Advanced Sound Profiles'),
+                    _SectionHeader(
+                        ko ? '고급 사운드 프로파일' : 'Advanced Sound Profiles'),
                     ...profiles.reversed.map((p) => _ProfileCard(
                           profile: p,
                           ko: ko,
@@ -266,8 +304,13 @@ class _ConsumerProfileCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: profile.isActive ? Colors.white.withValues(alpha: 0.04) : const Color(0xFF111111),
-        border: Border.all(color: profile.isActive ? Colors.white24 : Colors.white.withValues(alpha: 0.09)),
+        color: profile.isActive
+            ? Colors.white.withValues(alpha: 0.04)
+            : const Color(0xFF111111),
+        border: Border.all(
+            color: profile.isActive
+                ? Colors.white24
+                : Colors.white.withValues(alpha: 0.09)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -277,7 +320,10 @@ class _ConsumerProfileCard extends StatelessWidget {
             Expanded(
               child: Text(
                 profile.name,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w300),
               ),
             ),
             Container(
@@ -289,13 +335,15 @@ class _ConsumerProfileCard extends StatelessWidget {
               ),
               child: Text(
                 _statusLabel(ko),
-                style: TextStyle(color: _statusColor, fontSize: 9, letterSpacing: 1),
+                style: TextStyle(
+                    color: _statusColor, fontSize: 9, letterSpacing: 1),
               ),
             ),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            _MetaChip(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
+            _MetaChip(
+                text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
             const SizedBox(width: 8),
             _MetaChip(text: profile.confidence),
             const SizedBox(width: 8),
@@ -304,20 +352,27 @@ class _ConsumerProfileCard extends StatelessWidget {
           if (profile.resultCards.isNotEmpty) ...[
             const SizedBox(height: 10),
             ...profile.resultCards.take(2).map((card) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(children: [
-                Container(width: 5, height: 5,
-                    decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Text(card.label(ko: ko),
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
-              ]),
-            )),
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    Container(
+                        width: 5,
+                        height: 5,
+                        decoration: const BoxDecoration(
+                            color: Color(0xFF69F0AE), shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                    Text(card.label(ko: ko),
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11)),
+                  ]),
+                )),
             if (profile.resultCards.length > 2)
               Padding(
                 padding: const EdgeInsets.only(top: 2, left: 13),
                 child: Text(
-                  ko ? '+${profile.resultCards.length - 2}개 더' : '+${profile.resultCards.length - 2} more',
+                  ko
+                      ? '+${profile.resultCards.length - 2}개 더'
+                      : '+${profile.resultCards.length - 2} more',
                   style: const TextStyle(color: Colors.white24, fontSize: 10),
                 ),
               ),
@@ -335,7 +390,11 @@ class _ProfileCard extends StatelessWidget {
   final bool ko;
   final VoidCallback onTap;
   final VoidCallback onManageInPro;
-  const _ProfileCard({required this.profile, required this.ko, required this.onTap, required this.onManageInPro});
+  const _ProfileCard(
+      {required this.profile,
+      required this.ko,
+      required this.onTap,
+      required this.onManageInPro});
 
   String _createdLabel(bool ko) {
     final diff = DateTime.now().difference(profile.createdAt);
@@ -344,7 +403,7 @@ class _ProfileCard extends StatelessWidget {
     if (diff.inDays < 7) {
       return ko ? '${diff.inDays}일 전' : '${diff.inDays}d ago';
     }
-    return '${profile.createdAt.year}.${profile.createdAt.month.toString().padLeft(2,'0')}.${profile.createdAt.day.toString().padLeft(2,'0')}';
+    return '${profile.createdAt.year}.${profile.createdAt.month.toString().padLeft(2, '0')}.${profile.createdAt.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -356,8 +415,13 @@ class _ProfileCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
-          color: applied ? Colors.white.withValues(alpha: 0.04) : const Color(0xFF111111),
-          border: Border.all(color: applied ? Colors.white24 : Colors.white.withValues(alpha: 0.09)),
+          color: applied
+              ? Colors.white.withValues(alpha: 0.04)
+              : const Color(0xFF111111),
+          border: Border.all(
+              color: applied
+                  ? Colors.white24
+                  : Colors.white.withValues(alpha: 0.09)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -368,14 +432,20 @@ class _ProfileCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   profile.name,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w300),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF69F0AE).withValues(alpha: applied ? 0.15 : 0.07),
-                  border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: applied ? 0.4 : 0.2)),
+                  color: const Color(0xFF69F0AE)
+                      .withValues(alpha: applied ? 0.15 : 0.07),
+                  border: Border.all(
+                      color: const Color(0xFF69F0AE)
+                          .withValues(alpha: applied ? 0.4 : 0.2)),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -383,19 +453,22 @@ class _ProfileCard extends StatelessWidget {
                       ? (ko ? '적용됨 · 안전 확인' : 'Active · Safe')
                       : (ko ? '안전 확인' : 'Safe'),
                   style: TextStyle(
-                    color: const Color(0xFF69F0AE).withValues(alpha: applied ? 1.0 : 0.6),
+                    color: const Color(0xFF69F0AE)
+                        .withValues(alpha: applied ? 1.0 : 0.6),
                     fontSize: 9,
                     letterSpacing: 1,
                   ),
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(Icons.more_horiz, color: Colors.white.withValues(alpha: 0.25), size: 18),
+              Icon(Icons.more_horiz,
+                  color: Colors.white.withValues(alpha: 0.25), size: 18),
             ]),
             const SizedBox(height: 10),
             // 메타 정보
             Row(children: [
-              _MetaChip(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
+              _MetaChip(
+                  text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
               if (profile.soundScore != null) ...[
                 const SizedBox(width: 8),
                 _MetaChip(text: 'Score ${profile.soundScore}'),
@@ -414,12 +487,17 @@ class _ProfileCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 alignment: Alignment.center,
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.open_in_new, color: Colors.white38, size: 12),
+                child:
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.open_in_new,
+                      color: Colors.white38, size: 12),
                   const SizedBox(width: 6),
                   Text(
                     ko ? 'TUNAI PRO에서 관리' : 'Manage in TUNAI PRO',
-                    style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 1.0),
+                    style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 12,
+                        letterSpacing: 1.0),
                   ),
                 ]),
               ),
@@ -474,7 +552,10 @@ class _FactoryPlaceholderCard extends StatelessWidget {
             Expanded(
               child: Text(
                 ko ? '기본 소리' : 'Default Sound',
-                style: const TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.w300),
+                style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w300),
               ),
             ),
             Container(
@@ -486,7 +567,10 @@ class _FactoryPlaceholderCard extends StatelessWidget {
               ),
               child: Text(
                 'Factory',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 9, letterSpacing: 1),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 9,
+                    letterSpacing: 1),
               ),
             ),
           ]),
@@ -494,8 +578,11 @@ class _FactoryPlaceholderCard extends StatelessWidget {
           Text(
             ko
                 ? 'TUNAI 기기의 기본 사운드 설정입니다.\nAcoustic Tune 이전의 기준이 됩니다.'
-                : 'The original sound of your TUNAI device.\nThis is the baseline before any Acoustic Tune.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.28), fontSize: 11, height: 1.5),
+                : 'The original sound of your TUNAI speaker.\nThis is how it sounds before Your Sound is applied.',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.28),
+                fontSize: 11,
+                height: 1.5),
           ),
         ],
       ),
@@ -522,7 +609,8 @@ class _ProBridgeCard extends StatelessWidget {
           ko
               ? '이 기능은 준비 중입니다.\n현재 Mobile에서는 Sound Profile을 저장하고 비교할 수 있으며, 고급 검토와 배포는 향후 TUNAI PRO 연동으로 제공됩니다.'
               : 'This feature is coming soon.\nFor now, Mobile can save and compare Sound Profiles. Advanced review and deployment will be available later through TUNAI PRO.',
-          style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.6),
+          style:
+              const TextStyle(color: Colors.white54, fontSize: 13, height: 1.6),
         ),
         actions: [
           TextButton(
@@ -551,11 +639,15 @@ class _ProBridgeCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.swap_horiz_rounded, color: Colors.white24, size: 16),
+              const Icon(Icons.swap_horiz_rounded,
+                  color: Colors.white24, size: 16),
               const SizedBox(width: 8),
               Text(
                 ko ? 'TUNAI PRO와 함께 사용하기' : 'Use with TUNAI PRO',
-                style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w300),
+                style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w300),
               ),
             ]),
             const SizedBox(height: 10),
@@ -563,7 +655,10 @@ class _ProBridgeCard extends StatelessWidget {
               ko
                   ? 'Mobile에서 만든 Sound Profile은 나중에 TUNAI PRO에서 전문가 검토를 받을 수 있습니다.\n전문가가 다듬은 Reference Profile은 다시 Mobile에서 사용할 수 있습니다.'
                   : 'Sound Profiles created on Mobile can later be reviewed in TUNAI PRO.\nExpert-refined Reference Profiles can be used again on Mobile.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.55),
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 11,
+                  height: 1.55),
             ),
             const SizedBox(height: 12),
             Container(
@@ -574,7 +669,10 @@ class _ProBridgeCard extends StatelessWidget {
               ),
               child: Text(
                 ko ? 'PRO 연동 준비 중' : 'PRO Bridge Coming Soon',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, letterSpacing: 0.5),
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.3),
+                    fontSize: 11,
+                    letterSpacing: 0.5),
               ),
             ),
           ],
@@ -594,7 +692,11 @@ class _MetaChip extends StatelessWidget {
           border: Border.all(color: Colors.white12),
           borderRadius: BorderRadius.circular(3),
         ),
-        child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 10, letterSpacing: 0.5)),
+        child: Text(text,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 10,
+                letterSpacing: 0.5)),
       );
 }
 
@@ -603,7 +705,11 @@ class _ActionTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color? color;
-  const _ActionTile({required this.icon, required this.label, required this.onTap, this.color});
+  const _ActionTile(
+      {required this.icon,
+      required this.label,
+      required this.onTap,
+      this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -630,34 +736,51 @@ class _EmptyLibraryState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
           children: [
-            Icon(Icons.library_music_outlined, color: Colors.white.withValues(alpha: 0.15), size: 40),
+            Icon(Icons.library_music_outlined,
+                color: Colors.white.withValues(alpha: 0.15), size: 40),
             const SizedBox(height: 20),
             Text(
-              ko ? '아직 저장된 Sound Profile이 없습니다.' : 'No Sound Profiles saved yet.',
-              style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w300),
+              ko
+                  ? '아직 저장된 Sound Profile이 없습니다.'
+                  : 'No Sound Profiles saved yet.',
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w300),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               ko
-                  ? 'Room Scan과 Acoustic Tune을 완료하면\n이곳에 저장됩니다.'
-                  : 'Complete Room Scan and Acoustic Tune\nto save your first profile.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13, height: 1.5),
+                  ? '공간 분석과 나만의 사운드를 완료하면\n이곳에 저장됩니다.'
+                  : 'Complete Space Analysis and create Your Sound\nto save it here.',
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 13,
+                  height: 1.5),
               textAlign: TextAlign.center,
             ),
             if (onGoToRoomScan != null) ...[
               const SizedBox(height: 28),
               GestureDetector(
-                onTap: () { Navigator.of(context).pop(); onGoToRoomScan!(); },
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onGoToRoomScan!();
+                },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    ko ? '공간 스캔 시작' : 'Start Room Scan',
-                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 1.3),
+                    ko ? '공간 분석 시작' : 'Start Space Analysis',
+                    style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 1.3),
                   ),
                 ),
               ),

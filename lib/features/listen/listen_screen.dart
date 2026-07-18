@@ -1,165 +1,73 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../../core/audio_analyzer.dart';
-import '../../core/spectrum_snapshot.dart';
+
 import '../../core/consumer_sound_profile.dart';
-import '../../main.dart' show currentTabIndexProvider;
 import '../../shared/widgets.dart';
-import '../../shared/spectrum_chart.dart';
-import '../../shared/preset_bar.dart';
-import '../../shared/acoustic_timeline.dart';
-import '../dsp/master_volume_controller.dart';
 import '../ble/ble_controller.dart';
-/// main.dart의 screens 리스트 순서상 LISTEN 탭의 인덱스 — 다른 탭으로 이동하면
-/// Loop를 자동 정지하기 위해 필요
-const _kListenTabIndex = 3;
+import '../dsp/master_volume_controller.dart';
 
-/// LISTEN 탭 — Before/After A/B 비교 + 3색 스펙트럼 오버레이.
-/// "와... 진짜 달라졌네"를 사용자가 직접 느끼게 하는 화면.
-class ListenScreen extends ConsumerStatefulWidget {
+class ListenScreen extends ConsumerWidget {
   const ListenScreen({super.key});
+
   @override
-  ConsumerState<ListenScreen> createState() => _ListenScreenState();
-}
-
-class _ListenScreenState extends ConsumerState<ListenScreen> {
-  bool _showAfter = true;
-  bool _loop = false;
-  Timer? _timer;
-
-  // Before/After 각각 이만큼 보여준 뒤 자동 전환 (요청: 1.5초씩)
-  static const _loopInterval = Duration(milliseconds: 1500);
-
-  Future<void> _saveConsumerProfile(BuildContext context, WidgetRef ref) async {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ko = Localizations.localeOf(context).languageCode == 'ko';
-    final active = ref.read(activeConsumerProfileProvider);
-    if (active == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ko
-            ? '저장할 나만의 사운드가 없습니다. 먼저 TUNE에서 만들어 주세요.'
-            : 'There is no sound to save. Create Your Sound in TUNE first.'),
-        duration: const Duration(seconds: 3),
-      ));
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ko ? '나만의 사운드가 저장되었습니다.' : 'Your Sound was saved.'),
-      duration: const Duration(seconds: 2),
-    ));
-  }
-
-  void _setLoop(bool v) {
-    setState(() => _loop = v);
-    _timer?.cancel();
-    if (v) {
-      _timer = Timer.periodic(_loopInterval, (_) {
-        setState(() => _showAfter = !_showAfter);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final snap = ref.watch(spectrumSnapshotProvider);
-    final hasBefore = snap.before != null;
-    final hasAfter = snap.afterAi != null;
-    final activeConsumer = ref.watch(activeConsumerProfileProvider);
-
-    // 다른 탭으로 이동하면 Loop 자동 정지 — IndexedStack은 이 화면을 dispose하지
-    // 않으므로 currentTabIndexProvider로 탭 이탈을 감지해야 한다.
-    ref.listen<int>(currentTabIndexProvider, (prev, next) {
-      if (next != _kListenTabIndex && _loop) _setLoop(false);
-    });
+    final profile = ref.watch(activeConsumerProfileProvider);
+    final connected =
+        ref.watch(bleProvider).connection == BleConnectionState.connected;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const TunaiTopBar(subtitle: 'LISTEN'),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
-              child: Builder(builder: (ctx) {
-                final ko = Localizations.localeOf(ctx).languageCode == 'ko';
-                return Text(
-                  ko ? '현재 나만의 사운드로 들어보세요.' : 'Listen with your current saved sound.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.5),
-                );
-              }),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: PresetBar(onSave: _saveConsumerProfile),
-            ),
-            const SizedBox(height: 4),
-            const _ListeningLevelSection(),
-            const SizedBox(height: 4),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                child: !hasBefore && activeConsumer != null
-                    ? _ConsumerActiveView(profile: activeConsumer)
-                    : !hasBefore
-                        ? const _EmptyState()
-                        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        const _CurrentProfileSection(),
-                        const SizedBox(height: 16),
-                        _AbToggle(
-                          showAfter: _showAfter,
-                          loop: _loop,
-                          hasAfter: hasAfter,
-                          onSelect: hasAfter ? (v) => setState(() { _showAfter = v; _setLoop(false); }) : null,
-                          onLoopChanged: hasAfter ? _setLoop : null,
-                        ),
-                        const SizedBox(height: 12),
-                        SectionCard(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                            Builder(builder: (ctx) {
-                              final ko = Localizations.localeOf(ctx).languageCode == 'ko';
-                              return Text(
-                                _showAfter && hasAfter ? 'YOUR SOUND' : (ko ? '기본 사운드' : 'ORIGINAL SOUND'),
-                                style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2),
-                              );
-                            }),
-                            const SizedBox(height: 8),
-                            SpectrumChart(
-                              bins: (_showAfter && hasAfter ? snap.afterAi : snap.before) ?? const [],
-                              peaks: const [],
-                              showAxisLabels: false,
-                              showTechnicalLabel: false,
-                            ),
-                          ]),
-                        ),
-                        const SizedBox(height: 20),
-                        Builder(builder: (ctx) {
-                          final ko = Localizations.localeOf(ctx).languageCode == 'ko';
-                          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(
-                              ko ? '소리의 변화' : 'Sound Comparison',
-                              style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 2),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              ko
-                                  ? '원래 소리와 나만의 사운드를 비교해 보세요.'
-                                  : 'Compare the original sound with your personal sound.',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11, height: 1.4),
-                            ),
-                          ]);
-                        }),
-                        const SizedBox(height: 8),
-                        SectionCard(child: _OverlayChart(snap: snap)),
-                        const SizedBox(height: 8),
-                        const _Legend(),
-                      ]),
+                padding: const EdgeInsets.fromLTRB(28, 28, 28, 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ko ? '나의 사운드를\n들어보세요.' : 'Listen to\nYour Sound.',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        height: 1.18,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      profile == null
+                          ? (ko
+                              ? '공간에 맞춘 나만의 사운드가 여기에 표시됩니다.'
+                              : 'Your sound, shaped for your space, will appear here.')
+                          : (connected
+                              ? (ko
+                                  ? '지금 나만의 사운드로 재생하고 있습니다.'
+                                  : 'Your speaker is playing with Your Sound.')
+                              : (ko
+                                  ? '스피커를 연결하면 나만의 사운드로 들을 수 있습니다.'
+                                  : 'Connect your speaker to listen with Your Sound.')),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.42),
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 36),
+                    _CurrentSoundCard(
+                      profile: profile,
+                      connected: connected,
+                      ko: ko,
+                    ),
+                    const SizedBox(height: 36),
+                    const _ListeningLevelSection(),
+                  ],
+                ),
               ),
             ),
           ],
@@ -169,14 +77,136 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
   }
 }
 
-// ── Listening Level ───────────────────────────────────────────
+class _CurrentSoundCard extends StatelessWidget {
+  final ConsumerSoundProfile? profile;
+  final bool connected;
+  final bool ko;
 
-// Maps internal dB value to consumer level label.
-// Internal range: -70 to 0 dB. Presets: -60 (Low), -50 (Comfortable), -40 (Lively).
-String _levelLabel(double db, {required bool ko}) {
-  if (db <= -55) return ko ? '낮게' : 'Low';
-  if (db <= -45) return ko ? '편안하게' : 'Comfortable';
-  return ko ? '크게' : 'Lively';
+  const _CurrentSoundCard({
+    required this.profile,
+    required this.connected,
+    required this.ko,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = profile != null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.035),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                ko ? '현재 사운드' : 'CURRENT SOUND',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.38),
+                  fontSize: 10,
+                  letterSpacing: 2.2,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xFF69F0AE).withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color:
+                            active ? const Color(0xFF69F0AE) : Colors.white24,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      active
+                          ? (ko ? '활성' : 'ACTIVE')
+                          : (ko ? '준비 전' : 'NOT READY'),
+                      style: TextStyle(
+                        color:
+                            active ? const Color(0xFF69F0AE) : Colors.white38,
+                        fontSize: 9,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 30),
+          Text(
+            profile?.name ?? (ko ? '나만의 사운드가 없습니다' : 'No sound yet'),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              height: 1.3,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+          const SizedBox(height: 9),
+          Text(
+            profile == null
+                ? (ko
+                    ? '공간 분석을 완료하면 나만의 사운드를 만들 수 있습니다.'
+                    : 'Complete Space Analysis to create Your Sound.')
+                : (ko
+                    ? '${profile!.roomTypeLabel}에 맞춘 나의 사운드'
+                    : 'Your Sound for ${profile!.roomTypeLabelEn}'),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.4),
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          if (active && !connected) ...[
+            const SizedBox(height: 22),
+            Container(height: 0.5, color: Colors.white10),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Icon(Icons.speaker_outlined,
+                    color: Colors.white38, size: 17),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    ko ? '스피커 연결 대기 중' : 'Waiting for your speaker',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _levelLabel(double value, {required bool ko}) {
+  if (value <= -55) return ko ? '낮게' : 'Low';
+  if (value <= -45) return ko ? '편안하게' : 'Comfortable';
+  return ko ? '생생하게' : 'Lively';
 }
 
 class _ListeningLevelSection extends ConsumerWidget {
@@ -184,505 +214,111 @@ class _ListeningLevelSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final vol = ref.watch(masterVolumeProvider);
-    final ctrl = ref.read(masterVolumeProvider.notifier);
-
-    // Preset dB values kept internal; labels shown to consumer.
-    const presets = [(-60.0, '낮게', 'Low'), (-50.0, '편안하게', 'Comfortable'), (-40.0, '크게', 'Lively')];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Builder(builder: (ctx) {
-        final isKo = Localizations.localeOf(ctx).languageCode == 'ko';
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  isKo ? '듣기 음량' : 'Listening Level',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 2),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  isKo
-                      ? '현재 음량: ${_levelLabel(vol, ko: true)}'
-                      : 'Current level: ${_levelLabel(vol, ko: false)}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-                const Spacer(),
-                for (final (db, labelKo, labelEn) in presets) ...[
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () => ctrl.setVolume(db),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                            color: vol == db ? Colors.white54 : Colors.white24, width: 0.5),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: Text(
-                        isKo ? labelKo : labelEn,
-                        style: TextStyle(
-                          color: vol == db ? Colors.white70 : Colors.white38,
-                          fontSize: 10, letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 1.5,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                activeTrackColor: Colors.white54,
-                inactiveTrackColor: Colors.white12,
-                thumbColor: Colors.white,
-                overlayColor: Colors.white12,
-              ),
-              child: Slider(
-                value: vol,
-                min: -70, max: 0,
-                onChanged: (v) => ctrl.updateUiOnly(v),
-                onChangeEnd: (v) => ctrl.setVolume(v),
-              ),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-}
-
-// ── Current Profile ──────────────────────────────────────────────────────────
-
-class _CurrentProfileSection extends ConsumerWidget {
-  const _CurrentProfileSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(activeConsumerProfileProvider);
     final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final volume = ref.watch(masterVolumeProvider);
+    final controller = ref.read(masterVolumeProvider.notifier);
+    const presets = [
+      (-60.0, '낮게', 'Low'),
+      (-50.0, '편안하게', 'Comfortable'),
+      (-40.0, '생생하게', 'Lively'),
+    ];
 
-    if (profile == null) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          borderRadius: BorderRadius.circular(8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          ko ? '듣기 음량' : 'Listening Level',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.42),
+            fontSize: 11,
+            letterSpacing: 2,
+          ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-            ko ? '나만의 사운드' : 'saved sound',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            ko ? '적용된 나만의 사운드가 없습니다.' : 'No sound is applied.',
-            style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w300),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            ko ? '공간 분석을 완료하면 나만의 사운드를 만들 수 있습니다.' : 'Run a Space Analysis to create Your Sound.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5),
-          ),
-        ]),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        border: Border.all(color: Colors.white24),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text(
-            ko ? '현재 나만의 사운드' : 'Current saved sound',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
-              border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.35)),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              ko ? '공간 맞춤' : 'Space Matched',
-              style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
-            ),
-          ),
-        ]),
         const SizedBox(height: 10),
         Text(
-          profile.name,
-          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300),
-        ),
-        const SizedBox(height: 8),
-        Row(children: [
-          _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
-          if (profile.soundScoreAfter != null) ...[
-            const SizedBox(width: 8),
-            _MetaChipListen(text: 'Score ${profile.soundScoreAfter}'),
-          ],
-        ]),
-      ]),
-    );
-  }
-}
-
-class _MetaChipListen extends StatelessWidget {
-  final String text;
-  const _MetaChipListen({required this.text});
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white12),
-          borderRadius: BorderRadius.circular(3),
-        ),
-        child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 10, letterSpacing: 0.5)),
-      );
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-  @override
-  Widget build(BuildContext context) {
-    final ko = Localizations.localeOf(context).languageCode == 'ko';
-    return SectionCard(
-      child: Column(children: [
-        const Icon(Icons.graphic_eq, color: Colors.white24, size: 32),
-        const SizedBox(height: 12),
-        Text(
-          ko ? '아직 나만의 사운드가 없습니다.' : 'No saved sound yet.',
-          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w300),
-        ),
-        const SizedBox(height: 8),
-        Text(
           ko
-              ? '공간 분석을 완료한 후 나만의 사운드를 만들어보세요.\n원본 사운드와 나만의 사운드를 여기서 비교할 수 있습니다.'
-              : 'Run a Space Analysis first, then create Your Sound.\nOriginal Sound and Your Sound will appear here for comparison.',
-          style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.6),
-          textAlign: TextAlign.center,
+              ? '현재 · ${_levelLabel(volume, ko: true)}'
+              : 'Current · ${_levelLabel(volume, ko: false)}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w300,
+          ),
         ),
-      ]),
-    );
-  }
-}
-
-// ── Consumer saved sound active view ───────────────────────────────────────
-
-class _ConsumerActiveView extends ConsumerWidget {
-  final ConsumerSoundProfile profile;
-  const _ConsumerActiveView({required this.profile});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ko = Localizations.localeOf(context).languageCode == 'ko';
-    final ble = ref.watch(bleProvider);
-    final isConnected = ble.connection == BleConnectionState.connected;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          border: Border.all(color: Colors.white24),
-          borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 12),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 2,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+            activeTrackColor: Colors.white70,
+            inactiveTrackColor: Colors.white12,
+            thumbColor: Colors.white,
+            overlayColor: Colors.white10,
+          ),
+          child: Slider(
+            value: volume,
+            min: -70,
+            max: 0,
+            onChanged: controller.updateUiOnly,
+            onChangeEnd: controller.setVolume,
+          ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(
-              ko ? '현재 나만의 사운드' : 'Current saved sound',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
-            ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
-                border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.35)),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                ko ? '사용 중' : 'Active',
-                style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 10),
-          Text(profile.name,
-              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w300)),
-          const SizedBox(height: 8),
-          Row(children: [
-            _MetaChipListen(text: ko ? profile.roomTypeLabel : profile.roomTypeLabelEn),
-            const SizedBox(width: 8),
-            _MetaChipListen(text: ko ? '마이크: ${profile.micLabel(ko)}' : 'Mic: ${profile.micLabel(ko)}'),
-          ]),
-        ]),
-      ),
-      const SizedBox(height: 20),
-      if (profile.soundScoreBefore != null && profile.soundScoreAfter != null) ...[
-        _ListenSoundScoreCard(
-          ko: ko,
-          before: profile.soundScoreBefore!,
-          after: profile.soundScoreAfter!,
-        ),
-        const SizedBox(height: 20),
-      ],
-      AcousticTimeline(
-        currentStep: AcousticTimelineStep.savedProfile,
-        ko: ko,
-      ),
-      const SizedBox(height: 20),
-      Text(
-        ko ? '조정 내용' : 'Applied adjustments',
-        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
-      ),
-      const SizedBox(height: 12),
-      ...profile.resultCards.map((card) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 6, height: 6,
-                decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Text(card.label(ko: ko),
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w300)),
-          ]),
-          const SizedBox(height: 6),
-          Text(card.description(ko: ko),
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5)),
-        ]),
-      )),
-      if (!isConnected) ...[
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white12),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(children: [
-            const Icon(Icons.bluetooth_disabled, color: Colors.white24, size: 14),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                ko
-                    ? '나만의 사운드가 준비되었습니다. 스피커를 연결하면 이 설정으로 들을 수 있습니다.'
-                    : 'Your Sound is ready. Connect your speaker to listen with it.',
-                style: const TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
+        Row(
+          children: [
+            for (final (value, labelKo, labelEn) in presets) ...[
+              Expanded(
+                child: _LevelPreset(
+                  label: ko ? labelKo : labelEn,
+                  selected: volume == value,
+                  onTap: () => controller.setVolume(value),
+                ),
               ),
-            ),
-          ]),
+              if (value != presets.last.$1) const SizedBox(width: 8),
+            ],
+          ],
         ),
       ],
-    ]);
-  }
-}
-
-class _ListenSoundScoreCard extends StatelessWidget {
-  final bool ko;
-  final int before;
-  final int after;
-  const _ListenSoundScoreCard({required this.ko, required this.before, required this.after});
-
-  @override
-  Widget build(BuildContext context) {
-    final improvement = after - before;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF69F0AE).withValues(alpha: 0.04),
-        border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.18)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-            'Sound Score',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 10, letterSpacing: 1.5),
-          ),
-          const SizedBox(height: 6),
-          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-            Text('$before', style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 18, fontWeight: FontWeight.w300)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Icon(Icons.arrow_forward, color: Colors.white.withValues(alpha: 0.25), size: 12),
-            ),
-            Text('$after', style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 22, fontWeight: FontWeight.w300)),
-          ]),
-        ]),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFF69F0AE).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            '+$improvement',
-            style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 13, fontWeight: FontWeight.w500),
-          ),
-        ),
-      ]),
     );
   }
 }
 
-class _AbToggle extends StatelessWidget {
-  final bool showAfter;
-  final bool loop;
-  final bool hasAfter;
-  final ValueChanged<bool>? onSelect;
-  final ValueChanged<bool>? onLoopChanged;
-  const _AbToggle({required this.showAfter, required this.loop, required this.hasAfter, this.onSelect, this.onLoopChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Expanded(
-        child: Row(children: [
-          Expanded(child: Builder(builder: (ctx) {
-            final ko = Localizations.localeOf(ctx).languageCode == 'ko';
-            return _AbButton(label: ko ? '기본 사운드' : 'ORIGINAL SOUND', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false));
-          })),
-          const SizedBox(width: 8),
-          Expanded(child: _AbButton(label: 'YOUR SOUND', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
-        ]),
-      ),
-      const SizedBox(width: 12),
-      GestureDetector(
-        onTap: onLoopChanged == null ? null : () => onLoopChanged!(!loop),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: loop ? Colors.white : Colors.white24),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(children: [
-            Icon(loop ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                color: loop ? Colors.white : Colors.white38, size: 14),
-            const SizedBox(width: 4),
-            Text('LOOP', style: TextStyle(color: loop ? Colors.white : Colors.white38, fontSize: 10, letterSpacing: 1)),
-          ]),
-        ),
-      ),
-    ]);
-  }
-}
-
-class _AbButton extends StatelessWidget {
+class _LevelPreset extends StatelessWidget {
   final String label;
   final bool selected;
-  final bool enabled;
-  final VoidCallback? onTap;
-  const _AbButton({required this.label, required this.selected, this.enabled = true, this.onTap});
+  final VoidCallback onTap;
+
+  const _LevelPreset({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    final active = enabled && onTap != null;
-    return GestureDetector(
-      onTap: active ? onTap : null,
-      child: Container(
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: selected && active ? Colors.white : Colors.white24),
-          borderRadius: BorderRadius.circular(6),
-          color: selected && active ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.09)
+                : Colors.transparent,
+            border: Border.all(
+              color: selected ? Colors.white38 : Colors.white12,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : Colors.white38,
+              fontSize: 11,
+            ),
+          ),
         ),
-        child: Text(label,
-            style: TextStyle(color: !active ? Colors.white12 : selected ? Colors.white : Colors.white54, fontSize: 12, letterSpacing: 2)),
-      ),
-    );
-  }
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend();
-  @override
-  Widget build(BuildContext context) {
-    final ko = Localizations.localeOf(context).languageCode == 'ko';
-    return Row(children: [
-      _LegendDot(color: Colors.white38, label: ko ? '원본 사운드' : 'Original Sound'),
-      const SizedBox(width: 16),
-      const _LegendDot(color: Colors.greenAccent, label: 'Your Sound'),
-      const SizedBox(width: 16),
-      _LegendDot(color: Colors.lightBlueAccent, label: ko ? '현재' : 'Current'),
-    ]);
-  }
-}
-
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  const _LegendDot({required this.color, required this.label});
-  @override
-  Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
-      const SizedBox(width: 6),
-      Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
-    ]);
-  }
-}
-
-/// 회색(Before) · 초록(After AI) · 파랑(현재) 3색 오버레이
-class _OverlayChart extends StatelessWidget {
-  final SpectrumSnapshot snap;
-  const _OverlayChart({required this.snap});
-
-  List<FlSpot> _spotsOf(List<FrequencyBin>? bins) {
-    if (bins == null) return const [];
-    return bins
-        .where((b) => b.frequency >= 20 && b.frequency <= 500)
-        .map((b) => FlSpot(b.frequency, b.magnitude.clamp(-60.0, 20.0)))
-        .toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final beforeSpots = _spotsOf(snap.before);
-    final afterSpots = _spotsOf(snap.afterAi);
-    final currentSpots = _spotsOf(snap.current);
-    if (beforeSpots.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: 260,
-      child: LineChart(LineChartData(
-        backgroundColor: Colors.transparent,
-        gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => const FlLine(color: Colors.white10, strokeWidth: 0.5)),
-        titlesData: const FlTitlesData(
-          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        borderData: FlBorderData(show: false),
-        minX: 20, maxX: 500, minY: -60, maxY: 20,
-        lineBarsData: [
-          LineChartBarData(spots: beforeSpots, isCurved: true, color: Colors.white38, barWidth: 1.2, dotData: const FlDotData(show: false)),
-          if (afterSpots.isNotEmpty)
-            LineChartBarData(spots: afterSpots, isCurved: true, color: Colors.greenAccent, barWidth: 1.2, dotData: const FlDotData(show: false)),
-          if (currentSpots.isNotEmpty)
-            LineChartBarData(spots: currentSpots, isCurved: true, color: Colors.lightBlueAccent, barWidth: 1.0, dotData: const FlDotData(show: false)),
-        ],
-      )),
-    );
-  }
+      );
 }

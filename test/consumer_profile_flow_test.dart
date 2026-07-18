@@ -246,10 +246,10 @@ void main() {
   testWidgets('release onboarding and About TUNAI copy is present',
       (tester) async {
     await tester.pumpWidget(_app(OnboardingScreen(onComplete: () {})));
-    expect(find.text('Your room shapes your sound.'), findsOneWidget);
+    expect(find.text('Your space shapes your sound.'), findsOneWidget);
     expect(
       find.text(
-        'The same speaker can sound different in every room.\nTUNAI analyzes your listening space and creates a personalized sound profile.',
+        'The same speaker can sound different in every space.\nTUNAI listens from your position and creates Your Sound.',
       ),
       findsOneWidget,
     );
@@ -258,7 +258,7 @@ void main() {
 
     await tester.pumpWidget(_app(const AboutTunaiScreen()));
     expect(find.text('About TUNAI'), findsOneWidget);
-    expect(find.text('TUNAI opens that sound again.'), findsOneWidget);
+    expect(find.text('Sound made for your space.'), findsOneWidget);
     expect(find.textContaining('factory-tuned sound'), findsNothing);
   });
 
@@ -268,7 +268,7 @@ void main() {
       const ProviderScope(child: MaterialApp(home: MoreScreen())),
     );
     await tester.pump();
-    expect(find.text('CONNECTED DEVICE'), findsOneWidget);
+    expect(find.text('CONNECTED SPEAKER'), findsOneWidget);
     expect(find.text('SOUND PROFILES'), findsOneWidget);
     expect(find.text('HELP & SUPPORT'), findsOneWidget);
     expect(find.text('ABOUT TUNAI'), findsOneWidget);
@@ -276,12 +276,12 @@ void main() {
     expect(find.textContaining('FACTORY'), findsNothing);
   });
 
-  testWidgets('Room Analysis introduction is visible before measurement',
+  testWidgets('Space Analysis introduction is visible before measurement',
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(child: _app(const MeasureScreen(onMeasured: _noop))),
     );
-    expect(find.text('Your room shapes your sound.'), findsOneWidget);
+    expect(find.text('Your space shapes your sound.'), findsOneWidget);
     expect(
         find.text(
             'Walls, furniture, and placement affect how your speaker sounds.\n\nTUNAI analyzes your listening space and creates a personalized sound profile.'),
@@ -296,7 +296,7 @@ void main() {
     ));
     expect(
       find.text(
-        'TUNAI creates a safe, room-matched personal sound.\nNo complex settings — just better sound.',
+        'TUNAI shapes Your Sound for this space.\nNo complex setup — just press play and listen.',
       ),
       findsOneWidget,
     );
@@ -341,9 +341,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text(locale.languageCode == 'ko'
-            ? '스피커 확인 필요'
-            : 'Check Speaker'),
+        find.text(locale.languageCode == 'ko' ? '스피커 확인 필요' : 'Check Speaker'),
         findsOneWidget,
       );
       expect(
@@ -398,7 +396,8 @@ void main() {
         locale: locale,
       ));
       expect(
-        find.text(locale.languageCode == 'ko' ? '스마트폰 마이크' : 'Smartphone Microphone'),
+        find.text(
+            locale.languageCode == 'ko' ? '스마트폰 마이크' : 'Smartphone Microphone'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

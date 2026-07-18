@@ -13,22 +13,22 @@ class AboutTunaiScreen extends StatelessWidget {
 
     final slides = [
       (
-        ko ? '오디오의 패러다임이 바뀝니다.' : 'The audio paradigm is changing.',
+        ko ? '좋은 소리는 공간에서 완성됩니다.' : 'Great sound is completed by your space.',
         ko
-            ? '오랫동안 우리는\n스피커 안에 갇힌 소리를 들어왔습니다.\n\n공간이 바뀌어도,\n위치가 바뀌어도,\n취향이 달라져도,\n스피커는 처음의 소리에 머물렀습니다.'
-            : 'For too long,\nwe listened to sound locked inside the speaker.\n\nEven as spaces changed,\nplacement changed,\nand taste changed,\nthe speaker stayed fixed to its first sound.',
+            ? '같은 스피커도 놓인 공간과\n듣는 위치에 따라 다르게 들립니다.\n\nTUNAI는 당신이 실제로 듣는 자리에서\n더 좋은 소리를 시작합니다.'
+            : 'The same speaker sounds different\nin every space and listening position.\n\nTUNAI begins where you actually listen.',
       ),
       (
-        ko ? 'TUNAI는 그 소리를 다시 엽니다.' : 'TUNAI opens that sound again.',
+        ko ? '당신의 공간을 위한 사운드.' : 'Sound made for your space.',
         ko
-            ? '스피커가 놓인 환경,\n청취 위치,\n그리고 당신이 좋아하는 소리까지.\n\n공간 분석과 나만의 사운드 만들기는\n당신의 공간과 취향을 이해합니다.'
-            : 'The environment around the speaker,\nthe place where you listen,\nand the sound you prefer.\n\nSpace Analysis helps TUNAI create sound for your space and taste.',
+            ? '공간 분석은 스피커와 청취 위치를 이해하고,\n그 결과로 나만의 사운드를 완성합니다.\n\n복잡한 설정 없이\n당신의 음악에 더 가까워집니다.'
+            : 'Space Analysis understands your speaker\nand listening position, then shapes Your Sound.\n\nNo complex setup—just sound that brings you\ncloser to your music.',
       ),
       (
-        ko ? '좋은 소리를 찾는 일을\n더 이상 당신에게 떠넘기지 않습니다.' : 'Finding good sound should no longer\nbe left to you.',
+        ko ? '설정보다, 듣는 즐거움에 집중하세요.' : 'Less setup. More listening.',
         ko
-            ? '복잡한 조작도,\n끝없는 매칭도 필요 없습니다.\n\nTUNAI는 당신의 환경에 맞춰지고,\n당신의 취향으로 발전합니다.\n\n이제 스피커는\n듣는 사람과 함께 진화합니다.'
-            : 'No complex controls.\nNo endless matching.\n\nTUNAI adapts to your environment\nand evolves with your taste.\n\nNow the speaker evolves\nwith the listener.',
+            ? '연결하고, 공간을 분석하고,\n나의 사운드를 들어보세요.\n\nTUNAI는 기술을 드러내기보다\n좋은 소리의 경험을 남깁니다.'
+            : 'Connect, understand your space,\nand listen to Your Sound.\n\nTUNAI keeps the technology quiet\nso the music can come forward.',
       ),
     ];
 
@@ -40,7 +40,11 @@ class AboutTunaiScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 20, 8, 0),
             child: Row(children: [
               const Text('TUNAI',
-                  style: TextStyle(color: Colors.white, fontSize: 13, letterSpacing: 5, fontWeight: FontWeight.w300)),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      letterSpacing: 5,
+                      fontWeight: FontWeight.w300)),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.close, color: Colors.white38, size: 20),
@@ -59,7 +63,10 @@ class AboutTunaiScreen extends StatelessWidget {
                     onLongPress: () => requestFactoryModeAccess(context),
                     child: Text(
                       ko ? 'TUNAI 소개' : 'About TUNAI',
-                      style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 3),
+                      style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                          letterSpacing: 3),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -68,38 +75,49 @@ class AboutTunaiScreen extends StatelessWidget {
                     final (title, body) = e.value;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 36),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(
-                            '${i + 1}',
-                            style: const TextStyle(color: Colors.white12, fontSize: 11, letterSpacing: 1),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(title,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w300,
-                                    height: 1.4,
-                                    letterSpacing: -0.2,
-                                  )),
-                              const SizedBox(height: 14),
-                              Text(body,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.45),
-                                    fontSize: 14,
-                                    height: 1.75,
-                                  )),
-                            ]),
-                          ),
-                        ]),
-                        if (i < slides.length - 1) ...[
-                          const SizedBox(height: 28),
-                          Container(height: 0.5, color: Colors.white12),
-                        ],
-                      ]),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                        color: Colors.white12,
+                                        fontSize: 11,
+                                        letterSpacing: 1),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(title,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w300,
+                                                height: 1.4,
+                                                letterSpacing: -0.2,
+                                              )),
+                                          const SizedBox(height: 14),
+                                          Text(body,
+                                              style: TextStyle(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.45),
+                                                fontSize: 14,
+                                                height: 1.75,
+                                              )),
+                                        ]),
+                                  ),
+                                ]),
+                            if (i < slides.length - 1) ...[
+                              const SizedBox(height: 28),
+                              Container(height: 0.5, color: Colors.white12),
+                            ],
+                          ]),
                     );
                   }),
                 ],

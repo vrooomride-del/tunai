@@ -44,10 +44,12 @@ class _OnboardingPage {
 
 const _pages = [
   _OnboardingPage(
-    titleEn: 'Your room shapes your sound.',
+    titleEn: 'Your space shapes your sound.',
     titleKo: '당신의 공간이 소리를 만듭니다.',
-    subtitleEn: 'The same speaker can sound different in every room.\nTUNAI analyzes your listening space and creates a personalized sound profile.',
-    subtitleKo: '같은 스피커도 공간에 따라 전혀 다르게 들립니다.\nTUNAI는 당신의 공간을 분석하고 맞춤 사운드를 만들어드립니다.',
+    subtitleEn:
+        'The same speaker can sound different in every space.\nTUNAI listens from your position and creates Your Sound.',
+    subtitleKo:
+        '같은 스피커도 공간에 따라 전혀 다르게 들립니다.\nTUNAI는 당신의 공간을 분석하고 맞춤 사운드를 만들어드립니다.',
     btnEn: 'Continue',
     btnKo: '계속',
   ),
@@ -62,7 +64,8 @@ const _pages = [
   _OnboardingPage(
     titleEn: 'Connect. Analyze. Enjoy.',
     titleKo: '연결하고, 분석하고, 경험하세요.',
-    subtitleEn: 'Connect your TUNAI speaker and create your personal listening profile.',
+    subtitleEn:
+        'Connect your TUNAI speaker and create your personal listening profile.',
     subtitleKo: 'TUNAI 스피커를 연결하고 나만의 사운드 프로필을 만들어보세요.',
     btnEn: 'Get Started',
     btnKo: '시작하기',

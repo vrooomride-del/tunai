@@ -85,7 +85,7 @@ extension ConsumerProfileTypeLabels on ConsumerProfileType {
   String get _en => switch (this) {
         ConsumerProfileType.tunaiTune => 'TUNAI Tune',
         ConsumerProfileType.myTune => 'My Tune',
-        ConsumerProfileType.roomProfile => 'Room Profile',
+        ConsumerProfileType.roomProfile => 'Space Profile',
         ConsumerProfileType.reference => 'Reference',
         ConsumerProfileType.factorySound => 'Factory Sound',
       };

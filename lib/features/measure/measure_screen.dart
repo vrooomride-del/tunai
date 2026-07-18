@@ -56,12 +56,14 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
     final bState = ref.watch(bleProvider);
     final ko = _isKo;
     final step = mState.step;
-    final isRunning = step != MeasurementStep.idle
-        && step != MeasurementStep.done && step != MeasurementStep.error;
+    final isRunning = step != MeasurementStep.idle &&
+        step != MeasurementStep.done &&
+        step != MeasurementStep.error;
     final isConnected = bState.connection == BleConnectionState.connected;
 
     ref.listen<MeasurementState>(measurementProvider, (prev, next) async {
-      if (next.step == MeasurementStep.done && prev?.step != MeasurementStep.done) {
+      if (next.step == MeasurementStep.done &&
+          prev?.step != MeasurementStep.done) {
         final measurement = next.measurement;
         if (_committingResult || measurement == null || !measurement.isValid) {
           return;
@@ -122,8 +124,8 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
         onContinue: () {
           setState(() => _showMicCheck = false);
           ref.read(measurementProvider.notifier).startMeasurement(
-            speakerProfile: ref.read(speakerProfileProvider),
-          );
+                speakerProfile: ref.read(speakerProfileProvider),
+              );
         },
         onBack: () => setState(() => _showMicCheck = false),
       );
@@ -142,7 +144,9 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
                   children: [
                     const SizedBox(height: 48),
                     Text(
-                      ko ? '당신의 공간이 소리를 결정합니다.' : 'Your room shapes your sound.',
+                      ko
+                          ? '당신의 공간이 소리를 결정합니다.'
+                          : 'Your space shapes your sound.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -170,29 +174,36 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
                     if (!isConnected) ...[
                       const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.white12),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(children: [
-                          const Icon(Icons.bluetooth_disabled, color: Colors.white24, size: 16),
+                          const Icon(Icons.bluetooth_disabled,
+                              color: Colors.white24, size: 16),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               ko
                                   ? '스피커를 먼저 연결해주세요 (CONNECT 탭)'
                                   : 'Connect your speaker first (CONNECT tab)',
-                              style: const TextStyle(color: Colors.white38, fontSize: 12),
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 12),
                             ),
                           ),
                         ]),
                       ),
                     ],
-                    if (step == MeasurementStep.error && mState.error != null) ...[
+                    if (step == MeasurementStep.error &&
+                        mState.error != null) ...[
                       const SizedBox(height: 16),
                       Text(mState.error!,
-                          style: const TextStyle(color: Color(0xFFFF5252), fontSize: 13, height: 1.5)),
+                          style: const TextStyle(
+                              color: Color(0xFFFF5252),
+                              fontSize: 13,
+                              height: 1.5)),
                     ],
                     const SizedBox(height: 40),
                   ],
@@ -221,7 +232,8 @@ class _MicCheckView extends ConsumerWidget {
   final bool ko;
   final VoidCallback onContinue;
   final VoidCallback onBack;
-  const _MicCheckView({required this.ko, required this.onContinue, required this.onBack});
+  const _MicCheckView(
+      {required this.ko, required this.onContinue, required this.onBack});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -256,20 +268,25 @@ class _MicCheckView extends ConsumerWidget {
                         border: Border.all(color: Colors.white12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        PhoneMicCheckStatusLine(
-                          status: mic != null
-                              ? mic.statusLabel(ko: ko)
-                              : (ko ? '마이크 확인 중...' : 'Checking microphone...'),
-                        ),
-                        if (mic != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            mic.confidenceLabel(ko: ko),
-                            style: const TextStyle(color: Colors.white38, fontSize: 11),
-                          ),
-                        ],
-                      ]),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PhoneMicCheckStatusLine(
+                              status: mic != null
+                                  ? mic.statusLabel(ko: ko)
+                                  : (ko
+                                      ? '마이크 확인 중...'
+                                      : 'Checking microphone...'),
+                            ),
+                            if (mic != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                mic.confidenceLabel(ko: ko),
+                                style: const TextStyle(
+                                    color: Colors.white38, fontSize: 11),
+                              ),
+                            ],
+                          ]),
                     ),
                     const SizedBox(height: 28),
                     // Instructions
@@ -289,7 +306,7 @@ class _MicCheckView extends ConsumerWidget {
                       icon: Icons.volume_off_outlined,
                       text: ko
                           ? '가능한 조용한 상태에서 진행해 주세요.'
-                          : 'Make the room as quiet as possible.',
+                          : 'Make your space as quiet as possible.',
                     ),
                     const SizedBox(height: 32),
                     // Noise level placeholder
@@ -300,11 +317,15 @@ class _MicCheckView extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(children: [
-                        const Icon(Icons.sensors, color: Colors.white24, size: 14),
+                        const Icon(Icons.sensors,
+                            color: Colors.white24, size: 14),
                         const SizedBox(width: 10),
                         Text(
-                          ko ? '주변 소음 감지 — 준비 중' : 'Ambient noise detection — coming soon',
-                          style: const TextStyle(color: Colors.white24, fontSize: 11),
+                          ko
+                              ? '주변 소음 감지 — 준비 중'
+                              : 'Ambient noise detection — coming soon',
+                          style: const TextStyle(
+                              color: Colors.white24, fontSize: 11),
                         ),
                       ]),
                     ),
@@ -347,17 +368,19 @@ class _Instruction extends StatelessWidget {
   const _Instruction({required this.icon, required this.text});
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: Colors.white38, size: 16),
-      const SizedBox(width: 12),
-      Expanded(
-        child: Text(text,
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6), fontSize: 13, height: 1.5)),
-      ),
-    ]),
-  );
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: Colors.white38, size: 16),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 13,
+                    height: 1.5)),
+          ),
+        ]),
+      );
 }
 
 // ── Mic status compact card for the Ready screen ───────────────────────────────
@@ -378,7 +401,8 @@ class _MicStatusCard extends ConsumerWidget {
         child: Row(children: [
           const Icon(Icons.mic, color: Colors.white38, size: 14),
           const SizedBox(width: 10),
-          Expanded(child: Text(
+          Expanded(
+              child: Text(
             mic.statusLabel(ko: ko),
             style: const TextStyle(color: Colors.white54, fontSize: 11),
           )),
@@ -413,7 +437,7 @@ class _MeasuringViewState extends State<_MeasuringView> {
     super.initState();
     _phases = const [
       ('Checking bass response', '저역 반응을 확인하고 있습니다'),
-      ('Detecting room reflections', '공간 반사를 감지하고 있습니다'),
+      ('Listening to your space', '공간의 소리를 듣고 있습니다'),
       ('Balancing stereo image', '좌우 음장을 조정하고 있습니다'),
       ('Creating Your Sound', '나만의 사운드를 만들고 있습니다'),
     ];
@@ -531,7 +555,7 @@ class _ResultView extends ConsumerWidget {
                     Text(
                       ko
                           ? 'TUNAI가 공간이 소리에\n미치는 영향을 찾았습니다.'
-                          : 'TUNAI found what your\nroom is doing to the sound.',
+                          : 'TUNAI found how your\nspace shapes the sound.',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 26,
@@ -543,20 +567,25 @@ class _ResultView extends ConsumerWidget {
                     const SizedBox(height: 36),
                     // Listening Environment Summary — consumer-safe, no Hz/dB/chart
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.white12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(children: [
-                        const Icon(Icons.check_circle_outline, color: Color(0xFF69F0AE), size: 14),
+                        const Icon(Icons.check_circle_outline,
+                            color: Color(0xFF69F0AE), size: 14),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             ko
                                 ? 'TUNAI가 공간의 소리 특성을 정리했습니다.'
-                                : 'TUNAI summarized your room\'s sound characteristics.',
-                            style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
+                                : 'TUNAI has completed your space sound summary.',
+                            style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                                height: 1.4),
                           ),
                         ),
                       ]),
@@ -569,7 +598,10 @@ class _ResultView extends ConsumerWidget {
                     const SizedBox(height: 24),
                     Text(
                       ko ? '청취 환경 요약' : 'Listening Environment Summary',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 11,
+                          letterSpacing: 1.5),
                     ),
                     const SizedBox(height: 10),
                     ...cards.map((card) => _ResultCard(card: card, ko: ko)),
@@ -612,20 +644,26 @@ class _ResultCard extends StatelessWidget {
   const _ResultCard({required this.card, required this.ko});
   @override
   Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    decoration: BoxDecoration(
-      border: Border.all(color: Colors.white12),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(card.label(ko: ko),
-          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w400)),
-      const SizedBox(height: 4),
-      Text(card.description(ko: ko),
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 12, height: 1.4)),
-    ]),
-  );
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(card.label(ko: ko),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400)),
+          const SizedBox(height: 4),
+          Text(card.description(ko: ko),
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 12,
+                  height: 1.4)),
+        ]),
+      );
 }
 
 // ── Mic Strategy Section ──────────────────────────────────────────────────────
@@ -637,16 +675,16 @@ class PhoneMicCheckStatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    const Icon(Icons.mic, color: Colors.white54, size: 16),
-    const SizedBox(width: 10),
-    Expanded(
-      child: Text(
-        status,
-        softWrap: true,
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-      ),
-    ),
-  ]);
+        const Icon(Icons.mic, color: Colors.white54, size: 16),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            status,
+            softWrap: true,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+          ),
+        ),
+      ]);
 }
 
 class ConsumerMicStrategySection extends StatelessWidget {
@@ -658,7 +696,10 @@ class ConsumerMicStrategySection extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(
         ko ? '측정 장치' : 'Measurement Device',
-        style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
+        style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.35),
+            fontSize: 11,
+            letterSpacing: 1.5),
       ),
       const SizedBox(height: 10),
       Container(
@@ -671,23 +712,30 @@ class ConsumerMicStrategySection extends StatelessWidget {
         child: Row(children: [
           const Icon(Icons.smartphone, color: Colors.white70, size: 16),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              ko ? '스마트폰 마이크' : 'Smartphone Microphone',
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              ko ? '현재는 스마트폰 마이크로 진행합니다.' : 'Currently using your smartphone microphone.',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 11, height: 1.4),
-            ),
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(
+                  ko ? '스마트폰 마이크' : 'Smartphone Microphone',
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  ko
+                      ? '현재는 스마트폰 마이크로 진행합니다.'
+                      : 'Currently using your smartphone microphone.',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 11,
+                      height: 1.4),
+                ),
+              ])),
         ]),
       ),
     ]);
   }
 }
-
 
 // ── 공용 위젯 ──────────────────────────────────────────────────────────────────
 class _BigButton extends StatelessWidget {
@@ -732,7 +780,8 @@ class _LocationPicker extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(
           ko ? '스피커가 놓인 공간을 알려주세요' : 'Where is your speaker?',
-          style: const TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 0.5),
+          style: const TextStyle(
+              color: Colors.white, fontSize: 14, letterSpacing: 0.5),
         ),
         const SizedBox(height: 4),
         const Text('이 정보는 공간에 맞는 사운드를 준비하는 데 사용됩니다.',
@@ -746,17 +795,25 @@ class _LocationPicker extends ConsumerWidget {
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                border: Border.all(color: isSelected ? Colors.white : Colors.white12),
+                border: Border.all(
+                    color: isSelected ? Colors.white : Colors.white12),
                 borderRadius: BorderRadius.circular(6),
-                color: isSelected ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.transparent,
               ),
               child: Row(children: [
-                Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                    color: isSelected ? Colors.white : Colors.white24, size: 16),
+                Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: isSelected ? Colors.white : Colors.white24,
+                    size: 16),
                 const SizedBox(width: 10),
                 Text(ko ? loc.label : loc.labelEn,
                     style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white60, fontSize: 13)),
+                        color: isSelected ? Colors.white : Colors.white60,
+                        fontSize: 13)),
               ]),
             ),
           );
@@ -768,11 +825,15 @@ class _LocationPicker extends ConsumerWidget {
             decoration: const InputDecoration(
               hintText: '예: 침실 책장 위, 캠핑카 등',
               hintStyle: TextStyle(color: Colors.white24),
-              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-              focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24)),
+              focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white54)),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
-            onChanged: (v) => ref.read(installLocationCustomTextProvider.notifier).state = v,
+            onChanged: (v) =>
+                ref.read(installLocationCustomTextProvider.notifier).state = v,
           ),
         ],
       ]),

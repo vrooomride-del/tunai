@@ -18,18 +18,19 @@ class MoreScreen extends StatelessWidget {
           const TunaiTopBar(subtitle: 'MORE'),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 40),
               children: [
                 Text(
-                  ko
-                      ? '스피커와 나만의 사운드를 관리합니다.'
-                      : 'Manage your speaker and personal sound.',
+                  ko ? 'TUNAI와 나의 사운드.' : 'TUNAI and Your Sound.',
                   style: const TextStyle(
-                      color: Colors.white38, fontSize: 12, height: 1.5),
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w300,
+                      height: 1.4),
                 ),
                 const SizedBox(height: 20),
                 _MenuItem(
-                  label: ko ? '연결된 기기' : 'CONNECTED DEVICE',
+                  label: ko ? '연결된 스피커' : 'CONNECTED SPEAKER',
                   description: ko
                       ? '스피커 연결 및 재연결 설정'
                       : 'Connection and reconnect settings',
@@ -38,8 +39,9 @@ class MoreScreen extends StatelessWidget {
                 ),
                 _MenuItem(
                   label: ko ? '나의 사운드' : 'SOUND PROFILES',
-                  description:
-                      ko ? '공간별로 저장된 나의 사운드' : 'Your saved sound for each room',
+                  description: ko
+                      ? '공간별로 저장된 나의 사운드'
+                      : 'Your saved sound for each space',
                   icon: Icons.library_music_outlined,
                   onTap: () => _open(context, const LibraryScreen()),
                 ),
@@ -59,8 +61,9 @@ class MoreScreen extends StatelessWidget {
                 ),
                 _MenuItem(
                   label: ko ? 'TUNAI 소개' : 'ABOUT TUNAI',
-                  description:
-                      ko ? 'TUNAI와 공간 맞춤 사운드' : 'TUNAI and room-matched sound',
+                  description: ko
+                      ? '당신의 공간을 위한 프리미엄 사운드'
+                      : 'Premium sound, shaped for your space',
                   icon: Icons.info_outline,
                   onTap: () => _open(context, const AboutTunaiScreen()),
                 ),
@@ -104,13 +107,14 @@ class _MenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.white12),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white.withValues(alpha: 0.025),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Row(children: [
             Icon(icon, color: Colors.white38, size: 20),

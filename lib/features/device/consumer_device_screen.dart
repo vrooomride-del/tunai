@@ -62,7 +62,7 @@ class ConsumerDeviceScreen extends ConsumerWidget {
                   const SizedBox(height: 10),
                   _ActionButton(
                     key: const Key('device_forget_button'),
-                    label: ko ? '기기 지우기' : 'Forget Device',
+                    label: ko ? '스피커 지우기' : 'Forget Speaker',
                     outlined: true,
                     onTap: () => ref.read(bleProvider.notifier).forgetDevice(),
                   ),
@@ -70,7 +70,7 @@ class ConsumerDeviceScreen extends ConsumerWidget {
                   Text(
                     ko
                         ? '기기 기록만 삭제됩니다. 스피커의 현재 사운드 설정이 초기화되었다고 표시하지 않습니다.'
-                        : 'This removes the remembered device only. It does not reset or verify the speaker’s current sound.',
+                        : 'This removes the remembered speaker only. Its current sound will not be changed.',
                     style: const TextStyle(
                         color: Colors.white30, fontSize: 11, height: 1.5),
                   ),

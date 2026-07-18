@@ -16,7 +16,7 @@ void main() {
       home: OnboardingScreen(onComplete: () => completed = true),
     ));
 
-    expect(find.text('Your room shapes your sound.'), findsOneWidget);
+    expect(find.text('Your space shapes your sound.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(find.text('Create your personal sound.'), findsOneWidget);
@@ -35,7 +35,7 @@ void main() {
     await markOnboardingComplete();
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
     await tester.pumpAndSettle();
-    expect(find.text('Your room shapes your sound.'), findsNothing);
+    expect(find.text('Your space shapes your sound.'), findsNothing);
     expect(find.byType(BottomNavigationBar), findsOneWidget);
   });
 
@@ -71,7 +71,7 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
     await tester.pumpAndSettle();
-    expect(find.text('Your room shapes your sound.'), findsOneWidget);
+    expect(find.text('Your space shapes your sound.'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(find.text('Create your personal sound.'), findsOneWidget);

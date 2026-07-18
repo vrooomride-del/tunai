@@ -60,7 +60,7 @@ void main() {
   testWidgets('Factory Mode is hidden from normal MORE navigation',
       (tester) async {
     await tester.pumpWidget(ProviderScope(child: _app(const MoreScreen())));
-    expect(find.text('CONNECTED DEVICE'), findsOneWidget);
+    expect(find.text('CONNECTED SPEAKER'), findsOneWidget);
     expect(find.text('SOUND PROFILES'), findsOneWidget);
     expect(find.text('HELP & SUPPORT'), findsOneWidget);
     expect(find.text('ABOUT TUNAI'), findsOneWidget);
@@ -95,7 +95,8 @@ void main() {
       await tester.pumpWidget(
           ProviderScope(child: _app(const MoreScreen(), locale: locale)));
       expect(
-        find.text(locale.languageCode == 'ko' ? '연결된 기기' : 'CONNECTED DEVICE'),
+        find.text(
+            locale.languageCode == 'ko' ? '연결된 스피커' : 'CONNECTED SPEAKER'),
         findsOneWidget,
       );
       expect(
@@ -105,7 +106,7 @@ void main() {
     });
   }
 
-  testWidgets('known device is displayed and Forget Device clears storage',
+  testWidgets('known speaker is displayed and Forget Speaker clears storage',
       (tester) async {
     final store = _Store(_known());
     final service =

@@ -109,7 +109,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
     if (!mounted) return;
 
-    ref.read(consumerApplyPhaseProvider.notifier).state = switch (result.outcome) {
+    ref.read(consumerApplyPhaseProvider.notifier).state =
+        switch (result.outcome) {
       ConsumerDspDeploymentOutcome.applied => ConsumerApplyPhase.idle,
       ConsumerDspDeploymentOutcome.restored => ConsumerApplyPhase.restored,
       ConsumerDspDeploymentOutcome.failed => ConsumerApplyPhase.failed,
@@ -340,7 +341,7 @@ class _StateB extends StatelessWidget {
             children: [
               const Spacer(flex: 2),
               Text(
-                ko ? '아직 공간 분석이 없습니다.' : 'No Room Analysis yet.',
+                ko ? '먼저 공간을 알아볼게요.' : 'First, let’s understand your space.',
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -351,7 +352,7 @@ class _StateB extends StatelessWidget {
               Text(
                 ko
                     ? '공간 분석을 먼저 완료하면\n나만의 사운드를 만들 수 있습니다.'
-                    : 'Run a Room Analysis first to create\nYour Sound.',
+                    : 'Complete Space Analysis to create\nYour Sound.',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
                     fontSize: 14,
@@ -420,7 +421,7 @@ class _StateC extends StatelessWidget {
                     Text(
                       ko
                           ? 'TUNAI가 공간 특성에 맞는 안전한 나만의 사운드를 만듭니다.\n복잡한 설정 없이, 그저 좋은 소리를 들으면 됩니다.'
-                          : 'TUNAI creates a safe, room-matched personal sound.\nNo complex settings — just better sound.',
+                          : 'TUNAI shapes Your Sound for this space.\nNo complex setup — just press play and listen.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14,
@@ -517,7 +518,7 @@ class _StateD extends StatelessWidget {
               Text(
                 ko
                     ? '이 공간에 맞는 안전한\n나만의 사운드를 만들고 있습니다.'
-                    : 'Creating a safe personal sound\nfor this room.',
+                    : 'Creating Your Sound\nfor this space.',
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
@@ -534,7 +535,7 @@ class _StateD extends StatelessWidget {
               Text(
                 ko
                     ? '공간 특성을 분석하고 있습니다...'
-                    : 'Analysing room characteristics...',
+                    : 'Shaping the sound for your space...',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.35),
                     fontSize: 12,
@@ -587,7 +588,7 @@ class _StateE extends StatelessWidget {
                               color: Color(0xFF69F0AE),
                               shape: BoxShape.circle)),
                       const SizedBox(width: 10),
-                      Text(ko ? '공간 맞춤' : 'Room Matched',
+                      Text(ko ? '공간 맞춤' : 'MADE FOR YOUR SPACE',
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.45),
                               fontSize: 11,
@@ -607,7 +608,7 @@ class _StateE extends StatelessWidget {
                     Text(
                       ko
                           ? '이 공간에 맞게 안전하게 조정된 나만의 사운드입니다.\n적용하면 바로 들을 수 있습니다.'
-                          : 'A safe, room-matched personal sound has been created.\nApply it to start listening.',
+                          : 'Your personalized sound is ready.\nApply it to your speaker and start listening.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14,
@@ -629,7 +630,7 @@ class _StateE extends StatelessWidget {
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      ko ? 'TUNAI가 찾아낸 것' : 'What TUNAI found',
+                      ko ? '나의 사운드' : 'YOUR SOUND',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.35),
                           fontSize: 11,
@@ -643,8 +644,7 @@ class _StateE extends StatelessWidget {
                       _ConnectionNotice(ko: ko),
                     ],
                     const SizedBox(height: 16),
-                    if (speakerCheck == null ||
-                        !speakerCheck!.readyToApply)
+                    if (speakerCheck == null || !speakerCheck!.readyToApply)
                       _SpeakerCheckNotice(ko: ko, check: speakerCheck),
                   ],
                 ),
@@ -753,9 +753,8 @@ class _StateApplyResult extends StatelessWidget {
             children: [
               const Spacer(),
               Text(
-                key: Key(safe
-                    ? 'consumer_apply_restored'
-                    : 'consumer_apply_failed'),
+                key: Key(
+                    safe ? 'consumer_apply_restored' : 'consumer_apply_failed'),
                 headline,
                 style: const TextStyle(
                   color: Colors.white,
@@ -794,9 +793,7 @@ class _SpeakerCheckNotice extends StatelessWidget {
   String _message() {
     final status = check?.status;
     if (status == SpeakerCheckStatus.speakerNotConnected) {
-      return ko
-          ? '스피커 연결을 확인해 주세요.'
-          : 'Check speaker connection.';
+      return ko ? '스피커 연결을 확인해 주세요.' : 'Check speaker connection.';
     }
     if (status == SpeakerCheckStatus.identityUnconfirmed ||
         status == SpeakerCheckStatus.speakerMismatch) {

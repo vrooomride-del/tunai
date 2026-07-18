@@ -26,63 +26,60 @@ class RoomScanResultCard {
   String description({bool ko = false}) => ko ? descriptionKo : descriptionEn;
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'labelEn': labelEn, 'labelKo': labelKo,
-    'descriptionEn': descriptionEn, 'descriptionKo': descriptionKo,
-    if (evidenceKey != null) 'evidenceKey': evidenceKey,
-  };
-  factory RoomScanResultCard.fromJson(Map<String, dynamic> j) => RoomScanResultCard(
-    id: j['id'] as String,
-    labelEn: j['labelEn'] as String,
-    labelKo: j['labelKo'] as String,
-    descriptionEn: j['descriptionEn'] as String,
-    descriptionKo: j['descriptionKo'] as String,
-    evidenceKey: j['evidenceKey'] as String?,
-  );
+        'id': id,
+        'labelEn': labelEn,
+        'labelKo': labelKo,
+        'descriptionEn': descriptionEn,
+        'descriptionKo': descriptionKo,
+        if (evidenceKey != null) 'evidenceKey': evidenceKey,
+      };
+  factory RoomScanResultCard.fromJson(Map<String, dynamic> j) =>
+      RoomScanResultCard(
+        id: j['id'] as String,
+        labelEn: j['labelEn'] as String,
+        labelKo: j['labelKo'] as String,
+        descriptionEn: j['descriptionEn'] as String,
+        descriptionKo: j['descriptionKo'] as String,
+        evidenceKey: j['evidenceKey'] as String?,
+      );
 }
 
 const kDefaultResultCards = [
   RoomScanResultCard(
     id: 'balance',
-    labelEn: 'Room Balance',
+    labelEn: 'Space Balance',
     labelKo: '공간 밸런스',
     descriptionEn:
-        'TUNAI checked how your room shapes the sound at your listening position.'
+        'TUNAI checked how your space shapes the sound at your listening position.'
         '\n→ The sound was refined for better overall balance.',
-    descriptionKo:
-        'TUNAI가 청취 위치에서 공간의 울림을 확인했습니다.'
+    descriptionKo: 'TUNAI가 청취 위치에서 공간의 울림을 확인했습니다.'
         '\n→ 더 균형 잡힌 소리로 정리했습니다.',
   ),
   RoomScanResultCard(
     id: 'bass',
     labelEn: 'Bass Control',
     labelKo: '저역 정리',
-    descriptionEn:
-        'Nearby surfaces can make bass feel heavier than intended.'
+    descriptionEn: 'Nearby surfaces can make bass feel heavier than intended.'
         '\n→ Bass was tightened for a clearer, more controlled sound.',
-    descriptionKo:
-        '벽과 책상 주변의 영향으로 저역이 부풀 수 있습니다.'
+    descriptionKo: '벽과 책상 주변의 영향으로 저역이 부풀 수 있습니다.'
         '\n→ 저역이 더 단단하고 또렷하게 들리도록 정리했습니다.',
   ),
   RoomScanResultCard(
     id: 'voice',
     labelEn: 'Vocal Clarity',
     labelKo: '보컬 선명도',
-    descriptionEn:
-        'Room reflections can blur vocal presence.'
+    descriptionEn: 'Reflections in your space can blur vocal presence.'
         '\n→ Vocals were adjusted to sound more natural and focused.',
-    descriptionKo:
-        '보컬 대역이 공간 반사로 흐려질 수 있습니다.'
+    descriptionKo: '보컬 대역이 공간 반사로 흐려질 수 있습니다.'
         '\n→ 목소리가 더 자연스럽게 앞으로 나오도록 조정했습니다.',
   ),
   RoomScanResultCard(
     id: 'comfort',
     labelEn: 'Listening Comfort',
     labelKo: '청취 편안함',
-    descriptionEn:
-        'TUNAI checked the balance for longer listening.'
+    descriptionEn: 'TUNAI checked the balance for longer listening.'
         '\n→ The sound was refined to feel more comfortable over time.',
-    descriptionKo:
-        '오래 들을 때 피로감을 줄이는 방향을 확인했습니다.'
+    descriptionKo: '오래 들을 때 피로감을 줄이는 방향을 확인했습니다.'
         '\n→ 더 편안하게 들을 수 있도록 소리의 균형을 다듬었습니다.',
   ),
 ];
@@ -109,32 +106,33 @@ class RoomScanResult {
   });
 
   Map<String, dynamic> toJson() => {
-    'schemaVersion': schemaVersion,
-    if (measurementId != null) 'measurementId': measurementId,
-    'validatedMeasurement': validatedMeasurement,
-    'roomType': roomType,
-    'micProfileName': micProfileName,
-    'completedAt': completedAt.toIso8601String(),
-    'confidence': confidence,
-    'cards': cards.map((c) => c.toJson()).toList(),
-  };
+        'schemaVersion': schemaVersion,
+        if (measurementId != null) 'measurementId': measurementId,
+        'validatedMeasurement': validatedMeasurement,
+        'roomType': roomType,
+        'micProfileName': micProfileName,
+        'completedAt': completedAt.toIso8601String(),
+        'confidence': confidence,
+        'cards': cards.map((c) => c.toJson()).toList(),
+      };
 
   factory RoomScanResult.fromJson(Map<String, dynamic> j) => RoomScanResult(
-    schemaVersion: j['schemaVersion'] as int? ?? 0,
-    measurementId: j['measurementId'] as String?,
-    validatedMeasurement: j['validatedMeasurement'] as bool? ?? false,
-    roomType: j['roomType'] as String,
-    micProfileName: j['micProfileName'] as String,
-    completedAt: DateTime.parse(j['completedAt'] as String),
-    confidence: j['confidence'] as String,
-    cards: (j['cards'] as List)
-        .map((c) => RoomScanResultCard.fromJson(c as Map<String, dynamic>))
-        .toList(),
-  );
+        schemaVersion: j['schemaVersion'] as int? ?? 0,
+        measurementId: j['measurementId'] as String?,
+        validatedMeasurement: j['validatedMeasurement'] as bool? ?? false,
+        roomType: j['roomType'] as String,
+        micProfileName: j['micProfileName'] as String,
+        completedAt: DateTime.parse(j['completedAt'] as String),
+        confidence: j['confidence'] as String,
+        cards: (j['cards'] as List)
+            .map((c) => RoomScanResultCard.fromJson(c as Map<String, dynamic>))
+            .toList(),
+      );
 
   static RoomScanResult fromMeasurement(RoomMeasurement measurement) {
     if (!measurement.isValid) {
-      throw StateError('An invalid measurement cannot become a RoomScanResult.');
+      throw StateError(
+          'An invalid measurement cannot become a RoomScanResult.');
     }
     return RoomScanResult(
       schemaVersion: roomMeasurementSchemaVersion,
@@ -183,7 +181,7 @@ List<RoomScanResultCard> _cardsFromMeasurement(RoomMeasurement measurement) {
   if (upperBassPeaks.isNotEmpty) {
     cards.add(const RoomScanResultCard(
       id: 'measured_balance',
-      labelEn: 'Room Balance',
+      labelEn: 'Space Balance',
       labelKo: '공간 밸런스',
       descriptionEn:
           'The measurement found an uneven response that may affect overall balance at the listening position.',
@@ -194,7 +192,7 @@ List<RoomScanResultCard> _cardsFromMeasurement(RoomMeasurement measurement) {
   if (cards.isEmpty) {
     cards.add(const RoomScanResultCard(
       id: 'measured_neutral',
-      labelEn: 'Room Scan',
+      labelEn: 'Space Analysis',
       labelKo: '공간 스캔',
       descriptionEn:
           'The measurement did not find a strong low-frequency buildup in the analyzed range.',
@@ -218,8 +216,8 @@ class RoomScanResultNotifier extends StateNotifier<RoomScanResult?> {
     final raw = prefs.getString(_kKey);
     if (raw != null) {
       try {
-        final loaded = RoomScanResult.fromJson(
-            jsonDecode(raw) as Map<String, dynamic>);
+        final loaded =
+            RoomScanResult.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         // Legacy records remain available but are explicitly unvalidated.
         state = loaded;
       } catch (_) {}
