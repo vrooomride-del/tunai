@@ -34,7 +34,7 @@ class AcousticTimeline extends StatelessWidget {
     if (ko) {
       return switch (step) {
         AcousticTimelineStep.factorySound => '처음 소리',
-        AcousticTimelineStep.roomScan => 'Room Analysis',
+        AcousticTimelineStep.roomScan => '공간 분석',
         AcousticTimelineStep.acousticTune => 'Your Sound',
         AcousticTimelineStep.listen => '비교 청취',
         AcousticTimelineStep.savedProfile => '저장됨',
@@ -42,7 +42,7 @@ class AcousticTimeline extends StatelessWidget {
     }
     return switch (step) {
       AcousticTimelineStep.factorySound => 'Factory Sound',
-      AcousticTimelineStep.roomScan => 'Room Analysis',
+      AcousticTimelineStep.roomScan => 'Space Analysis',
       AcousticTimelineStep.acousticTune => 'Your Sound',
       AcousticTimelineStep.listen => 'Listen',
       AcousticTimelineStep.savedProfile => 'Saved Profile',

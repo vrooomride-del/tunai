@@ -96,7 +96,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                           ],
                           if (deviceFound) ...[
                             Text(
-                              ko ? '기기를 선택해주세요' : 'Select your speaker',
+                              ko ? '스피커를 선택해주세요' : 'Select your speaker',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,

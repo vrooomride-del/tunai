@@ -300,8 +300,8 @@ class _StateA extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 ko
-                    ? 'TUNAI 스피커와 연결하면 공간을 학습하고\n나만의 사운드를 만들 수 있습니다.'
-                    : 'Connect your TUNAI speaker to let TUNAI\nlearn your room and create your personal sound.',
+                    ? 'TUNAI 스피커를 연결하면\n공간에 맞는 나만의 사운드를 만들 수 있습니다.'
+                    : 'Connect your TUNAI speaker to create\na personal sound made for your space.',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
                     fontSize: 14,
@@ -360,7 +360,7 @@ class _StateB extends StatelessWidget {
               const SizedBox(height: 36),
               if (onGoRoom != null)
                 _TuneBigButton(
-                    label: ko ? 'Room Analysis 시작' : 'Start Room Analysis',
+                    label: ko ? '공간 분석 시작' : 'Start Space Analysis',
                     onTap: onGoRoom!),
               const Spacer(flex: 3),
             ],
@@ -398,7 +398,7 @@ class _StateC extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ko ? 'Room Analysis 완료' : 'Room Analysis Complete',
+                      ko ? '공간 분석 완료' : 'Space Analysis Complete',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.4),
                           fontSize: 11,
@@ -407,8 +407,8 @@ class _StateC extends StatelessWidget {
                     const SizedBox(height: 20),
                     Text(
                       ko
-                          ? '공간에 맞는\n나만의 사운드를 만들 준비가 됐습니다.'
-                          : 'Ready to create your\nYour Sound for this room.',
+                          ? '공간에 맞는\n나만의 사운드를 만들 준비가 되었습니다.'
+                          : 'Ready to create your\npersonal sound for this space.',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -629,7 +629,7 @@ class _StateE extends StatelessWidget {
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      ko ? 'TUNAI가 발견한 것' : 'What TUNAI found',
+                      ko ? 'TUNAI가 찾아낸 것' : 'What TUNAI found',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.35),
                           fontSize: 11,
@@ -923,7 +923,7 @@ class _StateF extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                       ko
-                          ? '이제 이 공간에 맞는 새로운 사운드를 즐겨보세요.\nLISTEN 탭에서 Before / After를 비교할 수 있습니다.'
+                          ? '이제 이 공간만을 위한 사운드를 즐겨보세요.\nLISTEN에서 Before / After를 직접 들어보세요.'
                           : 'Enjoy your personalized sound for this space.\nGo to LISTEN to compare before and after.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
@@ -946,7 +946,7 @@ class _StateF extends StatelessWidget {
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      ko ? '적용된 조정' : 'Applied adjustments',
+                      ko ? '조정 내용' : 'Applied adjustments',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.35),
                           fontSize: 11,

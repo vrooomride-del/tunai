@@ -149,8 +149,8 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             const SizedBox(height: 2),
                             Text(
                               ko
-                                  ? '원래 소리와 TUNAI saved sound을 비교해 보세요.'
-                                  : 'Compare the original sound with your TUNAI saved sound.',
+                                  ? '원래 소리와 나만의 사운드를 비교해 보세요.'
+                                  : 'Compare the original sound with your personal sound.',
                               style: TextStyle(color: Colors.white.withValues(alpha: 0.25), fontSize: 11, height: 1.4),
                             ),
                           ]);
@@ -288,7 +288,7 @@ class _CurrentProfileSection extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            ko ? '공간 분석으로 나만의 사운드를 만들어 저장해보세요.' : 'Run a Space Analysis to create Your Sound.',
+            ko ? '공간 분석을 완료하면 나만의 사운드를 만들 수 있습니다.' : 'Run a Space Analysis to create Your Sound.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5),
           ),
         ]),
@@ -445,7 +445,7 @@ class _ConsumerActiveView extends ConsumerWidget {
       ),
       const SizedBox(height: 20),
       Text(
-        ko ? '적용된 조정' : 'Applied adjustments',
+        ko ? '조정 내용' : 'Applied adjustments',
         style: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 11, letterSpacing: 1.5),
       ),
       const SizedBox(height: 12),

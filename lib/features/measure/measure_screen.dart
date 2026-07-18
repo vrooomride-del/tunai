@@ -203,7 +203,7 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen>
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
               child: _BigButton(
-                label: ko ? '공간 분석 시작' : 'Start Room Analysis',
+                label: ko ? '공간 분석 시작' : 'Start Space Analysis',
                 onTap: isConnected
                     ? () => setState(() => _showMicCheck = true)
                     : null,
@@ -318,7 +318,7 @@ class _MicCheckView extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
               child: _BigButton(
-                label: ko ? '공간 분석 시작' : 'Start Room Analysis',
+                label: ko ? '공간 분석 시작' : 'Start Space Analysis',
                 onTap: onContinue,
               ),
             ),
@@ -414,8 +414,8 @@ class _MeasuringViewState extends State<_MeasuringView> {
     _phases = const [
       ('Checking bass response', '저역 반응을 확인하고 있습니다'),
       ('Detecting room reflections', '공간 반사를 감지하고 있습니다'),
-      ('Balancing stereo image', '스테레오 이미지를 정렬하고 있습니다'),
-      ('Creating Your Sound', '나만의 사운드를 생성하고 있습니다'),
+      ('Balancing stereo image', '좌우 음장을 조정하고 있습니다'),
+      ('Creating Your Sound', '나만의 사운드를 만들고 있습니다'),
     ];
     _tick();
   }
@@ -443,7 +443,7 @@ class _MeasuringViewState extends State<_MeasuringView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                ko ? '공간의 소리를 이해하고 있습니다...' : 'TUNAI is understanding your room...',
+                ko ? '공간을 분석하고 있습니다...' : 'TUNAI is analyzing your space...',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 26,
@@ -580,7 +580,7 @@ class _ResultView extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
               child: _BigButton(
-                label: ko ? '나만의 사운드 생성' : 'Create Your Sound',
+                label: ko ? '나만의 사운드 만들기' : 'Create Your Sound',
                 onTap: onOptimize,
               ),
             ),

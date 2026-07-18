@@ -69,7 +69,7 @@ class FirstRunGuideCard extends ConsumerWidget {
     switch (s) {
       case FirstRunState.noDeviceConnected:         return ko ? '1단계 · 연결' : 'STEP 1 · CONNECT';
       case FirstRunState.deviceConnectedNoRoomScan: return ko ? '2단계 · 공간 분석' : 'STEP 2 · SPACE SCAN';
-      case FirstRunState.roomScanCompleteNoTune:    return ko ? '3단계 · 나만의 사운드' : 'STEP 3 · ACOUSTIC TUNE';
+      case FirstRunState.roomScanCompleteNoTune:    return ko ? '3단계 · 나만의 사운드' : 'STEP 3 · YOUR SOUND';
       case FirstRunState.acousticTuneReadyNotApplied: return ko ? '4단계 · 적용' : 'STEP 4 · APPLY';
       case FirstRunState.acousticTuneApplied:       return ko ? '완료' : 'COMPLETE';
     }
@@ -98,7 +98,7 @@ class FirstRunGuideCard extends ConsumerWidget {
         return _CardData(
           title: ko ? '공간 분석이 완료되었습니다.' : 'Space Analysis complete.',
           subtitle: ko
-              ? '이제 나만의 사운드를 생성할 수 있습니다.'
+              ? '이제 나만의 사운드를 만들 수 있습니다.'
               : 'TUNAI can now create Your Sound.',
           buttons: [
             _BtnData(label: ko ? '나만의 사운드 생성' : 'Create Your Sound', tabIndex: 2, primary: true),
