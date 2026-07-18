@@ -12,6 +12,47 @@ import '../../core/tune_deployment_plan.dart';
 import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
 
+/// What tapping the TUNE apply/check button should do, resolved from the LIVE
+/// speaker-check status and BLE connection state. The button is ALWAYS
+/// actionable — this never resolves to "do nothing".
+enum SpeakerButtonAction {
+  /// Ready — continue to the apply / comparison-listening flow.
+  apply,
+
+  /// Bluetooth is off — route to CONNECT and surface Bluetooth guidance.
+  bluetoothOff,
+
+  /// No speaker connected — route to CONNECT to connect one.
+  connect,
+
+  /// Connected but not verified (identity/sound state) — route to CONNECT to
+  /// re-verify / reconnect.
+  reconnect,
+}
+
+/// Pure routing decision for the TUNE speaker button. Kept side-effect free so
+/// it is exhaustively testable. Never returns a null/no-op — the button is
+/// never a dead control.
+SpeakerButtonAction resolveSpeakerButtonAction({
+  required SpeakerCheckStatus status,
+  required BleConnectionState connection,
+}) {
+  if (status == SpeakerCheckStatus.readyToApply) {
+    return SpeakerButtonAction.apply;
+  }
+  // Bluetooth off takes priority over "not connected" so the user gets the
+  // correct guidance.
+  if (connection == BleConnectionState.bluetoothOff) {
+    return SpeakerButtonAction.bluetoothOff;
+  }
+  if (status == SpeakerCheckStatus.speakerNotConnected) {
+    return SpeakerButtonAction.connect;
+  }
+  // identityUnconfirmed / speakerMismatch / soundStateNotVerified /
+  // originalValuesUnavailable → a speaker is connected but not verified.
+  return SpeakerButtonAction.reconnect;
+}
+
 /// TUNE 탭 — Consumer Your Sound 6-state flow.
 /// No DSP, no EQ, no PEQ, no frequency data exposed.
 class AiScreen extends ConsumerStatefulWidget {
@@ -116,6 +157,45 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       ConsumerDspDeploymentOutcome.failed => ConsumerApplyPhase.failed,
       ConsumerDspDeploymentOutcome.blocked => ConsumerApplyPhase.idle,
     };
+  }
+
+  /// Handler for the TUNE apply/check button. Always active — on every tap it
+  /// re-reads the LIVE speaker-check and BLE state (refreshing any stale
+  /// derivation) and routes accordingly, so the button is never a dead control.
+  Future<void> _onSpeakerButtonPressed() async {
+    final check = ref.read(speakerCheckResultProvider);
+    final ble = ref.read(bleProvider);
+    final action = resolveSpeakerButtonAction(
+      status: check.status,
+      connection: ble.connection,
+    );
+    final ko = _isKo;
+    switch (action) {
+      case SpeakerButtonAction.apply:
+        await _applyTune();
+      case SpeakerButtonAction.bluetoothOff:
+        _guideToConnect(ko
+            ? '블루투스를 켜고 스피커를 연결해 주세요.'
+            : 'Turn on Bluetooth and connect your speaker.');
+      case SpeakerButtonAction.connect:
+        _guideToConnect(ko
+            ? '스피커를 먼저 연결해 주세요.'
+            : 'Please connect your speaker first.');
+      case SpeakerButtonAction.reconnect:
+        _guideToConnect(ko
+            ? '스피커를 다시 연결해 확인해 주세요.'
+            : 'Reconnect your speaker to verify it.');
+    }
+  }
+
+  /// Shows a short guidance message and navigates to the CONNECT tab (index 0).
+  void _guideToConnect(String message) {
+    if (mounted && message.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
+    }
+    widget.onGoTo?.call(0);
   }
 
   Future<void> _createTune(RoomScanResult scan) async {
@@ -244,7 +324,10 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         scan: scan,
         isConnected: isConnected,
         speakerCheck: speakerCheck,
-        onApply: speakerCheck.readyToApply ? _applyTune : null,
+        // Always actionable: when ready it applies, otherwise it re-checks live
+        // state and routes the user (connect / Bluetooth / reconnect). Never a
+        // dead disabled control.
+        onApply: _onSpeakerButtonPressed,
       );
     }
 
