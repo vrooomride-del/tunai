@@ -211,7 +211,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen>
     final fps = preset['fps_json'] as List?;
     if (fps == null || fps.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('필터 데이터가 없는 프리셋입니다.')));
+          const SnackBar(content: Text('이 사운드 프리셋에 데이터가 없습니다.')));
       return;
     }
     final peaks = fps.map((f) => ResonancePeak(

@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/widgets.dart';
+import '../auth/auth_controller.dart';
+import '../community/community_screen.dart';
+import '../community/my_sound_screen.dart';
 import '../device/consumer_device_screen.dart';
 import '../library/library_screen.dart';
 import 'about_tunai_screen.dart';
 
-class MoreScreen extends StatelessWidget {
+class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final auth = ref.watch(authProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -80,6 +86,48 @@ class MoreScreen extends StatelessWidget {
                             : 'Additional settings will be available in a future update.',
                       )),
                 ),
+                const SizedBox(height: 8),
+                _MenuItem(
+                  label: ko ? '커뮤니티' : 'COMMUNITY',
+                  description: ko
+                      ? '다른 사용자의 사운드 탐색 및 공유'
+                      : 'Explore and share sounds with others',
+                  icon: Icons.people_outline,
+                  onTap: () => _open(context, const CommunityScreen()),
+                ),
+                _MenuItem(
+                  label: ko
+                      ? (auth.isLoggedIn
+                          ? (auth.nickname ?? '계정')
+                          : '로그인 / 계정 만들기')
+                      : (auth.isLoggedIn
+                          ? (auth.nickname ?? 'ACCOUNT')
+                          : 'SIGN IN'),
+                  description: ko
+                      ? (auth.isLoggedIn
+                          ? auth.email ?? ''
+                          : '나의 사운드를 저장하고 커뮤니티에 참여하세요')
+                      : (auth.isLoggedIn
+                          ? auth.email ?? ''
+                          : 'Save your sound and join the community'),
+                  icon: auth.isLoggedIn ? Icons.person : Icons.person_outline,
+                  onTap: () => _open(context, const MySoundScreen()),
+                ),
+                if (auth.isLoggedIn) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => ref.read(authProvider.notifier).logout(),
+                    child: Center(
+                      child: Text(
+                        ko ? '로그아웃' : 'Sign out',
+                        style: const TextStyle(
+                            color: Colors.white24,
+                            fontSize: 12,
+                            decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

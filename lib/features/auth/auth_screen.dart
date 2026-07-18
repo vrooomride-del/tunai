@@ -15,8 +15,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final _passwordCtrl = TextEditingController();
   final _nicknameCtrl = TextEditingController();
 
+  bool _isKo(BuildContext context) =>
+      Localizations.localeOf(context).languageCode == 'ko';
+
   @override
   Widget build(BuildContext context) {
+    final ko = _isKo(context);
     final auth = ref.watch(authProvider);
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -32,14 +36,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 28,
                       fontWeight: FontWeight.w200, letterSpacing: 10)),
               const SizedBox(height: 8),
-              Text(_isLogin ? '로그인' : '계정 만들기',
+              Text(
+                  _isLogin
+                      ? (ko ? '로그인' : 'SIGN IN')
+                      : (ko ? '계정 만들기' : 'CREATE ACCOUNT'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 4)),
               const SizedBox(height: 16),
-              const Text(
-                '공간 프로파일을 저장하고,\nTUNAI 클라우드와 동기화합니다.',
+              Text(
+                ko
+                    ? '나만의 사운드를 저장하고,\n커뮤니티와 함께 공유하세요.'
+                    : 'Save Your Sound and\nshare it with the community.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white24, fontSize: 12, height: 1.6),
+                style: const TextStyle(color: Colors.white24, fontSize: 12, height: 1.6),
               ),
               const SizedBox(height: 44),
               _Field(label: 'EMAIL', controller: _emailCtrl, keyboardType: TextInputType.emailAddress),
@@ -78,26 +87,30 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: auth.isLoading
                         ? const SizedBox(width: 16, height: 16,
                             child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white38))
-                        : Text(_isLogin ? '로그인' : '계정 만들기',
+                        : Text(
+                            _isLogin
+                                ? (ko ? '로그인' : 'Sign In')
+                                : (ko ? '계정 만들기' : 'Create Account'),
                             style: const TextStyle(color: Colors.white, fontSize: 12, letterSpacing: 3)),
                   ),
                 ),
               ),
               const SizedBox(height: 24),
-              const Row(
+              Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.white12)),
+                  const Expanded(child: Divider(color: Colors.white12)),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('또는', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(ko ? '또는' : 'or',
+                        style: const TextStyle(color: Colors.white24, fontSize: 11)),
                   ),
-                  Expanded(child: Divider(color: Colors.white12)),
+                  const Expanded(child: Divider(color: Colors.white12)),
                 ],
               ),
 
 
               const SizedBox(height: 12),
-              // 구글 로그인
+              // Google login
               GestureDetector(
                 onTap: () async {
                   final ok = await ref.read(authProvider.notifier).loginWithGoogle();
@@ -112,13 +125,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     borderRadius: BorderRadius.circular(8),
                     color: Colors.white,
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.g_mobiledata, color: Colors.red, size: 28),
-                      SizedBox(width: 8),
-                      Text('Google로 로그인',
-                          style: TextStyle(
+                      const Icon(Icons.g_mobiledata, color: Colors.red, size: 28),
+                      const SizedBox(width: 8),
+                      Text(ko ? 'Google로 로그인' : 'Continue with Google',
+                          style: const TextStyle(
                               color: Colors.black87,
                               fontSize: 14,
                               fontWeight: FontWeight.w500)),
@@ -127,7 +140,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // 카카오 로그인
+              // Kakao login
               GestureDetector(
                 onTap: () async {
                   final ok = await ref.read(authProvider.notifier).loginWithKakao();
@@ -141,13 +154,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     color: const Color(0xFFFEE500),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.chat_bubble, color: Color(0xFF3A1D1D), size: 18),
-                      SizedBox(width: 8),
-                      Text('카카오 로그인',
-                          style: TextStyle(color: Color(0xFF3A1D1D),
+                      const Icon(Icons.chat_bubble, color: Color(0xFF3A1D1D), size: 18),
+                      const SizedBox(width: 8),
+                      Text(ko ? '카카오 로그인' : 'Continue with Kakao',
+                          style: const TextStyle(color: Color(0xFF3A1D1D),
                               fontSize: 14, fontWeight: FontWeight.w600)),
                     ],
                   ),
@@ -157,7 +170,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               GestureDetector(
                 onTap: () => setState(() => _isLogin = !_isLogin),
                 child: Text(
-                  _isLogin ? '계정이 없으신가요?  계정 만들기' : '이미 계정이 있으신가요?  로그인',
+                  _isLogin
+                      ? (ko ? '계정이 없으신가요?  계정 만들기' : "Don't have an account?  Create one")
+                      : (ko ? '이미 계정이 있으신가요?  로그인' : 'Already have an account?  Sign in'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
@@ -165,10 +180,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               const SizedBox(height: 20),
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
-                child: const Center(
+                child: Center(
                   child: Text(
-                    '로그인 없이 계속',
-                    style: TextStyle(color: Colors.white24, fontSize: 12, decoration: TextDecoration.underline),
+                    ko ? '로그인 없이 계속' : 'Continue without signing in',
+                    style: const TextStyle(color: Colors.white24, fontSize: 12, decoration: TextDecoration.underline),
                   ),
                 ),
               ),
