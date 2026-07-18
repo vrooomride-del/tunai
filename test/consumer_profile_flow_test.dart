@@ -336,14 +336,14 @@ void main() {
       );
       expect(
         find.text(locale.languageCode == 'ko'
-            ? '적용하기 전에 스피커 상태 확인이 필요합니다.'
-            : 'Speaker state verification required before applying.'),
+            ? '적용하기 전에 스피커를 확인해야 합니다.'
+            : 'Check your speaker before applying.'),
         findsOneWidget,
       );
       expect(
         find.text(locale.languageCode == 'ko'
-            ? '스피커 상태 확인 필요'
-            : 'Verification Required'),
+            ? '스피커 확인 필요'
+            : 'Check Speaker'),
         findsOneWidget,
       );
       expect(

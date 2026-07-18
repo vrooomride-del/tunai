@@ -111,7 +111,7 @@ void main() {
   // ── Apply success — profile deployed → StateF ─────────────────────────────
 
   group('Apply success — applied profile shows Ready to listen', () {
-    testWidgets('StateF: "Ready to listen." visible after apply', (tester) async {
+    testWidgets('StateF: "Done." visible after apply', (tester) async {
       // Use add() to preserve isActive: true / deploymentStatus: applied.
       final profiles = ConsumerSoundProfileNotifier();
       await profiles.add(_appliedProfile());
@@ -130,14 +130,14 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('Ready to listen.'), findsOneWidget);
+      expect(find.text('Done.'), findsOneWidget);
       expect(find.text('Go to LISTEN'), findsOneWidget);
       // No error/rollback UI visible.
       expect(find.byKey(const Key('consumer_apply_failed')), findsNothing);
       expect(find.byKey(const Key('consumer_apply_restored')), findsNothing);
     });
 
-    testWidgets('StateF: Korean "들을 준비 완료." visible after apply',
+    testWidgets('StateF: Korean "완료되었습니다." visible after apply',
         (tester) async {
       final profiles = ConsumerSoundProfileNotifier();
       await profiles.add(_appliedProfile());
@@ -156,7 +156,7 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('들을 준비 완료.'), findsOneWidget);
+      expect(find.text('완료되었습니다.'), findsOneWidget);
       expect(find.text('LISTEN으로 이동'), findsOneWidget);
     });
   });
@@ -171,10 +171,10 @@ void main() {
         find.byKey(const Key('consumer_apply_applying')),
         findsOneWidget,
       );
-      expect(find.text('Applying to speaker...'), findsOneWidget);
+      expect(find.text('Applying your personal sound to the speaker...'), findsOneWidget);
       expect(find.text('Please wait.'), findsOneWidget);
       // No success/failure UI visible.
-      expect(find.text('Ready to listen.'), findsNothing);
+      expect(find.text('Done.'), findsNothing);
       expect(find.byKey(const Key('consumer_apply_failed')), findsNothing);
     });
 
@@ -202,7 +202,7 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('스피커에 적용 중...'), findsOneWidget);
+      expect(find.text('나만의 사운드를 스피커에 적용하고 있습니다.'), findsOneWidget);
       expect(find.text('잠시 기다려 주세요.'), findsOneWidget);
     });
   });
@@ -214,14 +214,14 @@ void main() {
       await _pumpAiWithPhase(tester, applyPhase: ConsumerApplyPhase.failed);
 
       expect(find.byKey(const Key('consumer_apply_failed')), findsOneWidget);
-      expect(find.text('Something went wrong.'), findsOneWidget);
+      expect(find.text('Could not apply.'), findsOneWidget);
       expect(
         find.text('Please reconnect your speaker and try again.'),
         findsOneWidget,
       );
       expect(find.text('Try again'), findsOneWidget);
       // Does not show applied UI.
-      expect(find.text('Ready to listen.'), findsNothing);
+      expect(find.text('Done.'), findsNothing);
     });
 
     testWidgets('Korean: failed phase shows correct message', (tester) async {
@@ -248,7 +248,7 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('문제가 발생했습니다.'), findsOneWidget);
+      expect(find.text('적용하지 못했습니다.'), findsOneWidget);
       expect(find.text('스피커를 재연결하고 다시 시도해 주세요.'), findsOneWidget);
       expect(find.text('다시 시도'), findsOneWidget);
     });
@@ -271,17 +271,15 @@ void main() {
       await _pumpAiWithPhase(tester, applyPhase: ConsumerApplyPhase.restored);
 
       expect(find.byKey(const Key('consumer_apply_restored')), findsOneWidget);
-      expect(find.text('No changes were made.'), findsOneWidget);
+      expect(find.text('Could not apply.'), findsOneWidget);
       expect(
-        find.text(
-            'Your speaker\'s original sound remains active.\n'
-            'Your previous settings are safe.'),
+        find.text('Your previous settings are still active. Please try again.'),
         findsOneWidget,
       );
       expect(find.text('Try again'), findsOneWidget);
       // Does not show failed UI or applied UI.
       expect(find.byKey(const Key('consumer_apply_failed')), findsNothing);
-      expect(find.text('Ready to listen.'), findsNothing);
+      expect(find.text('Done.'), findsNothing);
     });
 
     testWidgets('Korean: restored phase shows correct message', (tester) async {
@@ -308,9 +306,8 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('변경되지 않았습니다.'), findsOneWidget);
-      expect(find.text('스피커의 원래 사운드가 그대로 유지됩니다.\n이전 설정은 안전하게 보존되어 있습니다.'),
-          findsOneWidget);
+      expect(find.text('적용하지 못했습니다.'), findsOneWidget);
+      expect(find.text('이전 설정을 유지했습니다. 다시 시도해 주세요.'), findsOneWidget);
       expect(find.text('다시 시도'), findsOneWidget);
     });
 

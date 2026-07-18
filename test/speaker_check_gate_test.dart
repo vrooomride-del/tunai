@@ -186,7 +186,7 @@ void main() {
       );
 
       expect(find.text('Apply to Speaker'), findsOneWidget);
-      expect(find.text('Verification Required'), findsNothing);
+      expect(find.text('Check Speaker'), findsNothing);
       // Verification notice is hidden when check passes.
       expect(
         find.byKey(const Key('consumer_dsp_state_verification_required')),
@@ -208,7 +208,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Verification Required'), findsOneWidget);
+      expect(find.text('Check Speaker'), findsOneWidget);
       expect(find.text('Apply to Speaker'), findsNothing);
       expect(
         find.byKey(const Key('consumer_dsp_state_verification_required')),
@@ -231,7 +231,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Verification Required'), findsOneWidget);
+      expect(find.text('Check Speaker'), findsOneWidget);
       expect(find.text('Apply to Speaker'), findsNothing);
       expect(
         find.text('Speaker identity could not be confirmed.'),
@@ -268,14 +268,14 @@ void main() {
         ),
       );
 
-      expect(find.text('Verification Required'), findsOneWidget);
+      expect(find.text('Check Speaker'), findsOneWidget);
       expect(find.text('Apply to Speaker'), findsNothing);
       expect(
         find.byKey(const Key('consumer_dsp_state_verification_required')),
         findsOneWidget,
       );
       expect(
-        find.text('Speaker state verification required before applying.'),
+        find.text('Check your speaker before applying.'),
         findsOneWidget,
       );
     });
@@ -291,7 +291,7 @@ void main() {
       );
 
       expect(
-        find.text('Speaker state verification required before applying.'),
+        find.text('Check your speaker before applying.'),
         findsOneWidget,
       );
       expect(find.text('Apply to Speaker'), findsNothing);

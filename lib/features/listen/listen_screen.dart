@@ -6,7 +6,6 @@ import '../../core/audio_analyzer.dart';
 import '../../core/spectrum_snapshot.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../main.dart' show currentTabIndexProvider;
-import '../health/speaker_health_screen.dart';
 import '../../shared/widgets.dart';
 import '../../shared/spectrum_chart.dart';
 import '../../shared/preset_bar.dart';
@@ -126,7 +125,7 @@ class _ListenScreenState extends ConsumerState<ListenScreen> {
                             Builder(builder: (ctx) {
                               final ko = Localizations.localeOf(ctx).languageCode == 'ko';
                               return Text(
-                                _showAfter && hasAfter ? 'Your Sound' : (ko ? '기본 사운드' : 'Original Sound'),
+                                _showAfter && hasAfter ? 'YOUR SOUND' : (ko ? '기본 사운드' : 'ORIGINAL SOUND'),
                                 style: const TextStyle(color: Colors.white60, fontSize: 12, letterSpacing: 2),
                               );
                             }),
@@ -289,7 +288,7 @@ class _CurrentProfileSection extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            ko ? '공간 분석으로 나만의 사운드를 만들어 저장해보세요.' : 'Run a Room Analysis to create Your Sound.',
+            ko ? '공간 분석으로 나만의 사운드를 만들어 저장해보세요.' : 'Run a Space Analysis to create Your Sound.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12, height: 1.5),
           ),
         ]),
@@ -318,7 +317,7 @@ class _CurrentProfileSection extends ConsumerWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              ko ? '공간 맞춤' : 'Room Matched',
+              ko ? '공간 맞춤' : 'Space Matched',
               style: const TextStyle(color: Color(0xFF69F0AE), fontSize: 9, letterSpacing: 1),
             ),
           ),
@@ -336,24 +335,6 @@ class _CurrentProfileSection extends ConsumerWidget {
             _MetaChipListen(text: 'Score ${profile.soundScoreAfter}'),
           ],
         ]),
-        const SizedBox(height: 12),
-        const Divider(color: Colors.white10, height: 1),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SpeakerHealthScreen()),
-          ),
-          child: Row(children: [
-            Icon(Icons.health_and_safety_outlined, color: const Color(0xFF69F0AE).withValues(alpha: 0.6), size: 13),
-            const SizedBox(width: 6),
-            Text(
-              ko ? '시스템 상태: 정상' : 'System Health: Normal',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 11, letterSpacing: 0.5),
-            ),
-            const Spacer(),
-            Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.2), size: 14),
-          ]),
-        ),
       ]),
     );
   }
@@ -390,7 +371,7 @@ class _EmptyState extends StatelessWidget {
         Text(
           ko
               ? '공간 분석을 완료한 후 나만의 사운드를 만들어보세요.\n원본 사운드와 나만의 사운드를 여기서 비교할 수 있습니다.'
-              : 'Run a Room Analysis first, then create Your Sound.\nOriginal Sound and Your Sound will appear here for comparison.',
+              : 'Run a Space Analysis first, then create Your Sound.\nOriginal Sound and Your Sound will appear here for comparison.',
           style: const TextStyle(color: Colors.white38, fontSize: 12, height: 1.6),
           textAlign: TextAlign.center,
         ),
@@ -581,7 +562,7 @@ class _AbToggle extends StatelessWidget {
             return _AbButton(label: ko ? '기본 사운드' : 'ORIGINAL SOUND', selected: !showAfter, onTap: onSelect == null ? null : () => onSelect!(false));
           })),
           const SizedBox(width: 8),
-          Expanded(child: _AbButton(label: 'ACOUSTIC TUNE', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
+          Expanded(child: _AbButton(label: 'YOUR SOUND', selected: showAfter, enabled: hasAfter, onTap: onSelect == null ? null : () => onSelect!(true))),
         ]),
       ),
       const SizedBox(width: 12),

@@ -655,7 +655,7 @@ class _StateE extends StatelessWidget {
               child: _TuneBigButton(
                 label: speakerCheck?.readyToApply == true
                     ? (ko ? '스피커에 적용' : 'Apply to Speaker')
-                    : (ko ? '스피커 상태 확인 필요' : 'Verification Required'),
+                    : (ko ? '스피커 확인 필요' : 'Check Speaker'),
                 onTap: onApply,
               ),
             ),
@@ -691,7 +691,9 @@ class _StateApplying extends StatelessWidget {
                 const SizedBox(height: 24),
                 Text(
                   key: const Key('consumer_apply_applying'),
-                  ko ? '스피커에 적용 중...' : 'Applying to speaker...',
+                  ko
+                      ? '나만의 사운드를 스피커에 적용하고 있습니다.'
+                      : 'Applying your personal sound to the speaker...',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 16,
@@ -730,12 +732,12 @@ class _StateApplyResult extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headline = safe
-        ? (ko ? '변경되지 않았습니다.' : 'No changes were made.')
-        : (ko ? '문제가 발생했습니다.' : 'Something went wrong.');
+        ? (ko ? '적용하지 못했습니다.' : 'Could not apply.')
+        : (ko ? '적용하지 못했습니다.' : 'Could not apply.');
     final body = safe
         ? (ko
-            ? '스피커의 원래 사운드가 그대로 유지됩니다.\n이전 설정은 안전하게 보존되어 있습니다.'
-            : 'Your speaker\'s original sound remains active.\nYour previous settings are safe.')
+            ? '이전 설정을 유지했습니다. 다시 시도해 주세요.'
+            : 'Your previous settings are still active. Please try again.')
         : (ko
             ? '스피커를 재연결하고 다시 시도해 주세요.'
             : 'Please reconnect your speaker and try again.');
@@ -804,8 +806,8 @@ class _SpeakerCheckNotice extends StatelessWidget {
     }
     // soundStateNotVerified / originalValuesUnavailable / null
     return ko
-        ? '적용하기 전에 스피커 상태 확인이 필요합니다.'
-        : 'Speaker state verification required before applying.';
+        ? '적용하기 전에 스피커를 확인해야 합니다.'
+        : 'Check your speaker before applying.';
   }
 
   @override
@@ -910,7 +912,7 @@ class _StateF extends StatelessWidget {
                     ]),
                     const SizedBox(height: 20),
                     Text(
-                      ko ? '들을 준비 완료.' : 'Ready to listen.',
+                      ko ? '완료되었습니다.' : 'Done.',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -921,8 +923,8 @@ class _StateF extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                       ko
-                          ? '${profile.name}이(가) 활성화되어 있습니다.\nLISTEN 탭에서 Before / After를 비교해보세요.'
-                          : '${profile.name} is active.\nGo to LISTEN to compare before and after.',
+                          ? '이제 이 공간에 맞는 새로운 사운드를 즐겨보세요.\nLISTEN 탭에서 Before / After를 비교할 수 있습니다.'
+                          : 'Enjoy your personalized sound for this space.\nGo to LISTEN to compare before and after.',
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
                           fontSize: 14,
