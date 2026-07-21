@@ -289,4 +289,87 @@ void main() {
     expect(result.rollbackSucceeded, isFalse);
     expect(result.dspApplied, isFalse);
   });
+
+  group('restoreOriginal (LISTEN Original/TUNAI Sound toggle)', () {
+    test('writes originalValues sequentially and returns restored', () async {
+      final plan = _plan();
+      final transport = _FakeTransport();
+      final result =
+          await ConsumerDspDeploymentExecutor(transport: transport)
+              .restoreOriginal(
+        plans: [plan],
+        expectedDeviceIdentifier: 'device-1',
+        explicitlyConfirmed: true,
+      );
+
+      expect(result.outcome, ConsumerDspDeploymentOutcome.restored);
+      expect(result.plans.single.state, TuneDeploymentState.RESTORED);
+      expect(transport.writes, [
+        Icp5PeqCommandBuilder.frequency(
+          channel: 1,
+          bandId: 0,
+          frequencyHz: plan.originalValues.frequencyHz,
+        ),
+        Icp5PeqCommandBuilder.gain(
+          channel: 1,
+          bandId: 0,
+          gainDb: plan.originalValues.gainDb,
+        ),
+        Icp5PeqCommandBuilder.q(
+          channel: 1,
+          bandId: 0,
+          q: plan.originalValues.q,
+        ),
+      ]);
+      // Master volume is never touched by the toggle.
+      expect(transport.writes.length, 3);
+    });
+
+    test('invalid ACK fails without attempting a nested rollback', () async {
+      final transport = _FakeTransport(responses: [
+        Icp5PeqCommandBuilder.peqAck,
+        [0x55],
+      ]);
+      final result =
+          await ConsumerDspDeploymentExecutor(transport: transport)
+              .restoreOriginal(
+        plans: [_plan()],
+        expectedDeviceIdentifier: 'device-1',
+        explicitlyConfirmed: true,
+      );
+
+      expect(result.outcome, ConsumerDspDeploymentOutcome.failed);
+      expect(result.failure, ConsumerDspDeploymentFailure.invalidAck);
+      expect(result.plans.single.state, TuneDeploymentState.FAILED);
+      // Only the two attempted writes — no rollback-of-a-rollback write.
+      expect(transport.writes.length, 2);
+    });
+
+    test('respects the same guards as execute (disconnected)', () async {
+      final result = await ConsumerDspDeploymentExecutor(
+        transport: _FakeTransport(connected: false),
+      ).restoreOriginal(
+        plans: [_plan()],
+        expectedDeviceIdentifier: 'device-1',
+        explicitlyConfirmed: true,
+      );
+      expect(result.outcome, ConsumerDspDeploymentOutcome.blocked);
+      expect(result.failure, ConsumerDspDeploymentFailure.disconnected);
+    });
+
+    test('releases the lock after a successful restore', () async {
+      final executor = ConsumerDspDeploymentExecutor(transport: _FakeTransport());
+      await executor.restoreOriginal(
+        plans: [_plan()],
+        expectedDeviceIdentifier: 'device-1',
+        explicitlyConfirmed: true,
+      );
+      final second = await executor.execute(
+        plans: [_plan()],
+        expectedDeviceIdentifier: 'device-1',
+        explicitlyConfirmed: true,
+      );
+      expect(second.outcome, ConsumerDspDeploymentOutcome.applied);
+    });
+  });
 }

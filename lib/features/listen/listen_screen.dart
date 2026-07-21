@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/consumer_dsp_deployment.dart';
 import '../../core/consumer_sound_profile.dart';
+import '../../core/tune_deployment_plan.dart';
+import '../../core/tune_plan.dart';
 import '../../shared/widgets.dart';
 import '../ble/ble_controller.dart';
 import '../dsp/master_volume_controller.dart';
@@ -64,6 +67,10 @@ class ListenScreen extends ConsumerWidget {
                       connected: connected,
                       ko: ko,
                     ),
+                    if (profile != null) ...[
+                      const SizedBox(height: 20),
+                      _OriginalTunaiToggleCard(profile: profile, ko: ko),
+                    ],
                     const SizedBox(height: 36),
                     const _ListeningLevelSection(),
                   ],
@@ -282,6 +289,282 @@ class _ListeningLevelSection extends ConsumerWidget {
       ],
     );
   }
+}
+
+// ── Original / TUNAI Sound A/B toggle ────────────────────────────────────────
+
+enum _ToggleSide { original, tunaiSound }
+
+/// Manual live A/B comparison between the flat baseline ("Original") and the
+/// deployed tune ("TUNAI Sound"). No PEQ/FFT/DSP terms are ever shown — the
+/// two states are exposed purely as Original vs TUNAI Sound.
+///
+/// Rebuilds the same [TuneDeploymentPlan]s used by TUNE's Apply flow directly
+/// from the stored [TunePlan] using the app-wide "flat baseline = same
+/// frequency/Q, gain 0dB" convention (see `AiScreen._seedFlatBaselineSnapshot`)
+/// — no new measurement or DSP address is introduced, and master volume is
+/// never touched by the toggle, so any perceived volume difference reflects
+/// only the real EQ curve, not the toggle itself.
+class _OriginalTunaiToggleCard extends ConsumerStatefulWidget {
+  final ConsumerSoundProfile profile;
+  final bool ko;
+
+  const _OriginalTunaiToggleCard({required this.profile, required this.ko});
+
+  @override
+  ConsumerState<_OriginalTunaiToggleCard> createState() =>
+      _OriginalTunaiToggleCardState();
+}
+
+class _OriginalTunaiToggleCardState
+    extends ConsumerState<_OriginalTunaiToggleCard> {
+  bool _switching = false;
+  _ToggleSide? _pendingTarget;
+  String? _error;
+
+  /// Starting side always matches the profile's last known confidence:
+  /// `applied` means the device currently holds the tuned values.
+  _ToggleSide? _side;
+
+  _ToggleSide _resolveSide() {
+    if (_side != null) return _side!;
+    return widget.profile.deploymentStatus == TuneDeploymentStatus.applied
+        ? _ToggleSide.tunaiSound
+        : _ToggleSide.original;
+  }
+
+  Future<List<TuneDeploymentPlan>?> _rebuildPlans() async {
+    final plan = await TunePlanStore.load();
+    if (plan == null || plan.id != widget.profile.tunePlanId) return null;
+    if (plan.bands.isEmpty) return null;
+    const channel = ConsumerDspDeploymentExecutor.confirmedTunePlanChannel;
+    return [
+      for (var bandId = 0; bandId < plan.bands.length; bandId++)
+        TuneDeploymentPlan(
+          channel: channel,
+          bandId: bandId,
+          frequencyHz: plan.bands[bandId].frequencyHz.round(),
+          gainDb: plan.bands[bandId].gainDb,
+          q: plan.bands[bandId].q,
+          enable: true,
+          originalValues: TuneDeploymentOriginalValues(
+            frequencyHz: plan.bands[bandId].frequencyHz.round(),
+            gainDb: 0.0,
+            q: plan.bands[bandId].q,
+            enable: true,
+          ),
+        ),
+    ];
+  }
+
+  bool get _available {
+    final ble = ref.watch(bleProvider);
+    final service = ref.read(consumerBleServiceProvider);
+    return ble.connection == BleConnectionState.connected &&
+        service.supportedIdentityValidated &&
+        service.validatedDeviceIdentifier == ble.selectedDeviceIdentifier &&
+        widget.profile.tunePlanId != null &&
+        widget.profile.deploymentStatus != TuneDeploymentStatus.unknown;
+  }
+
+  Future<void> _switchTo(_ToggleSide target) async {
+    if (_switching || target == _resolveSide()) return;
+    final ble = ref.read(bleProvider);
+    final deviceId = ble.selectedDeviceIdentifier;
+    if (deviceId == null || deviceId.isEmpty) return;
+
+    setState(() {
+      _switching = true;
+      _pendingTarget = target;
+      _error = null;
+    });
+
+    final plans = await _rebuildPlans();
+    if (!mounted) return;
+    if (plans == null) {
+      setState(() {
+        _switching = false;
+        _pendingTarget = null;
+        _error = widget.ko
+            ? '지금은 전환할 수 없습니다. TUNE 탭에서 다시 적용해 주세요.'
+            : "Can't switch right now. Reapply from the TUNE tab.";
+      });
+      return;
+    }
+
+    final service = ref.read(consumerBleServiceProvider);
+    final executor = ConsumerDspDeploymentExecutor(
+        transport: ConsumerBleDspTransport(service));
+    final result = target == _ToggleSide.original
+        ? await executor.restoreOriginal(
+            plans: plans,
+            expectedDeviceIdentifier: deviceId,
+            explicitlyConfirmed: true,
+          )
+        : await executor.execute(
+            plans: plans,
+            expectedDeviceIdentifier: deviceId,
+            explicitlyConfirmed: true,
+          );
+    if (!mounted) return;
+
+    final succeeded = target == _ToggleSide.original
+        ? result.outcome == ConsumerDspDeploymentOutcome.restored
+        : result.outcome == ConsumerDspDeploymentOutcome.applied;
+
+    if (succeeded) {
+      await ref.read(consumerSoundProfileProvider.notifier).recordDspDeployment(
+            widget.profile.id,
+            ConsumerDspDeploymentRecord(
+              tunePlanId: widget.profile.tunePlanId!,
+              deviceIdentifier: deviceId,
+              attemptedAt: DateTime.now(),
+              bandCount: plans.length,
+              result: target == _ToggleSide.original
+                  ? ConsumerDspDeploymentRecordResult.restored
+                  : ConsumerDspDeploymentRecordResult.applied,
+              dspApplied: target == _ToggleSide.tunaiSound,
+            ),
+          );
+      if (!mounted) return;
+      setState(() {
+        _side = target;
+        _switching = false;
+        _pendingTarget = null;
+      });
+    } else {
+      setState(() {
+        _switching = false;
+        _pendingTarget = null;
+        _error = widget.ko ? '전환하지 못했습니다.' : 'Could not switch.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ko = widget.ko;
+    final available = _available;
+    final side = _resolveSide();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.035),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ko ? '비교해서 들어보세요' : 'Compare the difference',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.38),
+              fontSize: 10,
+              letterSpacing: 2.2,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _ToggleButton(
+                  label: ko ? 'Original' : 'Original',
+                  selected: side == _ToggleSide.original,
+                  enabled: available && !_switching,
+                  busy: _pendingTarget == _ToggleSide.original,
+                  onTap: () => _switchTo(_ToggleSide.original),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ToggleButton(
+                  label: 'TUNAI Sound',
+                  selected: side == _ToggleSide.tunaiSound,
+                  enabled: available && !_switching,
+                  busy: _pendingTarget == _ToggleSide.tunaiSound,
+                  onTap: () => _switchTo(_ToggleSide.tunaiSound),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            !available
+                ? (ko
+                    ? '스피커를 연결하면 비교해서 들을 수 있습니다.'
+                    : 'Connect your speaker to compare.')
+                : (_error ??
+                    (ko
+                        ? '두 소리를 번갈아 들으며 비교해보세요.'
+                        : 'Switch back and forth to compare.')),
+            style: TextStyle(
+              color: _error != null
+                  ? const Color(0xFFFF5252)
+                  : Colors.white.withValues(alpha: 0.4),
+              fontSize: 12,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToggleButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _ToggleButton({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.03),
+            border: Border.all(
+              color: selected ? Colors.white54 : Colors.white12,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    color: Colors.white54,
+                    strokeWidth: 1.5,
+                  ),
+                )
+              : Text(
+                  label,
+                  style: TextStyle(
+                    color: enabled ? Colors.white : Colors.white24,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+        ),
+      );
 }
 
 class _LevelPreset extends StatelessWidget {

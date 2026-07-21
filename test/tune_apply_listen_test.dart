@@ -3,7 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tunai/core/consumer_sound_profile.dart';
+import 'package:tunai/core/room_scan_result.dart';
 import 'package:tunai/core/speaker_check_gate.dart';
+import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
 import 'package:tunai/features/listen/listen_screen.dart';
 
@@ -206,6 +209,86 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('스피커'), findsWidgets);
+    });
+  });
+
+  // ── Listen screen — Original / TUNAI Sound A/B toggle ──────────────────────
+
+  ConsumerSoundProfile appliedProfile() => ConsumerSoundProfile(
+        id: 'tune-1',
+        name: 'Living Room Acoustic Tune',
+        roomType: 'Living Room',
+        createdAt: DateTime.fromMillisecondsSinceEpoch(1000),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+        micProfileName: 'Generic Phone Mic',
+        confidence: 'Medium',
+        isActive: true,
+        status: ConsumerProfileStatus.active,
+        resultCards: kDefaultResultCards,
+        tunePlanId: 'plan-1',
+        generationStatus: ConsumerProfileGenerationStatus.generated,
+        deploymentStatus: TuneDeploymentStatus.applied,
+      );
+
+  group('Listen screen — Original / TUNAI Sound toggle', () {
+    testWidgets('EN: shows Original and TUNAI Sound buttons for an active profile',
+        (tester) async {
+      final notifier = ConsumerSoundProfileNotifier();
+      await notifier.add(appliedProfile());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [consumerSoundProfileProvider.overrideWith((ref) => notifier)],
+        child: _en(const ListenScreen()),
+      ));
+      await tester.pump();
+
+      expect(find.text('Original'), findsOneWidget);
+      expect(find.text('TUNAI Sound'), findsOneWidget);
+      // No technical DSP/PEQ terms anywhere in the new comparison UI either.
+      expect(find.textContaining('DSP'), findsNothing);
+      expect(find.textContaining('PEQ'), findsNothing);
+      expect(find.textContaining('FFT'), findsNothing);
+    });
+
+    testWidgets('EN: not connected shows explanatory copy, no crash on tap',
+        (tester) async {
+      final notifier = ConsumerSoundProfileNotifier();
+      await notifier.add(appliedProfile());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [consumerSoundProfileProvider.overrideWith((ref) => notifier)],
+        child: _en(const ListenScreen()),
+      ));
+      await tester.pump();
+
+      expect(find.text('Connect your speaker to compare.'), findsOneWidget);
+
+      // Tapping while unavailable must be a no-op, never throw.
+      await tester.tap(find.text('Original'));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('KO: shows Korean explanatory copy when not connected',
+        (tester) async {
+      final notifier = ConsumerSoundProfileNotifier();
+      await notifier.add(appliedProfile());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [consumerSoundProfileProvider.overrideWith((ref) => notifier)],
+        child: _ko(const ListenScreen()),
+      ));
+      await tester.pump();
+
+      expect(find.text('스피커를 연결하면 비교해서 들을 수 있습니다.'), findsOneWidget);
+    });
+
+    testWidgets('no toggle card when there is no active profile',
+        (tester) async {
+      await tester.pumpWidget(ProviderScope(
+        child: _en(const ListenScreen()),
+      ));
+      await tester.pump();
+
+      expect(find.text('Original'), findsNothing);
+      expect(find.text('TUNAI Sound'), findsNothing);
     });
   });
 }

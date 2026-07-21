@@ -251,6 +251,117 @@ class ConsumerDspDeploymentExecutor {
     }
   }
 
+  /// Writes each band's [TuneDeploymentPlan.originalValues] (the flat
+  /// baseline captured/synthesized before Apply) back to the device.
+  ///
+  /// This is the LISTEN "Original" side of the manual A/B toggle — distinct
+  /// from the error-path [_rollback] used inside [execute]: it always writes
+  /// every band (not just previously-acknowledged ones) and never attempts a
+  /// nested rollback-of-a-rollback on failure. Master volume is never touched
+  /// here, so any perceived loudness difference when toggling comes only
+  /// from the EQ curve itself, not from this operation.
+  Future<ConsumerDspDeploymentResult> restoreOriginal({
+    required List<TuneDeploymentPlan> plans,
+    required String expectedDeviceIdentifier,
+    required bool explicitlyConfirmed,
+  }) async {
+    final guard = _guard(
+      plans: plans,
+      expectedDeviceIdentifier: expectedDeviceIdentifier,
+      explicitlyConfirmed: explicitlyConfirmed,
+    );
+    if (guard != null) return guard;
+    _inProgress = true;
+    var current = plans
+        .map((plan) => plan.copyWith(state: TuneDeploymentState.CREATED))
+        .toList();
+    final acknowledged = <_DeploymentCommand>[];
+    final diagnostics = <ConsumerDspCommandDiagnostic>[];
+    try {
+      final commands = _commands(current);
+      for (final command in commands) {
+        current[command.planIndex] = current[command.planIndex]
+            .copyWith(state: TuneDeploymentState.SENT);
+        final ack = await _sendAndValidate(
+          command,
+          command.restore,
+          diagnostics,
+        );
+        if (!Icp5PeqCommandBuilder.isValidPeqAck(ack)) {
+          throw const _DeploymentException(
+            ConsumerDspDeploymentFailure.invalidAck,
+          );
+        }
+        acknowledged.add(command);
+        if (commands
+            .where((entry) => entry.planIndex == command.planIndex)
+            .every(acknowledged.contains)) {
+          current[command.planIndex] = current[command.planIndex]
+              .copyWith(state: TuneDeploymentState.RESTORED);
+        }
+      }
+      return ConsumerDspDeploymentResult(
+        outcome: ConsumerDspDeploymentOutcome.restored,
+        plans: List.unmodifiable(current),
+        acknowledgedCommandCount: acknowledged.length,
+        commandDiagnostics: List.unmodifiable(diagnostics),
+      );
+    } catch (error) {
+      final failure = _classify(error);
+      current = [
+        for (final plan in current)
+          plan.copyWith(state: TuneDeploymentState.FAILED),
+      ];
+      return ConsumerDspDeploymentResult(
+        outcome: ConsumerDspDeploymentOutcome.failed,
+        failure: failure,
+        plans: List.unmodifiable(current),
+        commandDiagnostics: List.unmodifiable(diagnostics),
+      );
+    } finally {
+      _inProgress = false;
+    }
+  }
+
+  Future<List<int>> _sendAndValidate(
+    _DeploymentCommand command,
+    List<int> payload,
+    List<ConsumerDspCommandDiagnostic> diagnostics,
+  ) async {
+    if (transport is ConsumerBleDspTransport) {
+      try {
+        final exchange = await (transport as ConsumerBleDspTransport)
+            .writeAndAwaitExchange(payload, timeout: commandTimeout);
+        diagnostics.add(_diagnostic(command, diagnostics.length + 1, exchange));
+        return exchange.matchedFrame;
+      } on ConsumerBleApplicationException catch (error) {
+        diagnostics.add(_diagnostic(
+          command,
+          diagnostics.length + 1,
+          error.exchange,
+          transportError: error.cause.toString(),
+        ));
+        throw error.cause;
+      }
+    }
+    final ack = await transport.writeAndAwaitResponse(
+      payload,
+      timeout: commandTimeout,
+    );
+    diagnostics.add(ConsumerDspCommandDiagnostic(
+      commandIndex: diagnostics.length + 1,
+      property: command.property,
+      txPacket: List.unmodifiable(payload),
+      gattWriteCompleted: true,
+      rawRxNotifications: [List.unmodifiable(ack)],
+      rawRxElapsedMilliseconds: const [0],
+      responseBytes: List.unmodifiable(ack),
+      ackParserResult: Icp5PeqCommandBuilder.isValidPeqAck(ack),
+      elapsedMilliseconds: 0,
+    ));
+    return ack;
+  }
+
   ConsumerDspDeploymentResult? _guard({
     required List<TuneDeploymentPlan> plans,
     required String expectedDeviceIdentifier,
