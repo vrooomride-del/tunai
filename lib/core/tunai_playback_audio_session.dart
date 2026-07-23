@@ -63,24 +63,27 @@ class TunaiPlaybackAudioSession {
       await session.setActive(true);
       debugPrint('[AUDIO_PATH] $label: session ACTIVE '
           '(+${sw.elapsedMilliseconds}ms)');
-      // `setActive(true)` completing only means the *session* was
-      // activated, not that the *physical* output route has switched to the
-      // connected Bluetooth speaker yet. A previous version of this method
-      // BLOCKED here polling `getDevices()` for a `bluetoothA2dp` entry —
-      // reverted, because on real hardware it made playback (and everything
-      // waiting on it) stall far longer than the old fixed delay, without
-      // confirmed evidence it was even detecting the right thing on this
-      // speaker. Back to a bounded fixed delay: known, bounded, non-hanging.
-      // `_logDevicesForDiagnostics` runs alongside it, unawaited — it never
-      // gates playback, it only prints what the OS reports so the next real
-      // logcat capture has actual evidence instead of another guess.
+      // `setActive(true)` completing only means the *session* was activated,
+      // not that the *physical* output route has switched to the connected
+      // Bluetooth speaker yet. On the FIRST playback after a new BLE
+      // connection the classic-Bluetooth A2DP audio link is often still being
+      // negotiated, so a blind fixed delay (previously 1200ms) can elapse
+      // while the route is still on the phone — the "first white noise / tone
+      // plays from the phone, later ones from the speaker" symptom.
+      //
+      // Instead, wait for the ACTUAL signal: poll `getDevices()` (confirmed to
+      // report `bluetoothA2dp` correctly on real hardware) until the A2DP
+      // output appears, then proceed. Returns fast when the route is already
+      // up, waits out a genuinely-still-switching route, and — if the device
+      // never exposes A2DP (audio not connected) or the query is unavailable —
+      // falls back to the old bounded fixed delay so playback is never blocked
+      // indefinitely.
       final needsSettle =
           awaitRouteSettle && (!_everSettled || settleKey != _lastSettledKey);
       if (needsSettle) {
         _everSettled = true;
         _lastSettledKey = settleKey;
-        _logDevicesForDiagnostics(session, label);
-        await Future.delayed(const Duration(milliseconds: 1200));
+        await _awaitAudioRouteSettled(session, label, sw);
       }
       debugPrint('[AUDIO_PATH] $label: ensureActive DONE '
           '(+${sw.elapsedMilliseconds}ms settled=$needsSettle)');
@@ -127,25 +130,46 @@ class TunaiPlaybackAudioSession {
     }
   }
 
-  /// Fire-and-forget diagnostic only — never awaited by [ensureActive], so
-  /// it can never add latency or block playback. Purely so the next real
-  /// logcat capture shows what the OS actually reports at the moment of
-  /// this settle wait, instead of relying on another unverified guess.
-  static void _logDevicesForDiagnostics(AudioSession session, String label) {
-    session.getDevices().then((devices) {
-      final outputs = devices.where((d) => d.isOutput).toList();
+  /// The most time the first playback may wait for the A2DP route to appear.
+  /// Long enough to cover a real first-connection handshake, bounded so a
+  /// device that never exposes A2DP can't block playback forever.
+  static const _maxRouteWait = Duration(milliseconds: 4000);
+  static const _pollInterval = Duration(milliseconds: 150);
+
+  /// Waits until the OS reports a connected `bluetoothA2dp` OUTPUT (the real
+  /// "audio is now going to the speaker" signal), polling [_pollInterval] up to
+  /// [_maxRouteWait]. Returns immediately once it appears. Falls back to a
+  /// bounded fixed delay if `getDevices()` is unavailable, and simply proceeds
+  /// after the ceiling if A2DP never appears (audio not connected — the
+  /// on-screen "playing from phone" notice already covers that case). Never
+  /// throws.
+  static Future<void> _awaitAudioRouteSettled(
+      AudioSession session, String label, Stopwatch sw) async {
+    final deadline = DateTime.now().add(_maxRouteWait);
+    while (DateTime.now().isBefore(deadline)) {
+      List<AudioDevice> outputs;
+      try {
+        outputs =
+            (await session.getDevices()).where((d) => d.isOutput).toList();
+      } catch (error) {
+        debugPrint('[AUDIO_PATH] $label: getDevices() failed, fixed-delay '
+            'fallback: $error');
+        await Future.delayed(const Duration(milliseconds: 1200));
+        return;
+      }
       final hasA2dp =
           outputs.any((d) => d.type == AudioDeviceType.bluetoothA2dp);
-      // The single most decisive line in this whole audit: if this says
-      // a2dp=false, media audio is going to the PHONE and no amount of
-      // app-side session/timing work can change that — the speaker simply
-      // is not connected as a Bluetooth AUDIO device (BLE/GATT control and
-      // classic A2DP audio are two separate links).
-      debugPrint('[AUDIO_PATH] $label: OUTPUT DEVICES a2dp=$hasA2dp '
-          '[${outputs.map((d) => '${d.type.name}:${d.name}').join(', ')}]');
-    }).catchError((Object error) {
-      debugPrint('[AUDIO_PATH] $label: getDevices() failed: $error');
-    });
+      if (hasA2dp) {
+        debugPrint('[AUDIO_PATH] $label: A2DP route ready '
+            '(+${sw.elapsedMilliseconds}ms) '
+            '[${outputs.map((d) => d.type.name).join(', ')}]');
+        return;
+      }
+      await Future.delayed(_pollInterval);
+    }
+    debugPrint('[AUDIO_PATH] $label: A2DP route NOT ready within '
+        '${_maxRouteWait.inMilliseconds}ms — proceeding (likely playing from '
+        'phone; audio not connected)');
   }
 
   static Future<AudioSession> _configure() async {

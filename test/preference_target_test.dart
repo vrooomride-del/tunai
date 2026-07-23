@@ -171,4 +171,58 @@ void main() {
       }
     });
   });
+
+  group('PreferencePlanMerger — deployable band cap (tooManyBands fix)', () {
+    const merger = PreferencePlanMerger();
+
+    TuneCorrectionBand rb(double f, double g) => _roomBand(f, g);
+
+    test('a >3-band ROOM plan (no preference) is capped to the deployable 3 — '
+        'this is the exact tooManyBands → blocked failure being fixed', () {
+      // Small gains so the plan legitimately holds 4 bands (broadband-style).
+      final room = _plan([
+        rb(120, -2), rb(700, -2), rb(3000, -2), rb(250, -2),
+      ]);
+      expect(room.bands.length, 4);
+      final merged = merger.merge(room, const []);
+      expect(merged.bands.length, 3,
+          reason: 'must not exceed DspCapability.maxDeployableBands');
+    });
+
+    test('the capped plan is now accepted by the executor band-count rule '
+        '(<=3), not blocked', () {
+      final room = _plan([rb(120, -2), rb(700, -2), rb(3000, -2), rb(250, -2)]);
+      final merged = merger.merge(room, const []);
+      // Mirror the executor guard: plans.length must be <= 3 and bandIds 0..2.
+      expect(merged.bands.length, lessThanOrEqualTo(3));
+    });
+
+    test('no preference + already-deployable (<=3) room plan → UNCHANGED '
+        '(identical object, regression preserved)', () {
+      final room = _plan([rb(80, -4), rb(220, -3)]);
+      final merged = merger.merge(room, const []);
+      expect(identical(merged, room), isTrue);
+    });
+
+    test('room correction is kept over preference when over budget', () {
+      final room = _plan([rb(80, -4), rb(220, -3), rb(600, -3)]); // fills budget
+      final prefBands =
+          _gen.generate(PreferenceTarget.forDescriptor('warm')!);
+      final merged = merger.merge(room, prefBands);
+      expect(
+          merged.bands.where((b) => b.source == TuneCorrectionSource.roomMode).length,
+          3);
+      expect(
+          merged.bands.any((b) => b.source == TuneCorrectionSource.preferenceTarget),
+          isFalse);
+    });
+
+    test('every capped plan still passes the Safety Validator', () {
+      final room = _plan([rb(120, -2), rb(700, -2), rb(3000, -2), rb(250, -2)]);
+      final merged = merger.merge(room, const []);
+      final v = const TuneSafetyValidator().validatePlan(merged);
+      expect(v.approvedBands.length, merged.bands.length);
+    });
+  });
+
 }
