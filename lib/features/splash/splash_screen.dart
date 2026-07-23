@@ -75,7 +75,7 @@ class _SplashScreenState extends State<SplashScreen>
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFFFFFFFF),
       body: Center(
         child: AnimatedBuilder(
           animation: _controller.animation,

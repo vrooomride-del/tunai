@@ -23,7 +23,7 @@ class BrandIdentity {
   });
 
   static const tunai = BrandIdentity(
-    name: 'TUNAI',
+    name: 'OHNUM',
     logoSoundAssetPath: 'assets/audio/tunai_logo_sound.wav',
     imageAssetPath: 'assets/images/splash_bi.png',
   );
