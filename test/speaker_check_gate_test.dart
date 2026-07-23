@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_dsp_deployment.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
+import 'package:tunai/core/room_measurement.dart' show CaptureQualityStatus;
 import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/core/dsp_state_synchronization.dart';
 import 'package:tunai/core/room_scan_result.dart';
 import 'package:tunai/core/speaker_check_gate.dart';
 import 'package:tunai/core/speaker_state_verification.dart';
+import 'package:tunai/core/speaker_verification_session.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -42,6 +44,30 @@ ConsumerSoundProfile _readyProfile() => ConsumerSoundProfile(
       deploymentStatus: TuneDeploymentStatus.notDeployed,
     );
 
+// _StateEReadyToApply now requires a real, non-empty TunePlan matching the
+// profile's tunePlanId (tune_availability.dart) — these tests are about the
+// DSP-readiness gate, not TuneAvailability branching, so they always
+// provide one.
+final _readyTunePlan = TunePlan(
+  id: 'plan-ready',
+  sourceMeasurementId: 'measurement-ready',
+  createdAt: _created,
+  bands: const [
+    TuneCorrectionBand(
+      frequencyHz: 120,
+      gainDb: -4,
+      q: 2,
+      evidenceReference: 'measurement-ready:peak:120',
+      safetyValidated: true,
+    ),
+  ],
+  rejectedCandidates: const [],
+  safetyBounds: const TuneSafetyBounds(),
+  measurementQuality: CaptureQualityStatus.valid,
+  measurementConsistency: 1,
+  warnings: const [],
+);
+
 // ── Widget pump helper ────────────────────────────────────────────────────────
 
 Widget _app(AiScreen child, {Locale locale = const Locale('en')}) =>
@@ -59,6 +85,10 @@ Widget _app(AiScreen child, {Locale locale = const Locale('en')}) =>
 Future<void> _pumpWithCheck(
   WidgetTester tester, {
   required SpeakerCheckResult check,
+  // Defaults to true so these DSP-readiness-focused tests keep testing
+  // exactly what they said they test; the audio Speaker Check gate itself
+  // is covered separately in tune_speaker_button_test.dart.
+  bool audioConfirmed = true,
 }) async {
   final profiles = ConsumerSoundProfileNotifier();
   await profiles.upsertGeneratedAndSelect(_readyProfile());
@@ -70,9 +100,13 @@ Future<void> _pumpWithCheck(
       consumerSoundProfileProvider.overrideWith((ref) => profiles),
       roomScanResultProvider.overrideWith((ref) => scans),
       speakerCheckResultProvider.overrideWith((_) => check),
+      audioSpeakerConfirmedProvider.overrideWith((_) => audioConfirmed),
+      audioSpeakerConfirmationStaleProvider.overrideWith((_) => false),
+      currentTunePlanProvider.overrideWith((ref) async => _readyTunePlan),
     ],
     child: _app(AiScreen(onApplied: () {})),
   ));
+  await tester.pump();
   await tester.pump();
 }
 

@@ -36,9 +36,11 @@ void main() {
         'playback-stop',
       ]);
       expect(timing.recordingStartedAt, base);
-      expect(timing.recordingStoppedAt, timing.playbackCompletedAt.add(
-        const Duration(seconds: 1),
-      ));
+      expect(
+          timing.recordingStoppedAt,
+          timing.playbackCompletedAt.add(
+            const Duration(seconds: 1),
+          ));
     });
 
     test('recorder readiness failure blocks playback', () async {
@@ -178,6 +180,73 @@ void main() {
       );
       expect(bins.every((bin) => bin.magnitude.isFinite), isTrue);
     });
+
+    group('classifyQuality', () {
+      const cleanLevels = CaptureLevelMetrics(
+        rms: 0.08, // comfortably above minimumRms (0.002)
+        peakAbsolute: 0.2,
+        estimatedNoiseFloorDbfs: null,
+        clippingRatio: 0,
+        signalPresent: true,
+        severelyClipped: false,
+      );
+
+      test('a clean, comfortably-above-threshold capture is valid', () {
+        expect(
+          RoomMeasurementValidator.classifyQuality(
+            timing: timing(),
+            levels: cleanLevels,
+          ),
+          CaptureQualityStatus.valid,
+        );
+      });
+
+      test('a quiet signal just above the pass/fail floor is degraded', () {
+        const quiet = CaptureLevelMetrics(
+          rms: 0.0025, // above minimumRms (0.002) but within the 2.5x margin
+          peakAbsolute: 0.05,
+          estimatedNoiseFloorDbfs: null,
+          clippingRatio: 0,
+          signalPresent: true,
+          severelyClipped: false,
+        );
+        expect(
+          RoomMeasurementValidator.classifyQuality(
+              timing: timing(), levels: quiet),
+          CaptureQualityStatus.degraded,
+        );
+      });
+
+      test('some (non-severe) clipping is degraded, not silently valid', () {
+        const someClipping = CaptureLevelMetrics(
+          rms: 0.08,
+          peakAbsolute: 0.99,
+          estimatedNoiseFloorDbfs: null,
+          clippingRatio: 0.005, // > 0 but below severeClippingRatio (0.01)
+          signalPresent: true,
+          severelyClipped: false,
+        );
+        expect(
+          RoomMeasurementValidator.classifyQuality(
+              timing: timing(), levels: someClipping),
+          CaptureQualityStatus.degraded,
+        );
+      });
+
+      test(
+          'a capture that ran noticeably short of its expected duration '
+          'is degraded', () {
+        final shortish = timing(
+          samples: 400000,
+          captured: const Duration(seconds: 9),
+        );
+        expect(
+          RoomMeasurementValidator.classifyQuality(
+              timing: shortish, levels: cleanLevels),
+          CaptureQualityStatus.degraded,
+        );
+      });
+    });
   });
 
   test('validated measurement stores real spectrum/peaks and derives result',
@@ -223,7 +292,8 @@ void main() {
     );
 
     final decoded = RoomMeasurement.fromJson(measurement.toJson());
-    expect(decoded.frequencyBins.singleWhere((b) => b.frequency == 90).magnitude,
+    expect(
+        decoded.frequencyBins.singleWhere((b) => b.frequency == 90).magnitude,
         -18);
     expect(decoded.peaks.single.frequency, 90);
 
@@ -233,6 +303,67 @@ void main() {
     expect(result.confidence, 'High');
     expect(result.cards, isNot(equals(kDefaultResultCards)));
     expect(result.cards.every((card) => card.evidenceKey != null), isTrue);
+  });
+
+  test(
+      'confidence genuinely varies with real signal strength (rms), '
+      'not stuck at a fixed value regardless of quality', () {
+    RoomMeasurement withRms(double rms) {
+      final start = DateTime.utc(2026, 7, 17);
+      return RoomMeasurement(
+        id: 'measurement-rms-$rms',
+        roomType: 'Living Room',
+        microphoneProfileId: 'Generic Phone Mic',
+        // Deliberately uncalibrated in both cases: with calibration, the
+        // other components alone already sum to exactly the "High"
+        // threshold, leaving no room for rms headroom to matter. Without
+        // it, whether rms headroom pushes the score over 0.85 becomes the
+        // deciding factor — exactly what this test is checking.
+        hasMicrophoneCalibration: false,
+        capturedAt: start,
+        timing: CaptureTiming(
+          requestedSampleRate: 44100,
+          actualSampleRate: 44100,
+          channelCount: 1,
+          expectedDuration: const Duration(seconds: 10),
+          capturedDuration: const Duration(seconds: 10),
+          sampleCount: 441000,
+          fileSizeBytes: 882044,
+          recordingStartedAt: start,
+          playbackStartedAt: start,
+          playbackCompletedAt: start.add(const Duration(seconds: 10)),
+          recordingStoppedAt: start.add(const Duration(seconds: 10)),
+        ),
+        usableRangeMinHz: 20,
+        usableRangeMaxHz: 500,
+        frequencyBins: const [
+          FrequencyBin(frequency: 20, magnitude: -30),
+          FrequencyBin(frequency: 90, magnitude: -18),
+        ],
+        peaks: const [ResonancePeak(frequency: 90, gain: -5, q: 4)],
+        consistencyMetric: 1, // identical for both — must not affect the result
+        levels: CaptureLevelMetrics(
+          rms: rms,
+          peakAbsolute: 0.2,
+          estimatedNoiseFloorDbfs: null,
+          clippingRatio: 0,
+          signalPresent: rms >= RoomMeasurementValidator.minimumRms,
+          severelyClipped: false,
+        ),
+        quality: CaptureQualityStatus.valid,
+        warnings: const [],
+      );
+    }
+
+    final strong = RoomScanResult.fromMeasurement(withRms(0.08));
+    final barelyAbove = RoomScanResult.fromMeasurement(
+        withRms(RoomMeasurementValidator.minimumRms));
+
+    expect(strong.confidence, 'High');
+    expect(barelyAbove.confidence, isNot('High'),
+        reason: 'a signal barely above the usable floor must not score the '
+            'same as a strong one — consistencyMetric alone used to mask '
+            'this because it was always 1.0');
   });
 
   test('legacy RoomScanResult remains explicitly unvalidated', () {
@@ -250,7 +381,8 @@ void main() {
 
   test('real ROOM success path does not use default cards or fixed confidence',
       () {
-    final source = File('lib/features/measure/measure_screen.dart').readAsStringSync();
+    final source =
+        File('lib/features/measure/measure_screen.dart').readAsStringSync();
     expect(source, isNot(contains('cards: kDefaultResultCards')));
     expect(source, isNot(contains("confidence: 'Medium'")));
     expect(source, contains('RoomScanResult.fromMeasurement(measurement)'));

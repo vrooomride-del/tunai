@@ -35,6 +35,16 @@ class BleState {
   final List<ConsumerBleDevice> devices;
   final String? selectedDeviceIdentifier;
   final bool hasKnownDevice;
+  /// Increments every time a NEW connection is established (transition into
+  /// [BleConnectionState.connected] from a non-connected state) — never on
+  /// simple state churn while already connected. Lets session-scoped facts
+  /// tied to "this specific connection" (e.g. audio Speaker Check
+  /// confirmation — see speaker_verification_session.dart) distinguish a
+  /// continuous connection from a disconnect-and-reconnect to the very same
+  /// device identifier, since a physical BLE drop very likely also dropped
+  /// the phone's separate Bluetooth AUDIO route even if the app reconnects
+  /// to an identical device afterward.
+  final int connectionGeneration;
 
   const BleState({
     this.connection = BleConnectionState.disconnected,
@@ -45,6 +55,7 @@ class BleState {
     this.devices = const [],
     this.selectedDeviceIdentifier,
     this.hasKnownDevice = false,
+    this.connectionGeneration = 0,
   });
 
   BleState copyWith({
@@ -56,6 +67,7 @@ class BleState {
     List<ConsumerBleDevice>? devices,
     String? selectedDeviceIdentifier,
     bool? hasKnownDevice,
+    int? connectionGeneration,
     bool clearConnectionIdentity = false,
     bool clearSelection = false,
   }) =>
@@ -73,6 +85,7 @@ class BleState {
             ? null
             : (selectedDeviceIdentifier ?? this.selectedDeviceIdentifier),
         hasKnownDevice: hasKnownDevice ?? this.hasKnownDevice,
+        connectionGeneration: connectionGeneration ?? this.connectionGeneration,
       );
 }
 
@@ -134,17 +147,20 @@ class BleController extends StateNotifier<BleState> {
           : BleConnectionState.error,
       ConsumerBleStatus.unsupportedDevice => BleConnectionState.unsupported,
     };
+    final isFreshConnect =
+        next.connected && state.connection != BleConnectionState.connected;
     if (next.connected) {
       _ref.read(systemProfileProvider.notifier).state = kTunaiOneSystemProfile;
     }
-    if ((wasConnected && !next.connected) ||
-        (next.connected && state.connection != BleConnectionState.connected)) {
+    if ((wasConnected && !next.connected) || isFreshConnect) {
       _ref
           .read(consumerSoundProfileProvider.notifier)
           .markCurrentDspConfidenceUnknown();
     }
     state = state.copyWith(
       connection: connection,
+      connectionGeneration:
+          isFreshConnect ? state.connectionGeneration + 1 : null,
       deviceName: next.connected
           ? ConsumerProductIdentity.fromPhysicalIdentity(
               physicalDeviceName: next.connectedDeviceName ?? '',

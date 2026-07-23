@@ -9,7 +9,6 @@ import 'package:tunai/core/speaker_check_gate.dart';
 import 'package:tunai/core/speaker_state_verification.dart';
 import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
-import 'package:tunai/features/listen/listen_screen.dart';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -333,40 +332,9 @@ void main() {
     });
   });
 
-  // ── Listen screen — Listening Level terminology ───────────────────────────
-
-  group('Listen screen — Listening Level terminology', () {
-    testWidgets('"Listening Level" appears, "Master Volume" does not',
-        (tester) async {
-      await tester.pumpWidget(ProviderScope(
-        child: _app(const ListenScreen()),
-      ));
-      await tester.pump();
-
-      expect(find.text('Listening Level'), findsOneWidget);
-      expect(find.textContaining('Master Volume'), findsNothing);
-    });
-
-    testWidgets('Korean listen screen shows "듣기 음량", not "Master Volume"',
-        (tester) async {
-      await tester.pumpWidget(ProviderScope(
-        child: _app(const ListenScreen(), locale: const Locale('ko')),
-      ));
-      await tester.pump();
-
-      expect(find.text('듣기 음량'), findsOneWidget);
-      expect(find.textContaining('Master Volume'), findsNothing);
-    });
-
-    testWidgets('Level presets Low/Comfortable/Lively visible', (tester) async {
-      await tester.pumpWidget(ProviderScope(
-        child: _app(const ListenScreen()),
-      ));
-      await tester.pump();
-
-      expect(find.text('Low'), findsOneWidget);
-      expect(find.text('Comfortable'), findsOneWidget);
-      expect(find.text('Lively'), findsOneWidget);
-    });
-  });
+  // Listening Level (volume slider mislabeled as a "sound character" picker)
+  // was removed from the Consumer LISTEN screen — it was a raw Master Volume
+  // write (MasterVolumeController.setVolume → kAdau1701MasterVolL/R), not a
+  // real Sound Character/EQ change, and risked reading as one. See
+  // listen_flow_test.dart for the regression coverage confirming it's gone.
 }

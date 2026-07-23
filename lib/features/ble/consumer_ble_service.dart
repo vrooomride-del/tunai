@@ -302,7 +302,17 @@ class ConsumerBleService extends ChangeNotifier {
       onDone: _onConnectionClosed,
     );
     await connection.write(Icp5ConsumerFrameCodec.identificationRequest);
-    final identity = await _handshakeResponse!.future.timeout(handshakeTimeout);
+    debugPrint('[TUNAI BLE] HANDSHAKE_SENT, awaiting fff1 '
+        '(timeout=${handshakeTimeout.inSeconds}s)');
+    final identity = await _handshakeResponse!.future.timeout(
+      handshakeTimeout,
+      onTimeout: () {
+        debugPrint('[TUNAI BLE] HANDSHAKE_TIMEOUT (no fff1 within '
+            '${handshakeTimeout.inSeconds}s)');
+        throw TimeoutException('handshake', handshakeTimeout);
+      },
+    );
+    debugPrint('[TUNAI BLE] HANDSHAKE_RECEIVED bytes=${identity.length}');
     if (!Icp5ConsumerFrameCodec.isSupportedIdentity(identity)) {
       await _closeConnection();
       await _blockAutomaticReconnect();
@@ -626,6 +636,8 @@ class ConsumerBleService extends ChangeNotifier {
   }
 
   void _onConnectionError(Object error, StackTrace stackTrace) {
+    debugPrint('[TUNAI BLE] CONN_ERROR handshakePending='
+        '${_handshakeResponse != null} connected=${_state.connected} error=$error');
     final completer = _handshakeResponse;
     if (completer != null && !completer.isCompleted) {
       completer.completeError(error, stackTrace);
@@ -639,6 +651,8 @@ class ConsumerBleService extends ChangeNotifier {
   }
 
   void _onConnectionClosed() {
+    debugPrint('[TUNAI BLE] CONN_CLOSED handshakePending='
+        '${_handshakeResponse != null} connected=${_state.connected}');
     final completer = _handshakeResponse;
     if (completer != null && !completer.isCompleted) {
       completer.completeError(StateError('Bluetooth disconnected.'));
@@ -749,7 +763,11 @@ class FlutterBluePlusConsumerGattDriver implements ConsumerBleGattDriver {
     late final StreamSubscription<List<ScanResult>> subscription;
     subscription = FlutterBluePlus.scanResults.listen((results) {
       for (final result in results) {
-        if (!result.advertisementData.connectable) continue;
+        // NOTE: `advertisementData.connectable` reflects only the packet type of
+        // the moment (ADV_IND vs scan-response / non-connectable), so it flaps
+        // between true/false as BLE devices alternate advertising packets. It
+        // intermittently excludes the ICP5. `connectable` is advisory only; the
+        // connect guard still handles unconnectable devices, so list all here.
         final identifier = result.device.remoteId.str;
         final advertised = result.device.advName.trim();
         final platform = result.device.platformName.trim();
@@ -793,6 +811,16 @@ class FlutterBluePlusConsumerGattDriver implements ConsumerBleGattDriver {
         peripheral.remoteId.str != device.identifier) {
       throw StateError('Selected Bluetooth device no longer matches.');
     }
+    // Best-effort: clear any stale GATT link the OS/flutter_blue_plus may
+    // still be holding for this identifier from a previous app run (killed
+    // without a clean disconnect) or a just-failed connect attempt. This is
+    // connection-session hygiene only — no protocol bytes, UUIDs, or the
+    // handshake/write flow below change. Ignored if there was nothing to
+    // clear; this must never block or fail the real connect attempt that
+    // follows.
+    try {
+      await peripheral.disconnect().timeout(const Duration(milliseconds: 800));
+    } catch (_) {}
     await peripheral
         .connect(timeout: const Duration(seconds: 10))
         .timeout(const Duration(seconds: 12));
@@ -844,9 +872,13 @@ class _FlutterBluePlusConsumerConnection implements ConsumerBleConnection {
   _FlutterBluePlusConsumerConnection(this.device, this.tx, this.rx) {
     _valueSubscription = rx.onValueReceived.listen(
       (bytes) => _notifications.add(List.unmodifiable(bytes)),
-      onError: _notifications.addError,
+      onError: (Object e, StackTrace s) {
+        debugPrint('[TUNAI BLE] RX_VALUE_ERROR $e');
+        _notifications.addError(e, s);
+      },
     );
     _stateSubscription = device.connectionState.listen((state) {
+      debugPrint('[TUNAI BLE] DEVICE_STATE_CHANGED state=$state closing=$_closing');
       if (!_closing && state == BluetoothConnectionState.disconnected) {
         _notifications.addError(StateError('Bluetooth disconnected.'));
       }

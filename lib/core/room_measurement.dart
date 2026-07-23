@@ -69,8 +69,7 @@ class CaptureTiming {
         fileSizeBytes: json['fileSizeBytes'] as int,
         recordingStartedAt:
             DateTime.parse(json['recordingStartedAt'] as String),
-        playbackStartedAt:
-            DateTime.parse(json['playbackStartedAt'] as String),
+        playbackStartedAt: DateTime.parse(json['playbackStartedAt'] as String),
         playbackCompletedAt:
             DateTime.parse(json['playbackCompletedAt'] as String),
         recordingStoppedAt:
@@ -155,7 +154,13 @@ class RoomMeasurement {
     required this.warnings,
   });
 
-  bool get isValid => quality == CaptureQualityStatus.valid;
+  /// Usable for Tune generation — [CaptureQualityStatus.valid] or
+  /// [CaptureQualityStatus.degraded] (lower confidence, but not rejected).
+  /// Only [CaptureQualityStatus.invalid]/[CaptureQualityStatus.cancelled]
+  /// are unusable.
+  bool get isValid =>
+      quality == CaptureQualityStatus.valid ||
+      quality == CaptureQualityStatus.degraded;
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,
@@ -168,12 +173,10 @@ class RoomMeasurement {
         'timing': timing.toJson(),
         'usableRangeMinHz': usableRangeMinHz,
         'usableRangeMaxHz': usableRangeMaxHz,
-        'frequencyBins': frequencyBins
-            .map((bin) => [bin.frequency, bin.magnitude])
-            .toList(),
-        'peaks': peaks
-            .map((peak) => [peak.frequency, peak.gain, peak.q])
-            .toList(),
+        'frequencyBins':
+            frequencyBins.map((bin) => [bin.frequency, bin.magnitude]).toList(),
+        'peaks':
+            peaks.map((peak) => [peak.frequency, peak.gain, peak.q]).toList(),
         'consistencyMetric': consistencyMetric,
         'levels': levels.toJson(),
         'quality': quality.name,
@@ -196,25 +199,21 @@ class RoomMeasurement {
           Map<String, dynamic>.from(json['timing'] as Map)),
       usableRangeMinHz: (json['usableRangeMinHz'] as num).toDouble(),
       usableRangeMaxHz: (json['usableRangeMaxHz'] as num).toDouble(),
-      frequencyBins: (json['frequencyBins'] as List)
-          .map((entry) {
-            final values = entry as List;
-            return FrequencyBin(
-              frequency: (values[0] as num).toDouble(),
-              magnitude: (values[1] as num).toDouble(),
-            );
-          })
-          .toList(),
-      peaks: (json['peaks'] as List)
-          .map((entry) {
-            final values = entry as List;
-            return ResonancePeak(
-              frequency: (values[0] as num).toDouble(),
-              gain: (values[1] as num).toDouble(),
-              q: (values[2] as num).toDouble(),
-            );
-          })
-          .toList(),
+      frequencyBins: (json['frequencyBins'] as List).map((entry) {
+        final values = entry as List;
+        return FrequencyBin(
+          frequency: (values[0] as num).toDouble(),
+          magnitude: (values[1] as num).toDouble(),
+        );
+      }).toList(),
+      peaks: (json['peaks'] as List).map((entry) {
+        final values = entry as List;
+        return ResonancePeak(
+          frequency: (values[0] as num).toDouble(),
+          gain: (values[1] as num).toDouble(),
+          q: (values[2] as num).toDouble(),
+        );
+      }).toList(),
       consistencyMetric: (json['consistencyMetric'] as num).toDouble(),
       levels: CaptureLevelMetrics.fromJson(
           Map<String, dynamic>.from(json['levels'] as Map)),
@@ -244,10 +243,10 @@ class RoomMeasurementValidator {
     var peak = 0.0;
     var clipped = 0;
     for (var i = 0; i < samples.length; i++) {
-        final absolute = samples[i].abs();
-        energy += samples[i] * samples[i];
-        if (absolute > peak) peak = absolute;
-        if (absolute >= 0.995) clipped++;
+      final absolute = samples[i].abs();
+      energy += samples[i] * samples[i];
+      if (absolute > peak) peak = absolute;
+      if (absolute >= 0.995) clipped++;
     }
     final rms = math.sqrt(energy / samples.length);
     final clippingRatio = clipped / samples.length;
@@ -261,6 +260,33 @@ class RoomMeasurementValidator {
       signalPresent: rms >= minimumRms,
       severelyClipped: clippingRatio > severeClippingRatio,
     );
+  }
+
+  /// Graduated reliability judgment for a capture that already passed
+  /// [validate] (genuinely broken captures are rejected there, before a
+  /// [RoomMeasurement] is even built). Among the ones that pass, this
+  /// distinguishes a clean, comfortably-above-threshold capture from a
+  /// borderline one — reusing the same [CaptureLevelMetrics] and
+  /// [CaptureTiming] already computed for validation, no new measurement.
+  ///
+  /// [CaptureQualityStatus.degraded] measurements still proceed to Tune
+  /// generation (see [TunePlanner._validateMeasurement]) — they are usable,
+  /// just lower-confidence, and that confidence is what
+  /// `_confidenceFromMeasurement` (room_scan_result.dart) surfaces to the
+  /// user.
+  static CaptureQualityStatus classifyQuality({
+    required CaptureTiming timing,
+    required CaptureLevelMetrics levels,
+  }) {
+    final durationDeviation = (timing.durationCompleteness - 1).abs();
+    final borderlineDuration = durationDeviation > durationTolerance * 0.5;
+    final quietSignal = levels.rms < minimumRms * 2.5;
+    final someClipping = levels.clippingRatio > 0 && !levels.severelyClipped;
+
+    if (borderlineDuration || quietSignal || someClipping) {
+      return CaptureQualityStatus.degraded;
+    }
+    return CaptureQualityStatus.valid;
   }
 
   static List<String> validate({
@@ -336,7 +362,8 @@ class RoomMeasurementStore {
     final file = await _file();
     await file.parent.create(recursive: true);
     final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(jsonEncode(measurement.toJson()), flush: true);
+    await temporary.writeAsString(jsonEncode(measurement.toJson()),
+        flush: true);
     if (await file.exists()) await file.delete();
     await temporary.rename(file.path);
     final prefs = await SharedPreferences.getInstance();

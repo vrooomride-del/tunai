@@ -37,7 +37,7 @@ void main() {
     expect(source.existsSync(), isTrue);
     expect(
       sha256.convert(source.readAsBytesSync()).toString(),
-      '4c908791bc1149061b402d4c4bd659623fac1247cff3248b0792fced12a90e3d',
+      'ba3568ac44246b8bf00ff35db9b428e93788f905af13ae71df82933581590ef9',
     );
 
     final proSource = File('assets/images/pro_icon_source.png');

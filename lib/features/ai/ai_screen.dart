@@ -1,16 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ble/ble_controller.dart';
+import '../measurement/measurement_controller.dart' show measurementProvider;
 import '../../core/consumer_dsp_deployment.dart';
 import '../../core/dsp_state_synchronization.dart';
 import '../../core/room_scan_result.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/room_measurement.dart';
+import '../../core/audio_analyzer.dart' show ResonancePeak;
 import '../../core/speaker_check_gate.dart';
+import '../../core/speaker_profile.dart';
 import '../../core/speaker_state_verification.dart';
+import '../../core/speaker_verification_session.dart';
+import '../../core/acoustic_profile.dart';
+import '../../core/correction_evidence.dart';
+import '../../core/correction_planner.dart';
+import '../../core/factory_sound_profile.dart';
+import '../../core/install_location.dart';
+import '../../core/personal_optimization_context.dart';
+import '../../core/preference_correction_generator.dart';
+import '../../core/preference_plan_merger.dart';
+import '../../core/preference_target.dart';
+import '../../core/sound_preference.dart';
+import '../../core/tune_session.dart';
+import '../../core/sound_score_calculator.dart';
+import '../../core/spectrum_snapshot.dart';
+import '../../core/tune_availability.dart';
 import '../../core/tune_deployment_plan.dart';
+import '../../core/tune_outcome_history.dart';
 import '../../core/tune_plan.dart';
 import '../../shared/acoustic_timeline.dart';
+import '../../shared/consumer_response_chart.dart';
+import '../fine_tune/fine_tune_screen.dart';
 
 /// What tapping the TUNE apply/check button should do, resolved from the LIVE
 /// speaker-check status and BLE connection state. The button is ALWAYS
@@ -28,6 +49,13 @@ enum SpeakerButtonAction {
   /// Connected but not verified (identity/sound state) — route to CONNECT to
   /// re-verify / reconnect.
   reconnect,
+
+  /// Everything else (connection, identity, DSP readiness) checks out, but
+  /// the user's audio Speaker Check confirmation ("did you hear it from your
+  /// speaker") is missing or no longer matches this connection — route back
+  /// to ROOM's Speaker Check rather than allowing Apply on an unconfirmed
+  /// audio path.
+  confirmSpeaker,
 }
 
 /// Pure routing decision for the TUNE speaker button. Kept side-effect free so
@@ -36,9 +64,12 @@ enum SpeakerButtonAction {
 SpeakerButtonAction resolveSpeakerButtonAction({
   required SpeakerCheckStatus status,
   required BleConnectionState connection,
+  required bool audioConfirmed,
 }) {
   if (status == SpeakerCheckStatus.readyToApply) {
-    return SpeakerButtonAction.apply;
+    return audioConfirmed
+        ? SpeakerButtonAction.apply
+        : SpeakerButtonAction.confirmSpeaker;
   }
   // Bluetooth off takes priority over "not connected" so the user gets the
   // correct guidance.
@@ -53,6 +84,24 @@ SpeakerButtonAction resolveSpeakerButtonAction({
   return SpeakerButtonAction.reconnect;
 }
 
+/// The user's chosen sound character for the *next* Tune to be created.
+/// Session-scoped (resets to [SoundPreference.balanced] on app launch) —
+/// once a Tune is created, the choice is captured on the resulting
+/// [ConsumerSoundProfile.preference] for persistence, not here.
+final soundPreferenceProvider =
+    StateProvider<SoundPreference>((ref) => SoundPreference.balanced);
+
+/// The Single Source of Truth for "is there a real TunePlan right now, and
+/// what does it actually contain" — [TunePlanStore] holds exactly ONE
+/// "current" plan (one SharedPreferences key), so every screen that needs
+/// to know whether Apply is real must read the SAME fresh value, not a
+/// proxy like a profile's cached `resultCards`. Callers that write a new
+/// plan (`_createTune` here, Fine Tune's save) MUST `ref.invalidate` this
+/// provider immediately after `TunePlanStore.save()` so stale reads can
+/// never linger.
+final currentTunePlanProvider =
+    FutureProvider<TunePlan?>((ref) => TunePlanStore.load());
+
 /// TUNE 탭 — Consumer Your Sound 6-state flow.
 /// No DSP, no EQ, no PEQ, no frequency data exposed.
 class AiScreen extends ConsumerStatefulWidget {
@@ -66,6 +115,7 @@ class AiScreen extends ConsumerStatefulWidget {
 
 class _AiScreenState extends ConsumerState<AiScreen> {
   bool _creating = false;
+  String? _createError;
 
   bool get _isKo => Localizations.localeOf(context).languageCode == 'ko';
 
@@ -74,16 +124,46 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         ConsumerApplyPhase.idle;
   }
 
+  /// Shows a short, plain-language error so a failed/aborted Apply attempt
+  /// is never silent — every early-return path below that used to just
+  /// `return` now goes through here first.
+  void _showApplyError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
+    }
+  }
+
   Future<void> _applyTune() async {
+    final ko = _isKo;
     final speakerCheck = ref.read(speakerCheckResultProvider);
     final snapshot = ref.read(dspStateSnapshotProvider);
     final profile = ref.read(selectedConsumerProfileProvider);
     if (!speakerCheck.readyToApply || snapshot == null || profile == null) {
+      _showApplyError(ko
+          ? '스피커 상태를 다시 확인해 주세요.'
+          : 'Please check your speaker connection again.');
       return;
     }
 
     final tunePlan = await TunePlanStore.load();
-    if (!mounted || tunePlan == null) return;
+    if (!mounted) return;
+    if (tunePlan == null) {
+      _showApplyError(ko
+          ? '적용할 사운드를 찾을 수 없습니다. 나만의 사운드를 다시 만들어 주세요.'
+          : 'No sound to apply. Please create Your Sound again.');
+      return;
+    }
+    if (tunePlan.bands.isEmpty) {
+      // A Tune with zero bands means no real correction was found for this
+      // room — applying it would be a no-op DSP write, so block it with an
+      // honest explanation instead of silently "succeeding" at nothing.
+      _showApplyError(ko
+          ? '이 공간에서는 적용할 조정 내용이 없습니다. 공간 분석을 다시 진행해 주세요.'
+          : "There's no adjustment to apply for this space. Please redo Space Analysis.");
+      return;
+    }
 
     final expectedId = speakerCheck.confirmedSpeakerId!;
 
@@ -95,7 +175,13 @@ class _AiScreenState extends ConsumerState<AiScreen> {
           bandId: i,
         ),
       );
-      if (state == null || !mounted) return;
+      if (state == null) {
+        _showApplyError(ko
+            ? '스피커 상태를 확인하지 못했습니다. 다시 시도해 주세요.'
+            : "Couldn't verify your speaker's state. Please try again.");
+        return;
+      }
+      if (!mounted) return;
       originalValues.add(TuneDeploymentOriginalValues(
         frequencyHz: state.frequencyHz,
         gainDb: state.gainDb,
@@ -162,12 +248,57 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   /// Handler for the TUNE apply/check button. Always active — on every tap it
   /// re-reads the LIVE speaker-check and BLE state (refreshing any stale
   /// derivation) and routes accordingly, so the button is never a dead control.
+  /// Consumer policy: no hardware readback protocol exists, so a connected &
+  /// identity-validated speaker's pre-apply state is treated as the Flat
+  /// baseline (gain 0). We synthesize the required DspStateSnapshot for the
+  /// connected device from the active TunePlan (same frequency/Q, gain 0, all
+  /// bands enabled) so the existing speaker verification passes and the rollback
+  /// baseline is flat. No device read, no BLE/protocol/executor change.
+  Future<void> _seedFlatBaselineSnapshot() async {
+    if (ref.read(dspStateSnapshotProvider) != null) return;
+    final ble = ref.read(bleProvider);
+    final service = ref.read(consumerBleServiceProvider);
+    final deviceId = ble.selectedDeviceIdentifier;
+    if (ble.connection != BleConnectionState.connected ||
+        !service.supportedIdentityValidated ||
+        deviceId == null ||
+        deviceId.isEmpty ||
+        service.validatedDeviceIdentifier != deviceId) {
+      return; // Not truly ready — let the existing gate route the user.
+    }
+    final tunePlan = await TunePlanStore.load();
+    if (tunePlan == null) return;
+    const channel = ConsumerDspDeploymentExecutor.confirmedTunePlanChannel;
+    final bandCount = tunePlan.bands.length < 3 ? 3 : tunePlan.bands.length;
+    final states = <DspPeqState>[
+      for (var bandId = 0; bandId < bandCount; bandId++)
+        DspPeqState(
+          channel: channel,
+          bandId: bandId,
+          frequencyHz: bandId < tunePlan.bands.length
+              ? tunePlan.bands[bandId].frequencyHz.round()
+              : 1000,
+          gainDb: 0.0,
+          q: bandId < tunePlan.bands.length ? tunePlan.bands[bandId].q : 1.0,
+          enabled: true,
+        ),
+    ];
+    ref.read(dspStateSnapshotProvider.notifier).state = DspStateSnapshot(
+      deviceIdentifier: deviceId,
+      capturedAt: DateTime.now(),
+      peqStates: states,
+    );
+  }
+
   Future<void> _onSpeakerButtonPressed() async {
+    await _seedFlatBaselineSnapshot();
     final check = ref.read(speakerCheckResultProvider);
     final ble = ref.read(bleProvider);
+    final audioConfirmed = ref.read(audioSpeakerConfirmedProvider);
     final action = resolveSpeakerButtonAction(
       status: check.status,
       connection: ble.connection,
+      audioConfirmed: audioConfirmed,
     );
     final ko = _isKo;
     switch (action) {
@@ -178,14 +309,53 @@ class _AiScreenState extends ConsumerState<AiScreen> {
             ? '블루투스를 켜고 스피커를 연결해 주세요.'
             : 'Turn on Bluetooth and connect your speaker.');
       case SpeakerButtonAction.connect:
-        _guideToConnect(ko
-            ? '스피커를 먼저 연결해 주세요.'
-            : 'Please connect your speaker first.');
+        _guideToConnect(
+            ko ? '스피커를 먼저 연결해 주세요.' : 'Please connect your speaker first.');
       case SpeakerButtonAction.reconnect:
         _guideToConnect(ko
             ? '스피커를 다시 연결해 확인해 주세요.'
             : 'Reconnect your speaker to verify it.');
+      case SpeakerButtonAction.confirmSpeaker:
+        final stale = ref.read(audioSpeakerConfirmationStaleProvider);
+        _guideToSpeakerCheck(stale
+            ? (ko
+                ? '스피커 연결이 변경되었습니다. 확인음을 다시 재생해 주세요.'
+                : 'Your speaker connection has changed. Please play the '
+                    'confirmation tone again.')
+            : (ko
+                ? '먼저 스피커 확인을 완료해 주세요.'
+                : 'Please complete the speaker check first.'));
     }
+  }
+
+  /// Opens Fine Tune as a pushed screen (not a tab) — a pure rule-based
+  /// refinement on top of [profile]'s already-safety-checked Tune. Does not
+  /// touch DSP Apply/BLE/Safety Validator/AI Orchestrator; it only produces
+  /// a new candidate profile via the same TunePlanner path _createTune uses.
+  Future<void> _openFineTune(
+      ConsumerSoundProfile profile, RoomScanResult scan) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => FineTuneScreen(baseProfile: profile, scan: scan),
+    ));
+  }
+
+  /// "재측정" — resets the (session-scoped) measurement state and routes to
+  /// the ROOM tab, landing directly on the ready-to-scan screen rather than
+  /// the stale result view for the OLD measurement.
+  void _reMeasure() {
+    ref.read(measurementProvider.notifier).reset();
+    widget.onGoTo?.call(1);
+  }
+
+  /// "완료" for a profile that needed no real correction (empty TunePlan) —
+  /// marks it reviewed (see markReviewedWithoutCorrection's doc) WITHOUT
+  /// ever claiming it was applied/active, since nothing was written to the
+  /// speaker. This is what lets the Flow move on instead of being stuck
+  /// showing the same "already balanced" screen forever.
+  Future<void> _completeWithoutCorrection(String profileId) async {
+    await ref
+        .read(consumerSoundProfileProvider.notifier)
+        .markReviewedWithoutCorrection(profileId);
   }
 
   /// Shows a short guidance message and navigates to the CONNECT tab (index 0).
@@ -198,9 +368,25 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     widget.onGoTo?.call(0);
   }
 
+  /// Shows a short guidance message and navigates to the ROOM tab (index 1),
+  /// where the Speaker Check confirmation tone lives — used when everything
+  /// else about the connection checks out but the audio confirmation is
+  /// missing or stale (see speaker_verification_session.dart).
+  void _guideToSpeakerCheck(String message) {
+    if (mounted && message.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      );
+    }
+    widget.onGoTo?.call(1);
+  }
+
   Future<void> _createTune(RoomScanResult scan) async {
     if (_creating) return;
-    setState(() => _creating = true);
+    setState(() {
+      _creating = true;
+      _createError = null;
+    });
     TunePlan? plan;
     try {
       if (!scan.validatedMeasurement || scan.measurementId == null) {
@@ -211,11 +397,135 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         throw StateError(
             'The validated Room Analysis measurement is unavailable.');
       }
-      plan = const TunePlanner(now: DateTime.now).generate(measurement);
+      final pickerPreference = ref.read(soundPreferenceProvider);
+
+      // "Before" is computed from the real measured curve only, so it never
+      // depends on which plan (AI or rule-based) ends up selected below.
+      final beforeScore =
+          SoundScoreCalculator.compute(measurement.frequencyBins);
+
+      // Phase 3-4 Runtime Flow — the documented pipeline, made literal:
+      //   Measurement + Factory + Preference + Intent
+      //     → PersonalOptimizationContext   (WHY: the four inputs, separate)
+      //     → CorrectionPlan                (perceptual direction, no numbers)
+      //     → SoundPreference               (TunePlanner's EXISTING input)
+      //     → TunePlanner → Safety Validator → DSP   (all UNCHANGED)
+      //
+      // Nothing here changes TunePlanner's algorithm or Safety Validator — the
+      // context only chooses which already-supported preference the engine runs
+      // with. With no stored taste/intent (there is no intent-input UI yet),
+      // `userPreference` is null → `resolvePreference` returns the picker choice
+      // unchanged → this flow stays byte-identical to before.
+      const planner = CorrectionPlanner();
+      final storedProfile = await AcousticProfileStore.load();
+      final optimizationContext = planner.buildContext(
+        measurement: measurement,
+        intent: storedProfile?.intent,
+        taste: storedProfile?.listeningTaste,
+        factory: FactorySoundProfileRegistry.consumerReference(),
+        placement: ref.read(installLocationProvider)?.promptKey,
+      );
+      final correctionPlan = planner.planFromContext(
+        measurement: measurement,
+        context: optimizationContext,
+      );
+      final preference =
+          planner.resolvePreference(correctionPlan, fallback: pickerPreference);
+      // Structured judgment evidence (Phase 5) — WHY this correction was
+      // chosen, traceable and deterministic. Perceptual only; logged now and
+      // re-derivable anytime from the stored context + regenerated plan.
+      final evidence = CorrectionEvidence.from(
+          context: optimizationContext, plan: correctionPlan);
+      debugPrint('[CORRECTION_PLAN] problem=${correctionPlan.problem.name} '
+          'goal=${correctionPlan.goal.name} strategy=${correctionPlan.strategy.name} '
+          'priority=${correctionPlan.priority.name} '
+          'roomCondition=${optimizationContext.roomCondition} '
+          'confidence=${optimizationContext.confidence} '
+          'reason=${evidence.reason} '
+          'preferenceContext=${correctionPlan.preferenceContext} '
+          '→ preference=${preference.name} (picker=${pickerPreference.name})');
+
+      // Bands come ONLY from the deterministic engine. The AI never generates
+      // or influences any DSP band; CorrectionPlan only selects the perceptual
+      // preference context, which TunePlanner already accepted before Phase 3.
+      // TunePlanner owns every number and Safety Validator runs unchanged.
+      final roomPlan = const TunePlanner(now: DateTime.now)
+          .generate(measurement, preference: preference);
+
+      // Phase 7 — Preference Target Layer. The user's stated taste becomes a
+      // small, bounded, factory-anchored tonal NUDGE (measurement-independent,
+      // engine-computed, never AI), merged in AFTER room correction. Priority
+      // is Safety > Room > Factory > Preference, enforced by the shared Safety
+      // Validator inside the merge. With NO stored preference this produces no
+      // bands and the merge returns the room plan UNCHANGED — so the intent-free
+      // flow stays byte-identical to before. `userPreference` is measurement-
+      // independent (unlike the confidence-gated room-correction preference),
+      // so taste can safely shape tone even on a neutral room.
+      final preferenceTarget =
+          PreferenceTarget.forDescriptor(optimizationContext.userPreference);
+      final preferenceBands = preferenceTarget == null
+          ? const <TuneCorrectionBand>[]
+          : const PreferenceCorrectionGenerator().generate(
+              preferenceTarget,
+              factory: optimizationContext.factoryReference,
+            );
+      plan = const PreferencePlanMerger().merge(roomPlan, preferenceBands);
+      const usedAi = false;
       await TunePlanStore.save(plan);
+      // Remember WHY this Tune was made — perceptual reasons only, keyed by the
+      // plan id (see OptimizationContextStore). Never a DSP value; best-effort,
+      // so a storage hiccup can never fail Tune creation.
+      try {
+        await OptimizationContextStore.save(plan.id, optimizationContext);
+      } catch (error) {
+        debugPrint('[OPT_CONTEXT] save skipped (non-fatal): $error');
+      }
+      // Record the full traceable session (Phase 6): what/why/applied-status,
+      // perceptual only. TuneSessionStore is best-effort by contract — it can
+      // never throw into this flow — but guard here too for defense in depth.
+      try {
+        await TuneSessionStore.save(TuneSession(
+          tuneId: plan.id,
+          timestamp: DateTime.now(),
+          factoryReference: FactorySoundProfileRegistry.consumerReference(),
+          contextSummary: optimizationContext,
+          evidence: evidence,
+          applied: false, // set true later when Apply succeeds
+        ));
+      } catch (error) {
+        debugPrint('[TUNE_SESSION] record skipped (non-fatal): $error');
+      }
+      // TunePlanStore holds only one "current" plan — invalidate the
+      // shared read so every screen (including this one, on its next
+      // build) re-fetches the plan that was JUST saved instead of a
+      // possibly-cached earlier one.
+      ref.invalidate(currentTunePlanProvider);
+      // A flat-baseline DSP snapshot seeded for an EARLIER plan (see
+      // _seedFlatBaselineSnapshot) would otherwise linger with the wrong
+      // band frequencies/Q for this new plan — clear it so it gets reseeded
+      // fresh against the plan that actually matters now.
+      ref.invalidate(dspStateSnapshotProvider);
       final ko = _isKo;
       final roomLabel = ko ? roomTypeLabelKo(scan.roomType) : scan.roomType;
       final now = DateTime.now();
+
+      // "After" reuses the identical octave-gaussian synthesis already used
+      // for the LISTEN preview (spectrum_snapshot) — no new scoring
+      // algorithm, no fabricated numbers — applied to whichever plan (AI or
+      // rule-based) was actually selected above. Null when the underlying
+      // curve can't produce a score (e.g. too few bins); the UI already
+      // hides the Sound Score card whenever either value is null.
+      final planPeaks = [
+        for (final band in plan.bands)
+          ResonancePeak(
+              frequency: band.frequencyHz, gain: band.gainDb, q: band.q),
+      ];
+      final afterBins = SpectrumSnapshotController.previewWithPeaks(
+        measurement.frequencyBins,
+        planPeaks,
+      );
+      final afterScore = SoundScoreCalculator.compute(afterBins);
+
       final profile = ConsumerSoundProfile(
         id: plan.id,
         name: '$roomLabel Your Sound',
@@ -226,7 +536,12 @@ class _AiScreenState extends ConsumerState<AiScreen> {
         confidence: scan.confidence,
         isActive: false,
         status: ConsumerProfileStatus.ready,
-        resultCards: _resultCardsForPlan(scan.cards, plan),
+        resultCards: resultCardsForPlan(scan.cards, plan),
+        soundScoreBefore: beforeScore?.total,
+        soundScoreAfter: afterScore?.total,
+        preference: preference,
+        usedAiRecommendation: usedAi,
+        speakerProfileId: ref.read(speakerProfileProvider)?.id,
         profileType: ConsumerProfileType.tunaiTune,
         measurementId: measurement.id,
         tunePlanId: plan.id,
@@ -237,8 +552,20 @@ class _AiScreenState extends ConsumerState<AiScreen> {
       await ref
           .read(consumerSoundProfileProvider.notifier)
           .upsertGeneratedAndSelect(profile);
-    } catch (_) {
+
+      // Generates the LISTEN "TUNAI Sound" preview curve from the real
+      // TunePlan bands on top of the real Room Scan curve (spectrum_snapshot's
+      // existing octave-gaussian synthesis — no new algorithm, no fabricated
+      // values). No-ops if `before` isn't set this session (spectrum snapshot
+      // is not persisted across restarts; the live DSP A/B toggle in LISTEN
+      // does not depend on this and keeps working regardless).
+      ref.read(spectrumSnapshotProvider.notifier).applyPeaks(planPeaks);
+    } catch (error, stackTrace) {
+      // Do NOT swallow: surface the failure so the flow stops silently bouncing
+      // back to the analysis screen. debugPrint exposes the exact throw on-device.
+      debugPrint('[TUNE] Acoustic Tune generation failed: $error\n$stackTrace');
       if (plan != null) await TunePlanStore.clear();
+      if (mounted) setState(() => _createError = error.toString());
     } finally {
       if (mounted) setState(() => _creating = false);
     }
@@ -253,9 +580,19 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     final active = ref.watch(activeConsumerProfileProvider);
     final isConnected = ble.connection == BleConnectionState.connected;
 
-    // State F — active profile exists (shown regardless of BLE connection)
-    if (active != null &&
-        active.deploymentStatus == TuneDeploymentStatus.applied) {
+    // State F — the active profile is applied now, OR was successfully applied
+    // in a prior session. On reload the persisted `applied` deploymentStatus is
+    // downgraded to `unknown` (historical), but the dspDeploymentRecord survives
+    // and proves a real prior apply — enough to re-enter the Sound Profile /
+    // LISTEN view. Shown regardless of BLE connection.
+    final activeRecord = active?.dspDeploymentRecord;
+    final activeApplied = active != null &&
+        (active.deploymentStatus == TuneDeploymentStatus.applied ||
+            (activeRecord != null &&
+                activeRecord.result ==
+                    ConsumerDspDeploymentRecordResult.applied &&
+                activeRecord.dspApplied));
+    if (activeApplied) {
       return _StateF(
           ko: ko,
           profile: active,
@@ -265,11 +602,16 @@ class _AiScreenState extends ConsumerState<AiScreen> {
             await ref
                 .read(consumerSoundProfileProvider.notifier)
                 .deactivateAll();
-          });
+          },
+          onFineTune: scan == null ? null : () => _openFineTune(active, scan));
     }
 
     // Apply lifecycle states (session-scoped, not persisted)
     final applyPhase = ref.watch(consumerApplyPhaseProvider);
+    debugPrint('[FLOW] AiScreen build: scan=${scan != null} '
+        'connected=$isConnected creating=$_creating '
+        'activeDeploy=${active?.deploymentStatus} applyPhase=$applyPhase '
+        'profiles=${profiles.length}');
     if (applyPhase == ConsumerApplyPhase.applying) {
       return _StateApplying(ko: ko);
     }
@@ -298,6 +640,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
     // State B — BLE connected but no scan yet
     if (scan == null) {
+      debugPrint('[FLOW] RENDER StateB (scan null)');
       return _StateB(
           ko: ko,
           onGoRoom: widget.onGoTo != null ? () => widget.onGoTo!(1) : null);
@@ -316,32 +659,74 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                 ConsumerProfileGenerationStatus.generated &&
             profile.deploymentStatus == TuneDeploymentStatus.notDeployed)
         .toList();
+    debugPrint('[FLOW] ready=${ready.length} statuses=['
+        '${profiles.map((p) => '${p.status.name}/${p.generationStatus.name}/'
+            '${p.deploymentStatus.name}/sel=${p.isSelected}').join('; ')}]');
     if (ready.isNotEmpty) {
+      debugPrint('[FLOW] RENDER StateE');
       final speakerCheck = ref.watch(speakerCheckResultProvider);
+      final audioConfirmed = ref.watch(audioSpeakerConfirmedProvider);
+      final planAsync = ref.watch(currentTunePlanProvider);
+      // A brief loading flash is honest (we don't yet know the real
+      // availability), rather than guessing from resultCards while the
+      // actual TunePlan is still being fetched.
+      if (planAsync.isLoading && !planAsync.hasValue) {
+        return const Scaffold(
+          backgroundColor: Color(0xFF0A0A0A),
+          body: Center(
+              child: CircularProgressIndicator(color: Colors.white38)),
+        );
+      }
+      final plan = planAsync.valueOrNull;
+      final availability =
+          evaluateTuneAvailability(plan: plan, profile: ready.first);
+      debugPrint('[TUNE_STATE] '
+          'planExists=${plan != null} '
+          'bandCount=${plan?.bands.length ?? 0} '
+          'confidence=${ready.first.confidence} '
+          'speakerConfirmed=$audioConfirmed '
+          'availability=${availability.name}');
+      // Proactive, not lazy: without this, the DSP flat-baseline workaround
+      // (see _seedFlatBaselineSnapshot) only ever ran inside the Apply tap
+      // handler, so the button's OWN LABEL always read "스피커 확인 필요" on
+      // the very first render after a Tune was created — even though every
+      // real condition (BLE connected, identity validated, TunePlan saved)
+      // was already true — and functionally required one "wasted" tap
+      // before the real one. Idempotent (checks dspStateSnapshotProvider !=
+      // null itself), so calling it on every rebuild here is safe/cheap.
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _seedFlatBaselineSnapshot());
       return _StateE(
         ko: ko,
         profile: ready.first,
         scan: scan,
         isConnected: isConnected,
         speakerCheck: speakerCheck,
+        availability: availability,
         // Always actionable: when ready it applies, otherwise it re-checks live
         // state and routes the user (connect / Bluetooth / reconnect). Never a
         // dead disabled control.
         onApply: _onSpeakerButtonPressed,
+        onFineTune: () => _openFineTune(ready.first, scan),
+        onReMeasure: _reMeasure,
+        onCompleteWithoutCorrection: () =>
+            _completeWithoutCorrection(ready.first.id),
       );
     }
 
     // State C — scan done, no profile yet; visible even without BLE
+    debugPrint('[FLOW] RENDER StateC (no ready profile)');
     return _StateC(
       ko: ko,
       scan: scan,
       isConnected: isConnected,
       onCreate: () => _createTune(scan),
+      error: _createError,
     );
   }
 }
 
-List<RoomScanResultCard> _resultCardsForPlan(
+List<RoomScanResultCard> resultCardsForPlan(
   List<RoomScanResultCard> measuredCards,
   TunePlan plan,
 ) {
@@ -457,19 +842,21 @@ class _StateB extends StatelessWidget {
 
 // ── State C — Room scan done, no profile ─────────────────────────────────────
 
-class _StateC extends StatelessWidget {
+class _StateC extends ConsumerWidget {
   final bool ko;
   final RoomScanResult scan;
   final VoidCallback onCreate;
   final bool isConnected;
+  final String? error;
   const _StateC(
       {required this.ko,
       required this.scan,
       required this.onCreate,
-      this.isConnected = true});
+      this.isConnected = true,
+      this.error});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -512,9 +899,31 @@ class _StateC extends StatelessWidget {
                     ),
                     const SizedBox(height: 32),
                     _ScanSummaryCard(ko: ko, scan: scan),
+                    const SizedBox(height: 28),
+                    Text(
+                      ko ? '원하는 소리 느낌을 골라주세요' : 'Choose the sound you want',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 10,
+                          letterSpacing: 1.5),
+                    ),
+                    const SizedBox(height: 12),
+                    const _PreferenceSelector(),
                     if (!isConnected) ...[
                       const SizedBox(height: 16),
                       _ConnectionNotice(ko: ko),
+                    ],
+                    if (error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        ko
+                            ? '사운드 생성에 실패했습니다. 다시 시도해 주세요.\n$error'
+                            : 'Could not create your Sound. Please try again.\n$error',
+                        style: const TextStyle(
+                            color: Color(0xFFFF5252),
+                            fontSize: 13,
+                            height: 1.5),
+                      ),
                     ],
                   ],
                 ),
@@ -562,8 +971,36 @@ class _ScanSummaryCard extends StatelessWidget {
                   ? '마이크: ${micProfileLabelKo(scan.micProfileName)}'
                   : 'Mic: ${scan.micProfileName}'),
         ]),
+        const SizedBox(height: 8),
+        _ScanChip(text: _confidenceLabel(scan.confidence, ko: ko)),
+        if (scan.confidence == 'Low') ...[
+          const SizedBox(height: 10),
+          Text(
+            ko
+                ? '더 조용한 곳에서 다시 측정하면 더 정확한 사운드를 만들 수 있어요.'
+                : 'Measuring again in a quieter spot can improve accuracy.',
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.35),
+                fontSize: 11,
+                height: 1.5),
+          ),
+        ],
       ]),
     );
+  }
+}
+
+/// Translates the internal High/Medium/Low confidence label (from
+/// `_confidenceFromMeasurement`, computed from real signal/timing/mic
+/// metrics) into consumer language — never shown as a raw technical score.
+String _confidenceLabel(String confidence, {required bool ko}) {
+  switch (confidence) {
+    case 'High':
+      return ko ? '측정 신호 좋음' : 'Clear measurement';
+    case 'Medium':
+      return ko ? '측정 신호 보통' : 'Fair measurement';
+    default:
+      return ko ? '측정 신호 약함' : 'Weak measurement';
   }
 }
 
@@ -579,6 +1016,92 @@ class _ScanChip extends StatelessWidget {
         child: Text(text,
             style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.45), fontSize: 10)),
+      );
+}
+
+/// Lets the user pick their sound character before "Create Your Sound" —
+/// plain consumer language only (see SoundPreference.label/description),
+/// never PEQ/gain/intensity terms.
+class _PreferenceSelector extends ConsumerWidget {
+  const _PreferenceSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+    final selected = ref.watch(soundPreferenceProvider);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final preference in SoundPreference.values)
+          _PreferenceChip(
+            label: preference.label(ko: ko),
+            description: preference.description(ko: ko),
+            selected: preference == selected,
+            onTap: () =>
+                ref.read(soundPreferenceProvider.notifier).state = preference,
+          ),
+      ],
+    );
+  }
+}
+
+class _PreferenceChip extends StatelessWidget {
+  final String label;
+  final String description;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PreferenceChip({
+    required this.label,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          constraints: const BoxConstraints(maxWidth: 150),
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.white.withValues(alpha: 0.03),
+            border: Border.all(
+              color: selected ? Colors.white54 : Colors.white12,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.6),
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                description,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.32),
+                  fontSize: 10,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
 }
 
@@ -642,16 +1165,76 @@ class _StateE extends StatelessWidget {
   final VoidCallback? onApply;
   final bool isConnected;
   final SpeakerCheckResult? speakerCheck;
+  final VoidCallback? onFineTune;
+  final VoidCallback onReMeasure;
+  final VoidCallback onCompleteWithoutCorrection;
+  /// The single, already-computed judgment (see tune_availability.dart) —
+  /// this widget is now a pure dispatcher on it, never re-derives its own
+  /// competing signal from `profile.resultCards` or confidence directly.
+  final TuneAvailability availability;
   const _StateE(
       {required this.ko,
       required this.profile,
       required this.scan,
       required this.onApply,
       this.isConnected = true,
-      this.speakerCheck});
+      this.speakerCheck,
+      this.onFineTune,
+      required this.onReMeasure,
+      required this.onCompleteWithoutCorrection,
+      required this.availability});
 
   @override
   Widget build(BuildContext context) {
+    switch (availability) {
+      case TuneAvailability.lowConfidence:
+        return _StateELowConfidence(ko: ko, onReMeasure: onReMeasure);
+      case TuneAvailability.noCorrectionNeeded:
+        return _StateEBalanced(
+          ko: ko,
+          profile: profile,
+          onReMeasure: onReMeasure,
+          onComplete: onCompleteWithoutCorrection,
+        );
+      case TuneAvailability.readyToApply:
+        return _StateEReadyToApply(
+          ko: ko,
+          profile: profile,
+          isConnected: isConnected,
+          speakerCheck: speakerCheck,
+          onApply: onApply,
+          onFineTune: onFineTune,
+        );
+    }
+  }
+}
+
+/// Real correction was generated — the original Apply flow, unchanged in
+/// substance from before, just extracted into its own widget now that
+/// State E branches three ways.
+class _StateEReadyToApply extends ConsumerWidget {
+  final bool ko;
+  final ConsumerSoundProfile profile;
+  final bool isConnected;
+  final SpeakerCheckResult? speakerCheck;
+  final VoidCallback? onApply;
+  final VoidCallback? onFineTune;
+  const _StateEReadyToApply({
+    required this.ko,
+    required this.profile,
+    required this.isConnected,
+    required this.speakerCheck,
+    required this.onApply,
+    required this.onFineTune,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snapshot = ref.watch(spectrumSnapshotProvider);
+    final audioConfirmed = ref.watch(audioSpeakerConfirmedProvider);
+    final audioStale = ref.watch(audioSpeakerConfirmationStaleProvider);
+    final readyToApply =
+        speakerCheck?.readyToApply == true && audioConfirmed;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -700,15 +1283,25 @@ class _StateE extends StatelessWidget {
                     const SizedBox(height: 32),
                     if (profile.soundScoreBefore != null &&
                         profile.soundScoreAfter != null) ...[
-                      _SoundScoreCard(
-                        ko: ko,
-                        before: profile.soundScoreBefore!,
-                        after: profile.soundScoreAfter!,
-                      ),
+                      if (profile.soundScoreImprovement != null &&
+                          profile.soundScoreImprovement! > 0)
+                        _SoundScoreCard(
+                          ko: ko,
+                          before: profile.soundScoreBefore!,
+                          after: profile.soundScoreAfter!,
+                        )
+                      else
+                        // Real bands exist but the score delta didn't
+                        // register as an improvement — still never show
+                        // "X → X, +0" as if it were a result.
+                        _NoImprovementNotice(ko: ko),
                       const SizedBox(height: 24),
                     ],
+                    // This screen is "Your Sound is ready — Apply it" — Apply
+                    // hasn't happened yet, so Listen is not reachable yet
+                    // either.
                     AcousticTimeline(
-                      currentStep: AcousticTimelineStep.listen,
+                      currentStep: AcousticTimelineStep.acousticTune,
                       ko: ko,
                     ),
                     const SizedBox(height: 28),
@@ -722,21 +1315,77 @@ class _StateE extends StatelessWidget {
                     const SizedBox(height: 12),
                     ...profile.resultCards
                         .map((card) => _ResultCard(card: card, ko: ko)),
+                    // Only rendered when a real measured curve exists for
+                    // this session (spectrumSnapshotProvider is in-memory,
+                    // set by measure_screen.dart at scan time and by
+                    // _createTune() at Tune-generation time) — never a
+                    // fabricated graph. `after` is included only when it was
+                    // actually synthesized from this profile's real TunePlan
+                    // bands; otherwise only the Before curve draws.
+                    if (snapshot.before != null) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        ko ? 'Room Balance' : 'Room Balance',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            fontSize: 11,
+                            letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 14),
+                      ConsumerResponseChart(
+                        before: snapshot.before!,
+                        after: snapshot.afterAi,
+                        ko: ko,
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _AiExplainSection(profile: profile, ko: ko),
                     if (!isConnected) ...[
                       const SizedBox(height: 16),
                       _ConnectionNotice(ko: ko),
                     ],
                     const SizedBox(height: 16),
-                    if (speakerCheck == null || !speakerCheck!.readyToApply)
-                      _SpeakerCheckNotice(ko: ko, check: speakerCheck),
+                    if (!readyToApply)
+                      _SpeakerCheckNotice(
+                        ko: ko,
+                        check: speakerCheck,
+                        audioConfirmed: audioConfirmed,
+                        audioStale: audioStale,
+                      ),
+                    if (onFineTune != null) ...[
+                      const SizedBox(height: 20),
+                      GestureDetector(
+                        onTap: onFineTune,
+                        child: Center(
+                          child: Text(
+                            ko ? '더 세밀하게 조정하기' : 'Fine-tune further',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              fontSize: 12,
+                              decoration: TextDecoration.underline,
+                              decorationColor:
+                                  Colors.white.withValues(alpha: 0.15),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    // Extra breathing room so the last content never feels
+                    // crowded against the fixed bottom button below.
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(32, 0, 32, 40),
+              padding: const EdgeInsets.fromLTRB(32, 16, 32, 40),
               child: _TuneBigButton(
-                label: speakerCheck?.readyToApply == true
+                // "실제 적용 가능한 경우에만 동작" — the button's own label and
+                // tap target both reflect the live speakerCheck status; it is
+                // never a dead/misleading control (see resolveSpeakerButtonAction,
+                // which _onSpeakerButtonPressed always re-derives from live
+                // state regardless of what's shown here).
+                label: readyToApply
                     ? (ko ? '스피커에 적용' : 'Apply to Speaker')
                     : (ko ? '스피커 확인 필요' : 'Check Speaker'),
                 onTap: onApply,
@@ -745,6 +1394,283 @@ class _StateE extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "보정 불필요" — the room measured with no correctable buildup at all
+/// (TunePlan had zero bands, a real structural fact — see
+/// tune_availability.dart's `TuneAvailability.noCorrectionNeeded`). Never
+/// shows a fake comparison or a "X → X, +0" score; offers exactly the two
+/// real choices the user can make: accept this as-is, or measure again.
+class _StateEBalanced extends ConsumerWidget {
+  final bool ko;
+  final ConsumerSoundProfile profile;
+  final VoidCallback onReMeasure;
+  final VoidCallback onComplete;
+  const _StateEBalanced({
+    required this.ko,
+    required this.profile,
+    required this.onReMeasure,
+    required this.onComplete,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snapshot = ref.watch(spectrumSnapshotProvider);
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(32, 48, 32, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFF69F0AE),
+                              shape: BoxShape.circle)),
+                      const SizedBox(width: 10),
+                      Text(ko ? '공간 분석 완료' : 'SPACE ANALYSIS COMPLETE',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.45),
+                              fontSize: 11,
+                              letterSpacing: 1.5)),
+                    ]),
+                    const SizedBox(height: 20),
+                    Text(
+                      ko ? '공간 분석이 완료되었습니다.' : 'Space analysis complete.',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w300,
+                          height: 1.35,
+                          letterSpacing: -0.2),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      ko
+                          ? '현재 스피커와 공간의 균형이 좋아\n큰 조정이 필요한 부분은 발견되지 않았습니다.'
+                          : 'Your speaker and space are already well balanced'
+                              '—we found nothing that needed a big change.',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 14,
+                          height: 1.65),
+                    ),
+                    const SizedBox(height: 20),
+                    // Never present "no correction" as a failure: TUNAI did
+                    // analyze the space and made a real decision (to leave it
+                    // alone), so this line names that decision instead of
+                    // reading like a null result.
+                    Text(
+                      ko
+                          ? '좋은 소리는 무조건 바꾸는 것이 아니라\n필요한 부분만 조정하는 것입니다.'
+                          : 'A great sound isn\'t about changing everything'
+                              '—it\'s about adjusting only what needs it.',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          fontSize: 12,
+                          height: 1.6,
+                          fontStyle: FontStyle.italic),
+                    ),
+                    const SizedBox(height: 32),
+                    AcousticTimeline(
+                      currentStep: AcousticTimelineStep.acousticTune,
+                      ko: ko,
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      ko ? '분석 결과' : 'ANALYSIS RESULT',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 11,
+                          letterSpacing: 1.5),
+                    ),
+                    const SizedBox(height: 12),
+                    _AnalysisChecklistCard(ko: ko, confidence: profile.confidence),
+                    // Real measured curve only — never a fake "after" line,
+                    // since there are no TunePlan bands to synthesize one
+                    // from in this branch (TuneAvailability.noCorrectionNeeded).
+                    if (snapshot.before != null) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Room Balance',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            fontSize: 11,
+                            letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 14),
+                      ConsumerResponseChart(before: snapshot.before!, ko: ko),
+                    ],
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 16, 32, 40),
+              child: Column(
+                children: [
+                  _TuneBigButton(
+                    label: ko ? '완료' : 'Done',
+                    onTap: onComplete,
+                  ),
+                  const SizedBox(height: 14),
+                  GestureDetector(
+                    onTap: onReMeasure,
+                    child: Text(
+                      ko ? '다시 측정하기' : 'Measure again',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 13,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.white.withValues(alpha: 0.15),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "측정 신뢰도 부족" — also zero bands, but the confidence label already
+/// computed from real signal/timing metrics (see room_scan_result.dart's
+/// `_confidenceFromMeasurement`) is 'Low' — meaning the empty result is more
+/// likely explained by a weak/noisy capture than a genuinely balanced room.
+/// Distinguished from `_StateEBalanced` so the user gets the RIGHT next
+/// step (re-measure, not "accept as done").
+class _StateELowConfidence extends StatelessWidget {
+  final bool ko;
+  final VoidCallback onReMeasure;
+  const _StateELowConfidence({required this.ko, required this.onReMeasure});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 60, 32, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Spacer(flex: 2),
+              Icon(Icons.graphic_eq,
+                  color: Colors.white.withValues(alpha: 0.25), size: 32),
+              const SizedBox(height: 24),
+              Text(
+                ko ? '측정 신뢰도가 부족합니다.' : "The measurement wasn't reliable enough.",
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w300,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                ko
+                    ? '측정 중 소음이 많았거나 신호가 약했던 것 같습니다.\n더 조용한 곳에서 다시 측정하면 정확한 결과를 얻을 수 있습니다.'
+                    : 'There may have been too much background noise, or the '
+                        'signal was too weak.\nMeasuring again somewhere '
+                        'quieter should give a clearer result.',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 14,
+                    height: 1.65),
+              ),
+              const SizedBox(height: 36),
+              _TuneBigButton(
+                label: ko ? '다시 측정하기' : 'Measure again',
+                onTap: onReMeasure,
+              ),
+              const Spacer(flex: 3),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows what TUNAI actually checked, even when nothing needed adjusting —
+/// three lines, each derived from a real, already-computed fact (never a
+/// generated/fake analysis). Only rendered from [_StateEBalanced], which is
+/// itself only reached when [profile.resultCards] holds nothing but the
+/// 'measured_neutral' card — i.e. structurally, no bass buildup card and no
+/// balance card were triggered for this measurement, and confidence is not
+/// 'Low' (that case renders [_StateELowConfidence] instead).
+class _AnalysisChecklistCard extends StatelessWidget {
+  final bool ko;
+  final String confidence;
+  const _AnalysisChecklistCard({required this.ko, required this.confidence});
+
+  @override
+  Widget build(BuildContext context) {
+    final confidenceLabel = confidence == 'High'
+        ? (ko ? '매우 충분' : 'Excellent')
+        : (ko ? '충분' : 'Good');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AnalysisChecklistRow(
+            label: ko ? '공간 균형' : 'Space Balance',
+            value: ko ? '안정적' : 'Stable',
+          ),
+          const SizedBox(height: 12),
+          _AnalysisChecklistRow(
+            label: ko ? '저음 응답' : 'Bass Response',
+            value: ko ? '양호' : 'Good',
+          ),
+          const SizedBox(height: 12),
+          _AnalysisChecklistRow(
+            label: ko ? '측정 신뢰도' : 'Measurement Confidence',
+            value: confidenceLabel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalysisChecklistRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _AnalysisChecklistRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.check_circle_outline,
+            color: Color(0xFF69F0AE), size: 16),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        ),
+        Text(value,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5), fontSize: 13)),
+      ],
     );
   }
 }
@@ -871,7 +1797,14 @@ class _StateApplyResult extends StatelessWidget {
 class _SpeakerCheckNotice extends StatelessWidget {
   final bool ko;
   final SpeakerCheckResult? check;
-  const _SpeakerCheckNotice({required this.ko, this.check});
+  final bool audioConfirmed;
+  final bool audioStale;
+  const _SpeakerCheckNotice({
+    required this.ko,
+    this.check,
+    this.audioConfirmed = true,
+    this.audioStale = false,
+  });
 
   String _message() {
     final status = check?.status;
@@ -883,6 +1816,20 @@ class _SpeakerCheckNotice extends StatelessWidget {
       return ko
           ? '연결된 스피커를 확인할 수 없습니다.'
           : 'Speaker identity could not be confirmed.';
+    }
+    // Connection/identity/DSP-readiness are all fine — only the user's audio
+    // confirmation ("did you hear it from your speaker") is missing or no
+    // longer matches this connection (see speaker_verification_session.dart).
+    if ((status == null || status == SpeakerCheckStatus.readyToApply) &&
+        !audioConfirmed) {
+      return audioStale
+          ? (ko
+              ? '스피커 연결이 변경되었습니다. 확인음을 다시 재생해 주세요.'
+              : 'Your speaker connection has changed. Play the confirmation '
+                  'tone again.')
+          : (ko
+              ? 'ROOM 탭에서 스피커 확인을 먼저 완료해 주세요.'
+              : 'Complete the speaker check in the ROOM tab first.');
     }
     // soundStateNotVerified / originalValuesUnavailable / null
     return ko
@@ -909,6 +1856,146 @@ class _SpeakerCheckNotice extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// AI Explain — a plain-language "why" for the Tune, expandable and
+/// collapsed by default so it never crowds the main result. Built entirely
+/// from real, already-computed facts already on [profile] (preference,
+/// room type, whether a deeper analysis pass was used, the same
+/// [RoomScanResultCard] descriptions already shown above) — never the raw
+/// AI explanation text from the backend (that stays server-side only; see
+/// AiTuneOrchestrator/AiTuningService), and never a PEQ/DSP/Hz/dB/frequency
+/// term.
+class _AiExplainSection extends StatelessWidget {
+  final ConsumerSoundProfile profile;
+  final bool ko;
+  const _AiExplainSection({required this.profile, required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    final roomLabel = ko ? roomTypeLabelKo(profile.roomType) : profile.roomType;
+    final reasons = [
+      for (final card in profile.resultCards) card.description(ko: ko),
+    ];
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 4),
+        title: Text(
+          ko ? '왜 이렇게 만들었나요?' : 'Why this sound?',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.45),
+            fontSize: 12,
+          ),
+        ),
+        iconColor: Colors.white38,
+        collapsedIconColor: Colors.white38,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ko
+                      ? '$roomLabel에서 측정한 결과를 바탕으로, 안전한 범위 안에서 소리를 조정했습니다.'
+                      : 'Based on what was measured in your $roomLabel, the sound was shaped safely within a tested range.',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.42),
+                      fontSize: 12,
+                      height: 1.6),
+                ),
+                if (reasons.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    ko
+                        ? '${reasons.join(' ')} ${profile.preference.label(ko: true)} 느낌을 살렸습니다.'
+                        : '${reasons.join(' ')} Shaped for a ${profile.preference.label(ko: false).toLowerCase()} feel.',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.42),
+                        fontSize: 12,
+                        height: 1.6),
+                  ),
+                ],
+                if (profile.usedAiRecommendation) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    ko
+                        ? '공간과 스피커의 특성을 함께 살펴 더 깊이 분석했습니다.'
+                        : 'Your space and speaker were analyzed together for a deeper result.',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.42),
+                        fontSize: 12,
+                        height: 1.6),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                _HistoryContextLine(profile: profile, ko: ko),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Closed Loop UX: a single extra sentence, shown only when there is real
+/// prior Apply history (see tune_outcome_history.dart) to compare against —
+/// never a fabricated "improvement" claim. Loads asynchronously and renders
+/// nothing while pending or when there's nothing relevant to say, so it
+/// never blocks or clutters the main explanation above.
+class _HistoryContextLine extends StatefulWidget {
+  final ConsumerSoundProfile profile;
+  final bool ko;
+  const _HistoryContextLine({required this.profile, required this.ko});
+
+  @override
+  State<_HistoryContextLine> createState() => _HistoryContextLineState();
+}
+
+class _HistoryContextLineState extends State<_HistoryContextLine> {
+  TuneOutcomeRecord? _priorOutcome;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final history = await TuneOutcomeHistory.load();
+      final prior = history
+          .where((o) => o.tunePlanId != widget.profile.tunePlanId)
+          .toList();
+      if (mounted && prior.isNotEmpty) {
+        setState(() => _priorOutcome = prior.first);
+      }
+    } catch (_) {
+      // Silently skip — this is a supplementary line, never a blocking error.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prior = _priorOutcome;
+    final after = widget.profile.soundScoreAfter;
+    if (prior == null || after == null || prior.soundScoreAfter == null) {
+      return const SizedBox.shrink();
+    }
+    if (after <= prior.soundScoreAfter!) return const SizedBox.shrink();
+    return Text(
+      widget.ko
+          ? '지난번보다 더 편안한 청취 경험으로 조정되었습니다.'
+          : "This adjustment goes further than last time's, for a more comfortable listening experience.",
+      style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.42),
+          fontSize: 12,
+          height: 1.6),
+    );
+  }
 }
 
 class _ResultCard extends StatelessWidget {
@@ -957,11 +2044,13 @@ class _StateF extends StatelessWidget {
   final ConsumerSoundProfile profile;
   final VoidCallback onGoListen;
   final VoidCallback onReset;
+  final VoidCallback? onFineTune;
   const _StateF(
       {required this.ko,
       required this.profile,
       required this.onGoListen,
-      required this.onReset});
+      required this.onReset,
+      this.onFineTune});
 
   @override
   Widget build(BuildContext context) {
@@ -1013,11 +2102,15 @@ class _StateF extends StatelessWidget {
                     const SizedBox(height: 32),
                     if (profile.soundScoreBefore != null &&
                         profile.soundScoreAfter != null) ...[
-                      _SoundScoreCard(
-                        ko: ko,
-                        before: profile.soundScoreBefore!,
-                        after: profile.soundScoreAfter!,
-                      ),
+                      if (profile.soundScoreImprovement != null &&
+                          profile.soundScoreImprovement! > 0)
+                        _SoundScoreCard(
+                          ko: ko,
+                          before: profile.soundScoreBefore!,
+                          after: profile.soundScoreAfter!,
+                        )
+                      else
+                        _NoImprovementNotice(ko: ko),
                       const SizedBox(height: 24),
                     ],
                     AcousticTimeline(
@@ -1035,21 +2128,42 @@ class _StateF extends StatelessWidget {
                     const SizedBox(height: 12),
                     ...profile.resultCards
                         .map((card) => _ResultCard(card: card, ko: ko)),
+                    const SizedBox(height: 12),
+                    _AiExplainSection(profile: profile, ko: ko),
                     const SizedBox(height: 20),
-                    GestureDetector(
-                      onTap: () => _confirmReset(context),
-                      child: Center(
-                        child: Text(
-                          ko ? '다시 만들기' : 'Create new profile',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            fontSize: 12,
-                            decoration: TextDecoration.underline,
-                            decorationColor:
-                                Colors.white.withValues(alpha: 0.15),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _confirmReset(context),
+                          child: Text(
+                            ko ? '다시 만들기' : 'Create new profile',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              fontSize: 12,
+                              decoration: TextDecoration.underline,
+                              decorationColor:
+                                  Colors.white.withValues(alpha: 0.15),
+                            ),
                           ),
                         ),
-                      ),
+                        if (onFineTune != null) ...[
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTap: onFineTune,
+                            child: Text(
+                              ko ? '세부 조정' : 'Fine-tune',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                fontSize: 12,
+                                decoration: TextDecoration.underline,
+                                decorationColor:
+                                    Colors.white.withValues(alpha: 0.15),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -1131,6 +2245,46 @@ class _ConnectionNotice extends StatelessWidget {
 }
 
 // ── Sound Score card ─────────────────────────────────────────────────────────
+
+/// Shown instead of [_SoundScoreCard] whenever the real computed Before/
+/// After scores are equal (or the Tune has no bands at all) — this is a
+/// genuine, real outcome (a room that measured close to already balanced,
+/// or a measurement too weak to find a clear correction), never a bug to
+/// paper over with a "72 → 72, +0" number that reads as broken.
+class _NoImprovementNotice extends StatelessWidget {
+  final bool ko;
+  const _NoImprovementNotice({required this.ko});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          ko ? '자연스러운 균형을 유지했습니다' : 'Kept a natural balance',
+          style: const TextStyle(
+              color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w400),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          ko
+              ? 'TUNAI가 공간을 확인한 결과, 큰 변화보다는 지금의 자연스러운 균형을\n유지하는 방향으로 조정을 마쳤습니다.'
+              : 'After analyzing your space, TUNAI kept the adjustments minimal '
+                  'to preserve the natural balance you already had.',
+          style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.4),
+              fontSize: 12,
+              height: 1.6),
+        ),
+      ]),
+    );
+  }
+}
 
 class _SoundScoreCard extends StatelessWidget {
   final bool ko;

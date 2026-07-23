@@ -7,6 +7,7 @@ import '../community/community_screen.dart';
 import '../community/my_sound_screen.dart';
 import '../device/consumer_device_screen.dart';
 import '../library/library_screen.dart';
+import '../preference/sound_taste_screen.dart';
 import 'about_tunai_screen.dart';
 
 class MoreScreen extends ConsumerWidget {
@@ -50,6 +51,14 @@ class MoreScreen extends ConsumerWidget {
                       : 'Your saved sound for each space',
                   icon: Icons.library_music_outlined,
                   onTap: () => _open(context, const LibraryScreen()),
+                ),
+                _MenuItem(
+                  label: ko ? '나의 사운드 취향' : 'MY SOUND TASTE',
+                  description: ko
+                      ? '원하는 청취 경험을 선택하세요'
+                      : 'Choose the listening experience you want',
+                  icon: Icons.tune_outlined,
+                  onTap: () => _open(context, const SoundTasteScreen()),
                 ),
                 _MenuItem(
                   label: ko ? '도움말 및 지원' : 'HELP & SUPPORT',

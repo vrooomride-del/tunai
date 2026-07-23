@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/consumer_sound_profile.dart';
 import '../../core/sound_profile_store.dart';
+import '../../core/tune_outcome_history.dart';
 import '../../shared/widgets.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -214,13 +215,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     const SizedBox(height: 40),
                   ],
 
-                  // ── TUNAI Tune ─────────────────────────────────────────
+                  // ── TUNAI Tune — grouped by room, so each space's saved
+                  // sounds are easy to find as more rooms are tuned. ──────
                   if (tunaiTunes.isNotEmpty) ...[
                     _SectionHeader(ko ? 'TUNAI Tune' : 'TUNAI Tune'),
-                    ...tunaiTunes
-                        .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    for (final entry in _groupByRoom(tunaiTunes).entries) ...[
+                      if (_hasMultipleRooms(tunaiTunes))
+                        _RoomSubHeader(roomType: entry.key, ko: ko),
+                      ...entry.value
+                          .map((p) => _ConsumerProfileCard(profile: p, ko: ko)),
+                    ],
                     const SizedBox(height: 20),
                   ],
+
+                  // ── Recent activity — real Apply outcomes only, no
+                  // fabricated re-measurement/verification data. ──────────
+                  const _RecentHistorySection(),
 
                   // ── My Tune ────────────────────────────────────────────
                   if (myTunes.isNotEmpty) ...[
@@ -787,6 +797,218 @@ class _EmptyLibraryState extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Room grouping helpers ─────────────────────────────────────────────────
+
+/// Groups profiles by their real, already-recorded room type, preserving
+/// each room's most-recently-updated-first order within the source list.
+Map<String, List<ConsumerSoundProfile>> _groupByRoom(
+    List<ConsumerSoundProfile> profiles) {
+  final grouped = <String, List<ConsumerSoundProfile>>{};
+  for (final profile in profiles) {
+    grouped.putIfAbsent(profile.roomType, () => []).add(profile);
+  }
+  return grouped;
+}
+
+bool _hasMultipleRooms(List<ConsumerSoundProfile> profiles) =>
+    profiles.map((p) => p.roomType).toSet().length > 1;
+
+class _RoomSubHeader extends StatelessWidget {
+  final String roomType;
+  final bool ko;
+  const _RoomSubHeader({required this.roomType, required this.ko});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 4),
+        child: Row(
+          children: [
+            Icon(Icons.room_outlined,
+                color: Colors.white.withValues(alpha: 0.25), size: 13),
+            const SizedBox(width: 6),
+            Text(
+              ko ? roomTypeLabelKo(roomType) : roomType,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+// ── Recent activity (Closed Loop prep) ────────────────────────────────────
+
+/// Shows the last few real Tune Apply outcomes (see tune_outcome_history.dart)
+/// in plain consumer language — never technical terms, never a fabricated
+/// verification result. Loads asynchronously (Loading state) and renders
+/// nothing at all if there is no history yet or it fails to load (Error
+/// Recovery: silently falls back to not showing the section rather than
+/// surfacing a raw error, since this is a supplementary, non-critical view).
+class _RecentHistorySection extends ConsumerStatefulWidget {
+  const _RecentHistorySection();
+
+  @override
+  ConsumerState<_RecentHistorySection> createState() =>
+      _RecentHistorySectionState();
+}
+
+class _RecentHistorySectionState extends ConsumerState<_RecentHistorySection> {
+  List<TuneOutcomeRecord>? _history;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final history = await TuneOutcomeHistory.load();
+      if (mounted) setState(() => _history = history);
+    } catch (_) {
+      if (mounted) setState(() => _history = const []);
+    }
+  }
+
+  /// Best-effort room label for a history entry — cross-references the
+  /// still-real, already-saved profile list by tunePlanId/measurementId.
+  /// Falls back to a generic "my space" phrase (never a fabricated room
+  /// name) if the source profile is no longer available.
+  String _roomLabelFor(TuneOutcomeRecord record, bool ko) {
+    final profiles = ref.read(consumerSoundProfileProvider);
+    for (final profile in profiles) {
+      if (profile.tunePlanId == record.tunePlanId ||
+          (record.measurementId != null &&
+              profile.measurementId == record.measurementId)) {
+        return ko ? profile.roomTypeLabel : profile.roomTypeLabelEn;
+      }
+    }
+    return ko ? '나의 공간' : 'your space';
+  }
+
+  String _dateLabel(DateTime date, bool ko) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inDays <= 0) return ko ? '오늘' : 'Today';
+    if (diff.inDays == 1) return ko ? '어제' : 'Yesterday';
+    if (diff.inDays < 7) return ko ? '${diff.inDays}일 전' : '${diff.inDays}d ago';
+    return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ko = Localizations.localeOf(context).languageCode == 'ko';
+
+    // Loading state — brief, since this is a local read; nothing is shown
+    // while pending rather than a distracting spinner for the common
+    // instant-resolve case.
+    if (_history == null) {
+      return const SizedBox.shrink();
+    }
+    if (_history!.isEmpty) {
+      // No history yet is a normal, expected state (e.g. first-run) — not
+      // an empty *error*, so nothing is shown here at all; the section
+      // simply doesn't appear until there's real activity to show.
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(ko ? '최근 기록' : 'Recent Activity'),
+          for (final record in _history!)
+            _HistoryRow(
+              roomLabel: _roomLabelFor(record, ko),
+              dateLabel: _dateLabel(record.recordedAt, ko),
+              record: record,
+              ko: ko,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  final String roomLabel;
+  final String dateLabel;
+  final TuneOutcomeRecord record;
+  final bool ko;
+  const _HistoryRow({
+    required this.roomLabel,
+    required this.dateLabel,
+    required this.record,
+    required this.ko,
+  });
+
+  bool get _succeeded =>
+      record.result == ConsumerDspDeploymentRecordResult.applied;
+
+  String get _summary {
+    if (!_succeeded) {
+      return ko ? '맞춤 조정을 적용하지 못했습니다.' : "Couldn't apply the custom adjustment.";
+    }
+    final before = record.soundScoreBefore;
+    final after = record.soundScoreAfter;
+    if (before != null && after != null && after > before) {
+      return ko
+          ? '더 편안한 청취 경험으로 조정되었습니다.'
+          : 'Adjusted for a more comfortable listening experience.';
+    }
+    return ko ? '나의 사운드가 적용되었습니다.' : 'Your Sound was applied.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: _succeeded
+                  ? const Color(0xFF69F0AE)
+                  : Colors.white.withValues(alpha: 0.25),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$roomLabel · $_summary',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            dateLabel,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.28), fontSize: 10),
+          ),
+        ],
       ),
     );
   }

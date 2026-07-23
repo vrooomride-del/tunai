@@ -49,6 +49,24 @@ class _IdleDriver implements ConsumerBleGattDriver {
       throw UnimplementedError();
 }
 
+/// Finds a device but never actually completes `connect()` within the test
+/// window — simulates the real-device "연결 실패, 원인을 알 수 없음" complaint
+/// where the underlying retry/backoff machinery can legitimately take many
+/// seconds before giving up.
+class _SlowConnectDriver implements ConsumerBleGattDriver {
+  @override Future<bool> isBluetoothAvailable() async => true;
+  @override Future<bool> requestPermissions() async => true;
+  @override Future<List<ConsumerBleDevice>> scan({String? identifier}) async =>
+      [const ConsumerBleDevice(
+        identifier: 'dev-1',
+        name: 'WONDOM ICP5',
+        rssi: -42,
+        nativeHandle: _NativeHandle('dev-1'),
+      )];
+  @override Future<ConsumerBleConnection> connect(ConsumerBleDevice d) =>
+      Completer<ConsumerBleConnection>().future; // never resolves
+}
+
 class _ConnectedDriver implements ConsumerBleGattDriver {
   @override Future<bool> isBluetoothAvailable() async => true;
   @override Future<bool> requestPermissions() async => true;
@@ -317,6 +335,55 @@ void main() {
       // No scan button (would be a duplicate action)
       expect(
           find.byKey(const Key('consumer_ble_scan_button')), findsNothing);
+      service.dispose();
+    });
+  });
+
+  // ── Delayed connection never reads as an indefinite, unexplained hang ────
+
+  group('Delayed connection guidance', () {
+    testWidgets(
+        'a connect attempt stuck past 6s shows the delayed-guidance message '
+        'and a working Reconnect action — never just a silent spinner',
+        (tester) async {
+      final service = _service(_SlowConnectDriver());
+      await tester.pumpWidget(ProviderScope(
+        overrides: [consumerBleServiceProvider.overrideWithValue(service)],
+        child: _app(ConnectScreen(onConnected: () {})),
+      ));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('consumer_ble_scan_button')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('consumer_ble_connect_button')));
+      await tester.pump();
+
+      // Before the threshold: no delayed guidance yet, just the spinner.
+      await tester.pump(const Duration(seconds: 3));
+      expect(
+        find.byKey(const Key('consumer_ble_delayed_retry_button')),
+        findsNothing,
+      );
+
+      // Past the threshold: honest guidance + a real retry action appear.
+      await tester.pump(const Duration(seconds: 4));
+      expect(
+        find.textContaining('taking longer than usual'),
+        findsOneWidget,
+      );
+      final retryButton =
+          find.byKey(const Key('consumer_ble_delayed_retry_button'));
+      expect(retryButton, findsOneWidget);
+
+      await tester.tap(retryButton);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      // Tapping it is never a dead control: it disconnects the stuck
+      // attempt (clearing the delayed guidance) and starts a fresh scan.
+      expect(
+        find.byKey(const Key('consumer_ble_delayed_retry_button')),
+        findsNothing,
+      );
+
       service.dispose();
     });
   });

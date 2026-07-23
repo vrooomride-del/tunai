@@ -34,6 +34,12 @@ void main() {
       (tester) async {
     await markOnboardingComplete();
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
+    // Splash only hands off once its motion AND logo sound both finish; in
+    // the test harness there is no real audio platform channel, so this
+    // relies on the fail-safe timer (2x minDuration) rather than
+    // pumpAndSettle() alone, which won't advance a pending Timer once no
+    // frame is scheduled.
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(find.text('Your space shapes your sound.'), findsNothing);
     expect(find.byType(BottomNavigationBar), findsOneWidget);
@@ -70,6 +76,9 @@ void main() {
     expect(await isOnboardingComplete(), isFalse);
 
     await tester.pumpWidget(const ProviderScope(child: TunaiApp()));
+    // See the fail-safe note above — Splash needs the fail-safe timer to
+    // fire in the test harness since there is no real audio platform.
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(find.text('Your space shapes your sound.'), findsOneWidget);
     await tester.tap(find.text('Continue'));

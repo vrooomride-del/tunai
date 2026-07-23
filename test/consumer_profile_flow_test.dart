@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
+import 'package:tunai/core/room_measurement.dart' show CaptureQualityStatus;
 import 'package:tunai/core/room_scan_result.dart';
 import 'package:tunai/core/speaker_check_gate.dart';
 import 'package:tunai/core/speaker_state_verification.dart';
@@ -64,6 +65,28 @@ ConsumerSoundProfile _readyGeneratedProfile() => ConsumerSoundProfile(
       generationStatus: ConsumerProfileGenerationStatus.generated,
       deploymentStatus: TuneDeploymentStatus.notDeployed,
     );
+
+// _StateEReadyToApply now requires a real, non-empty TunePlan matching the
+// profile's tunePlanId (tune_availability.dart).
+final _readyTunePlan = TunePlan(
+  id: 'plan-ready',
+  sourceMeasurementId: 'measurement-ready',
+  createdAt: _created,
+  bands: const [
+    TuneCorrectionBand(
+      frequencyHz: 120,
+      gainDb: -4,
+      q: 2,
+      evidenceReference: 'measurement-ready:peak:120',
+      safetyValidated: true,
+    ),
+  ],
+  rejectedCandidates: const [],
+  safetyBounds: const TuneSafetyBounds(),
+  measurementQuality: CaptureQualityStatus.valid,
+  measurementConsistency: 1,
+  warnings: const [],
+);
 
 Widget _app(Widget child, {Locale locale = const Locale('en')}) => MaterialApp(
       locale: locale,
@@ -322,12 +345,14 @@ void main() {
               evaluatedAt: DateTime.utc(2025, 7, 1),
             ),
           ),
+          currentTunePlanProvider.overrideWith((ref) async => _readyTunePlan),
         ],
         child: _app(
           AiScreen(onApplied: () {}),
           locale: locale,
         ),
       ));
+      await tester.pump();
       await tester.pump();
 
       expect(

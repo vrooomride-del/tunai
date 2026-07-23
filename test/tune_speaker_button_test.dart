@@ -8,9 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
+import 'package:tunai/core/room_measurement.dart' show CaptureQualityStatus;
 import 'package:tunai/core/room_scan_result.dart';
 import 'package:tunai/core/speaker_check_gate.dart';
 import 'package:tunai/core/speaker_state_verification.dart';
+import 'package:tunai/core/speaker_verification_session.dart';
 import 'package:tunai/core/tune_plan.dart';
 import 'package:tunai/features/ai/ai_screen.dart';
 import 'package:tunai/features/ble/ble_controller.dart';
@@ -43,6 +45,31 @@ ConsumerSoundProfile _readyGeneratedProfile() => ConsumerSoundProfile(
       deploymentStatus: TuneDeploymentStatus.notDeployed,
     );
 
+// These tests are about the SpeakerButtonAction routing, not about
+// TuneAvailability branching, so they always provide a real, non-empty
+// TunePlan matching _readyGeneratedProfile's tunePlanId — evaluateTuneAvailability
+// (tune_availability.dart) resolves that to readyToApply, which is what all
+// of these tests need to reach _StateEReadyToApply in the first place.
+final _readyTunePlan = TunePlan(
+  id: 'plan-ready',
+  sourceMeasurementId: 'measurement-ready',
+  createdAt: _created,
+  bands: const [
+    TuneCorrectionBand(
+      frequencyHz: 120,
+      gainDb: -4,
+      q: 2,
+      evidenceReference: 'measurement-ready:peak:120',
+      safetyValidated: true,
+    ),
+  ],
+  rejectedCandidates: const [],
+  safetyBounds: const TuneSafetyBounds(),
+  measurementQuality: CaptureQualityStatus.valid,
+  measurementConsistency: 1,
+  warnings: const [],
+);
+
 Widget _app(Widget child, {Locale locale = const Locale('en')}) => MaterialApp(
       locale: locale,
       localizationsDelegates: const [
@@ -58,6 +85,10 @@ Future<void> _pumpStateE(
   WidgetTester tester, {
   required SpeakerCheckResult check,
   required void Function(int) onGoTo,
+  // Defaults to true so existing "DSP-ready" scenarios keep testing exactly
+  // what they said they test; only the new tests below flip it to exercise
+  // the audio-confirmation gate itself.
+  bool audioConfirmed = true,
 }) async {
   final profiles = ConsumerSoundProfileNotifier();
   await profiles.upsertGeneratedAndSelect(_readyGeneratedProfile());
@@ -68,9 +99,15 @@ Future<void> _pumpStateE(
       consumerSoundProfileProvider.overrideWith((ref) => profiles),
       roomScanResultProvider.overrideWith((ref) => scans),
       speakerCheckResultProvider.overrideWith((_) => check),
+      audioSpeakerConfirmedProvider.overrideWith((_) => audioConfirmed),
+      audioSpeakerConfirmationStaleProvider.overrideWith((_) => false),
+      currentTunePlanProvider.overrideWith((ref) async => _readyTunePlan),
     ],
     child: _app(AiScreen(onApplied: () {}, onGoTo: onGoTo)),
   ));
+  // currentTunePlanProvider is a FutureProvider — one extra pump lets it
+  // settle from loading to data before assertions run.
+  await tester.pump();
   await tester.pump();
 }
 
@@ -83,13 +120,26 @@ void main() {
   // ── Pure routing decision ─────────────────────────────────────────────────
 
   group('resolveSpeakerButtonAction', () {
-    test('ready → apply (continue)', () {
+    test('ready + audio confirmed → apply (continue)', () {
       expect(
         resolveSpeakerButtonAction(
           status: SpeakerCheckStatus.readyToApply,
           connection: BleConnectionState.connected,
+          audioConfirmed: true,
         ),
         SpeakerButtonAction.apply,
+      );
+    });
+
+    test('ready but audio NOT confirmed → confirmSpeaker (never a silent '
+        'apply on an unconfirmed audio path)', () {
+      expect(
+        resolveSpeakerButtonAction(
+          status: SpeakerCheckStatus.readyToApply,
+          connection: BleConnectionState.connected,
+          audioConfirmed: false,
+        ),
+        SpeakerButtonAction.confirmSpeaker,
       );
     });
 
@@ -98,6 +148,7 @@ void main() {
         resolveSpeakerButtonAction(
           status: SpeakerCheckStatus.speakerNotConnected,
           connection: BleConnectionState.disconnected,
+          audioConfirmed: false,
         ),
         SpeakerButtonAction.connect,
       );
@@ -108,6 +159,7 @@ void main() {
         resolveSpeakerButtonAction(
           status: SpeakerCheckStatus.speakerNotConnected,
           connection: BleConnectionState.bluetoothOff,
+          audioConfirmed: false,
         ),
         SpeakerButtonAction.bluetoothOff,
       );
@@ -118,6 +170,7 @@ void main() {
         resolveSpeakerButtonAction(
           status: SpeakerCheckStatus.soundStateNotVerified,
           connection: BleConnectionState.connected,
+          audioConfirmed: false,
         ),
         SpeakerButtonAction.reconnect,
       );
@@ -128,17 +181,23 @@ void main() {
         resolveSpeakerButtonAction(
           status: SpeakerCheckStatus.identityUnconfirmed,
           connection: BleConnectionState.connected,
+          audioConfirmed: false,
         ),
         SpeakerButtonAction.reconnect,
       );
     });
 
-    test('never resolves to a no-op for any status/connection combination', () {
+    test('never resolves to a no-op for any status/connection/audio combination',
+        () {
       for (final status in SpeakerCheckStatus.values) {
         for (final connection in BleConnectionState.values) {
-          final action = resolveSpeakerButtonAction(
-              status: status, connection: connection);
-          expect(action, isA<SpeakerButtonAction>());
+          for (final audioConfirmed in [true, false]) {
+            final action = resolveSpeakerButtonAction(
+                status: status,
+                connection: connection,
+                audioConfirmed: audioConfirmed);
+            expect(action, isA<SpeakerButtonAction>());
+          }
         }
       }
     });
@@ -201,6 +260,31 @@ void main() {
       expect(nav, isEmpty);
     });
 
+    testWidgets(
+        'DSP-ready but audio Speaker Check not confirmed: label stays '
+        '"Check Speaker" and tapping routes to ROOM, never a silent apply',
+        (tester) async {
+      final nav = <int>[];
+      await _pumpStateE(
+        tester,
+        check: SpeakerCheckResult.verified(
+            speakerId: 'spk-1', evaluatedAt: _created),
+        audioConfirmed: false,
+        onGoTo: nav.add,
+      );
+
+      expect(find.text('Apply to Speaker'), findsNothing);
+      expect(find.text('Check Speaker'), findsOneWidget);
+      await tester.tap(find.text('Check Speaker'));
+      await tester.pump();
+
+      // Routes to the ROOM tab (index 1), where the Speaker Check tone lives.
+      expect(nav, [1]);
+      expect(
+          find.text('Complete the speaker check in the ROOM tab first.'),
+          findsOneWidget);
+    });
+
     testWidgets('KO disconnected: tap shows Korean guidance and routes',
         (tester) async {
       final nav = <int>[];
@@ -214,10 +298,12 @@ void main() {
           roomScanResultProvider.overrideWith((ref) => scans),
           speakerCheckResultProvider
               .overrideWith((_) => _blocked(SpeakerCheckStatus.speakerNotConnected)),
+          currentTunePlanProvider.overrideWith((ref) async => _readyTunePlan),
         ],
         child: _app(AiScreen(onApplied: () {}, onGoTo: nav.add),
             locale: const Locale('ko')),
       ));
+      await tester.pump();
       await tester.pump();
 
       await tester.tap(find.text('스피커 확인 필요'));

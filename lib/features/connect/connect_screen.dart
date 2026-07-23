@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -16,6 +18,36 @@ class ConnectScreen extends ConsumerStatefulWidget {
 }
 
 class _ConnectScreenState extends ConsumerState<ConnectScreen> {
+  // ConsumerBleService's own retry loop can legitimately take up to ~15s
+  // (1+2+4+8s backoff) before it gives up and reports failure — during that
+  // whole window the UI used to show nothing but a generic "연결 중..."
+  // spinner with no explanation, which read as an indefinite hang (the
+  // actual real-device complaint: "원인을 알 수 없음"). This timer surfaces
+  // an honest "this is taking a while, check your speaker" message partway
+  // through that same window instead of adding any new waiting.
+  static const _delayedGuidanceThreshold = Duration(seconds: 6);
+  Timer? _delayedGuidanceTimer;
+  bool _showDelayedGuidance = false;
+
+  void _armDelayedGuidance() {
+    _delayedGuidanceTimer?.cancel();
+    setState(() => _showDelayedGuidance = false);
+    _delayedGuidanceTimer = Timer(_delayedGuidanceThreshold, () {
+      if (mounted) setState(() => _showDelayedGuidance = true);
+    });
+  }
+
+  void _disarmDelayedGuidance() {
+    _delayedGuidanceTimer?.cancel();
+    _delayedGuidanceTimer = null;
+    if (_showDelayedGuidance) setState(() => _showDelayedGuidance = false);
+  }
+
+  @override
+  void dispose() {
+    _delayedGuidanceTimer?.cancel();
+    super.dispose();
+  }
   bool _isKo(BuildContext ctx) =>
       Localizations.localeOf(ctx).languageCode == 'ko';
 
@@ -28,6 +60,15 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       if (next.connection == BleConnectionState.bluetoothOff &&
           prev?.connection != BleConnectionState.bluetoothOff) {
         _showBluetoothOffDialog(context);
+      }
+      final wasWaiting = prev?.connection == BleConnectionState.connecting ||
+          prev?.connection == BleConnectionState.reconnecting;
+      final nowWaiting = next.connection == BleConnectionState.connecting ||
+          next.connection == BleConnectionState.reconnecting;
+      if (nowWaiting && !wasWaiting) {
+        _armDelayedGuidance();
+      } else if (!nowWaiting && wasWaiting) {
+        _disarmDelayedGuidance();
       }
     });
 
@@ -89,9 +130,20 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                           if (isScanning || isConnecting || isReconnecting) ...[
                             _ScanningAnimation(
                               message: isConnecting || isReconnecting
-                                  ? (ko ? '연결 중...' : 'Connecting...')
+                                  ? (ko ? '스피커 연결을 준비하고 있습니다.' : 'Preparing to connect your speaker.')
                                   : (ko ? '검색 중...' : 'Searching...'),
                             ),
+                            if ((isConnecting || isReconnecting) &&
+                                _showDelayedGuidance) ...[
+                              const SizedBox(height: 16),
+                              _DelayedConnectionNotice(
+                                ko: ko,
+                                onRetry: () {
+                                  ref.read(bleProvider.notifier).disconnect();
+                                  ref.read(bleProvider.notifier).scan();
+                                },
+                              ),
+                            ],
                           ],
                           if (deviceFound) ...[
                             Text(
@@ -173,6 +225,21 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                                 bState.connection,
                                 ko: ko,
                               ),
+                            ),
+                          ],
+                          // A failed auto-reconnect (cold start with a known
+                          // speaker) lands here as plain `disconnected`, not
+                          // `connectionLost` — this is exactly the real-device
+                          // complaint ("연결 실패, 원인을 알 수 없음"): without
+                          // this, the screen looked identical to a first-time
+                          // connect with no acknowledgment that a saved
+                          // speaker just failed to reconnect.
+                          if (isIdle && bState.hasKnownDevice) ...[
+                            _SafeConnectionMessage(
+                              text: ko
+                                  ? '저장된 스피커에 연결하지 못했습니다. 스피커 전원이 켜져 있는지 확인하고 다시 시도해주세요.'
+                                  : "Couldn't connect to your saved speaker. "
+                                      'Check that it\'s powered on and try again.',
                             ),
                           ],
                           if (bState.detectedBoard ==
@@ -356,16 +423,25 @@ class _ConnectedLayout extends StatelessWidget {
                   ),
                 ),
 
-                if (detectedBoard == DetectedBoard.adau1466) ...[
-                  const SizedBox(height: 20),
-                  _BoardBanner(
-                    text: ko
-                        ? 'TUNAI ONE이 준비되었습니다. 이제 공간 분석을 시작할 수 있습니다.'
-                        : 'TUNAI ONE is ready. You can start Space Analysis now.',
-                    color: Colors.white24,
-                    icon: Icons.check_circle_outline,
-                  ),
-                ],
+                // "Connected" (isConnected==true, the only way this layout
+                // renders) is only ever reached after the BLE identity
+                // handshake succeeds (see ConsumerBleService._connectAndValidate
+                // — `status: connected` is set strictly after
+                // `_supportedIdentityValidated = true`). So reaching this
+                // screen already means the product is identified and its DSP
+                // command channel is ready — that must be visible here
+                // directly, not gated on the separate/fragile `detectedBoard`
+                // signal (previously required `== DetectedBoard.adau1466`,
+                // which could leave a genuinely ready speaker showing no
+                // readiness indicator at all).
+                const SizedBox(height: 20),
+                _BoardBanner(
+                  text: ko
+                      ? '제품이 확인되었고 사용 준비가 되었습니다. 이제 공간 분석을 시작할 수 있습니다.'
+                      : 'Your speaker is identified and ready. You can start Space Analysis now.',
+                  color: Colors.white24,
+                  icon: Icons.check_circle_outline,
+                ),
 
                 const SizedBox(height: 28),
                 _InputSourceSection(ko: ko, isConnected: true),
@@ -565,6 +641,59 @@ class _ConnectInfoCard extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.45),
               fontSize: 12,
               height: 1.55,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 연결 지연 안내 (무한 대기처럼 보이지 않도록) ───────────────────────────────
+class _DelayedConnectionNotice extends StatelessWidget {
+  final bool ko;
+  final VoidCallback onRetry;
+  const _DelayedConnectionNotice({required this.ko, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.03),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ko
+                ? '스피커 연결이 지연되고 있습니다.\n스피커 전원이 켜져 있는지 확인해주세요.'
+                : "Your speaker connection is taking longer than usual.\n"
+                    'Please check that your speaker is powered on.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 12.5,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            key: const Key('consumer_ble_delayed_retry_button'),
+            onTap: onRetry,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white24),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                ko ? '다시 연결' : 'Reconnect',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
             ),
           ),
         ],

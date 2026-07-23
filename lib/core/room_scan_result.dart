@@ -152,8 +152,32 @@ String _confidenceFromMeasurement(RoomMeasurement measurement) {
   score += measurement.timing.durationCompleteness.clamp(0.0, 1.0) * 0.3;
   score += measurement.levels.signalPresent ? 0.25 : 0;
   score += measurement.levels.severelyClipped ? 0 : 0.2;
-  score += measurement.consistencyMetric.clamp(0.0, 1.0) * 0.15;
+  // Signal headroom above the minimum usable level. Replaces a placeholder
+  // weight on `consistencyMetric`, which is always exactly 1.0 by
+  // construction: any measurement reaching this point already passed
+  // RoomMeasurementValidator.validate(), which requires every bin to be
+  // finite — so "fraction of finite bins" could never actually vary here.
+  // RMS headroom genuinely varies with real capture quality: a recording
+  // barely above the noise floor scores near 0; one with 3x headroom above
+  // the minimum usable level scores 1. Uses the same `levels.rms` already
+  // computed for validation — no new measurement.
+  final rmsHeadroom = RoomMeasurementValidator.minimumRms <= 0
+      ? 1.0
+      : (((measurement.levels.rms / RoomMeasurementValidator.minimumRms) - 1.0)
+              .clamp(0.0, 2.0)) /
+          2.0;
+  score += rmsHeadroom * 0.15;
   score += measurement.hasMicrophoneCalibration ? 0.1 : 0.05;
+
+  // Repeatability gate. Everything above measures whether the CAPTURE was
+  // well-formed — long enough, loud enough, not clipped — none of which can
+  // tell a real room apart from ten seconds of noise. `consistencyMetric` now
+  // carries a genuine split-half agreement (see `CaptureAnalysis.agreement`),
+  // so a capture whose own two halves disagree can no longer be reported as
+  // High confidence, which is exactly what real-device runs did while
+  // returning completely different "resonances" every time.
+  final consistency = measurement.consistencyMetric.clamp(0.0, 1.0);
+  score *= 0.4 + 0.6 * consistency;
   if (score >= 0.85) return 'High';
   if (score >= 0.65) return 'Medium';
   return 'Low';

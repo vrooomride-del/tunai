@@ -4,14 +4,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:just_audio/just_audio.dart' hide AudioSource;
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/pink_noise_generator.dart';
+import '../../core/tunai_playback_audio_session.dart';
 import '../../core/audio_analyzer.dart';
 import '../../core/mic_calibration.dart';
 import '../../core/speaker_profile.dart';
 import '../ble/ble_controller.dart' show bleProvider;
-import '../dsp/dsp_compiler.dart' show DspCompiler, DspCompilerSafety, RegisterPacket;
+import '../dsp/dsp_compiler.dart'
+    show DspCompiler, DspCompilerSafety, RegisterPacket;
 import '../auth/auth_controller.dart' show authProvider;
 import '../../core/device_service.dart';
 import '../../core/install_location.dart';
@@ -28,7 +30,7 @@ enum MeasurementStep {
   analyzing,
   detectingPeaks,
   compiling,
-  converging,  // DSP 적용 후 재측정 대기 (Closed Loop)
+  converging, // DSP 적용 후 재측정 대기 (Closed Loop)
   done,
   error,
 }
@@ -37,19 +39,28 @@ class MeasurementState {
   final MeasurementStep step;
   final String message;
   final List<FrequencyBin> scmsBins;
+  /// Visualization-only curve: measured spectrum minus the theoretical pink
+  /// reference (`AudioAnalyzer.srefDb`) — the same "deviation" spectrum peak
+  /// detection already runs on internally. Unlike [scmsBins] (which the CCV
+  /// correction deliberately collapses toward the pink reference's own
+  /// monotonically-decreasing shape for EQ purposes — see `_measureOnce`),
+  /// this one keeps the real room-mode bumps visible, which is what makes it
+  /// meaningful to show a user rather than a smooth downward line.
+  final List<FrequencyBin> responseBins;
   final List<ResonancePeak> peaks;
   final List<RegisterPacket> packets;
   final String? error;
   final RoomMeasurement? measurement;
   // Closed Loop 상태
-  final int iteration;           // 현재 반복 회차 (1-based, 0=미진행)
-  final bool hasConverged;       // 수렴 성공 여부
+  final int iteration; // 현재 반복 회차 (1-based, 0=미진행)
+  final bool hasConverged; // 수렴 성공 여부
   final double? residualErrorDb; // 마지막 잔류 오차 (dB)
 
   const MeasurementState({
     this.step = MeasurementStep.idle,
     this.message = '',
     this.scmsBins = const [],
+    this.responseBins = const [],
     this.peaks = const [],
     this.packets = const [],
     this.error,
@@ -63,6 +74,7 @@ class MeasurementState {
     MeasurementStep? step,
     String? message,
     List<FrequencyBin>? scmsBins,
+    List<FrequencyBin>? responseBins,
     List<ResonancePeak>? peaks,
     List<RegisterPacket>? packets,
     String? error,
@@ -70,18 +82,20 @@ class MeasurementState {
     int? iteration,
     bool? hasConverged,
     double? residualErrorDb,
-  }) => MeasurementState(
-    step: step ?? this.step,
-    message: message ?? this.message,
-    scmsBins: scmsBins ?? this.scmsBins,
-    peaks: peaks ?? this.peaks,
-    packets: packets ?? this.packets,
-    error: error ?? this.error,
-    measurement: measurement ?? this.measurement,
-    iteration: iteration ?? this.iteration,
-    hasConverged: hasConverged ?? this.hasConverged,
-    residualErrorDb: residualErrorDb ?? this.residualErrorDb,
-  );
+  }) =>
+      MeasurementState(
+        step: step ?? this.step,
+        message: message ?? this.message,
+        scmsBins: scmsBins ?? this.scmsBins,
+        responseBins: responseBins ?? this.responseBins,
+        peaks: peaks ?? this.peaks,
+        packets: packets ?? this.packets,
+        error: error ?? this.error,
+        measurement: measurement ?? this.measurement,
+        iteration: iteration ?? this.iteration,
+        hasConverged: hasConverged ?? this.hasConverged,
+        residualErrorDb: residualErrorDb ?? this.residualErrorDb,
+      );
 }
 
 final measurementProvider =
@@ -116,14 +130,16 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     try {
       if (!await _requestMicPermission()) return;
       final wavFile = await _prepareWav();
-      final (scmsBins, safePeaks, measurement) = await _measureOnce(
-          wavFile: wavFile, speakerProfile: speakerProfile, label: '');
+      final (scmsBins, responseBins, safePeaks, measurement) =
+          await _measureOnce(
+              wavFile: wavFile, speakerProfile: speakerProfile, label: '');
       if (_isCancelled) return;
       final packets = DspCompiler.compileAll(safePeaks);
       state = state.copyWith(
         step: MeasurementStep.done,
         message: '측정 완료! ${safePeaks.length}개 공진 주파수 검출',
         scmsBins: scmsBins,
+        responseBins: responseBins,
         peaks: safePeaks,
         packets: packets,
         measurement: measurement,
@@ -132,7 +148,8 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       _recordSession(peakCount: safePeaks.length, iterations: 1);
     } catch (e) {
       if (!_isCancelled && !_disposed) {
-        state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+        state =
+            state.copyWith(step: MeasurementStep.error, error: e.toString());
       }
     } finally {
       await _stopCapture();
@@ -162,14 +179,18 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         final iterLabel = '${iter + 1}/$_maxIterations차';
         _update(MeasurementStep.converging, '$iterLabel 보정 — 측정 중...');
 
-        final (scmsBins, safePeaks, measurement) = await _measureOnce(
-            wavFile: wavFile, speakerProfile: speakerProfile, label: iterLabel);
+        final (scmsBins, responseBins, safePeaks, measurement) =
+            await _measureOnce(
+                wavFile: wavFile,
+                speakerProfile: speakerProfile,
+                label: iterLabel);
         if (_isCancelled) return;
 
         // 누적 gain 경고 (설계 문서 제약 #3)
         final totalGain = safePeaks.fold(0.0, (s, p) => s + p.gain.abs());
         if (totalGain > 24.0) {
-          debugPrint('[LOOP] 경고: 누적 gain ${totalGain.toStringAsFixed(1)}dB > 24dB');
+          debugPrint(
+              '[LOOP] 경고: 누적 gain ${totalGain.toStringAsFixed(1)}dB > 24dB');
         }
 
         // DSP 컴파일 + BLE 전송
@@ -181,13 +202,16 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         if (iter > 0) {
           final residual = _calcResidual(safePeaks, lastPeaks);
           lastResidual = residual;
-          debugPrint('[LOOP] $iterLabel 잔류오차: ${residual.toStringAsFixed(2)}dB (기준: $_convergenceThresholdDb dB)');
+          debugPrint(
+              '[LOOP] $iterLabel 잔류오차: ${residual.toStringAsFixed(2)}dB (기준: $_convergenceThresholdDb dB)');
 
           if (residual < _convergenceThresholdDb) {
             state = state.copyWith(
               step: MeasurementStep.done,
-              message: '수렴 완료 ($iterLabel, 잔류 오차 ${residual.toStringAsFixed(1)}dB)',
+              message:
+                  '수렴 완료 ($iterLabel, 잔류 오차 ${residual.toStringAsFixed(1)}dB)',
               scmsBins: scmsBins,
+              responseBins: responseBins,
               peaks: safePeaks,
               packets: packets,
               measurement: measurement,
@@ -208,8 +232,12 @@ class MeasurementController extends StateNotifier<MeasurementState> {
 
         // 미수렴 — DSP 안정화 대기 후 다음 회차 (ADAU1701 Safeload 처리)
         state = state.copyWith(
-          scmsBins: scmsBins, peaks: safePeaks, packets: packets,
-          iteration: iter + 1, residualErrorDb: lastResidual,
+          scmsBins: scmsBins,
+          responseBins: responseBins,
+          peaks: safePeaks,
+          packets: packets,
+          iteration: iter + 1,
+          residualErrorDb: lastResidual,
         );
         lastPeaks = safePeaks;
 
@@ -238,7 +266,8 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       );
     } catch (e) {
       if (!_isCancelled && !_disposed) {
-        state = state.copyWith(step: MeasurementStep.error, error: e.toString());
+        state =
+            state.copyWith(step: MeasurementStep.error, error: e.toString());
       }
     } finally {
       await _stopCapture();
@@ -281,8 +310,14 @@ class MeasurementController extends StateNotifier<MeasurementState> {
   }
 
   /// 단일 측정 사이클: 녹음 → FFT → MicCal → CCV → 피크검출 → SafetyProfile
-  /// 반환: (scmsBins, safePeaks)
-  Future<(List<FrequencyBin>, List<ResonancePeak>, RoomMeasurement)> _measureOnce({
+  /// 반환: (scmsBins, responseBins, safePeaks, measurement)
+  Future<
+      (
+        List<FrequencyBin>,
+        List<FrequencyBin>,
+        List<ResonancePeak>,
+        RoomMeasurement
+      )> _measureOnce({
     required File wavFile,
     required SpeakerProfile? speakerProfile,
     required String label,
@@ -300,20 +335,58 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     // ignore: unnecessary_brace_in_string_interps
     _update(MeasurementStep.recording, '${prefix}공간 측정 중... (10초)');
     final recordPath = await _recordingPath();
-    await _player.setFilePath(wavFile.path);
-    final timestamps = await const MeasurementCaptureSequence(now: DateTime.now).run(
+    // Same explicit, awaited session activation as the Speaker Audio Check
+    // confirmation tone (see tunai_playback_audio_session.dart) — keeping
+    // both playback sites on the identical call removes any chance of them
+    // silently diverging in configuration again. settleKey ties the settle
+    // wait to the CURRENT BLE connection, not just the app's first-ever
+    // call, so a reconnect after a drop re-settles too.
+    final playSw = Stopwatch()..start();
+    debugPrint('[AUDIO_PATH] ROOM_SCAN: playback requested');
+    await TunaiPlaybackAudioSession.ensureActive(
+      settleKey: _ref.read(bleProvider).connectionGeneration,
+      label: 'ROOM_SCAN',
+    );
+    final signalDuration = await _player.setFilePath(wavFile.path);
+    debugPrint('[AUDIO_PATH] ROOM_SCAN: player ready duration=$signalDuration '
+        'state=${_player.processingState} (+${playSw.elapsedMilliseconds}ms)');
+    final timestamps =
+        await const MeasurementCaptureSequence(now: DateTime.now).run(
       startRecorder: () async {
+        // Explicit, never the platform default: `AudioSource.defaultSource`
+        // leaves it to the OS to pick an input, and on some Android
+        // versions/OEM skins a connected Bluetooth device can be chosen as
+        // the mic input (attempting an HFP/SCO connection) even though this
+        // app only ever wants the PHONE's own microphone for Room Scan —
+        // the connected speaker is a playback+DSP-control device, never a
+        // capture device. An unwanted SCO negotiation with a peripheral
+        // that doesn't support it is a plausible real cause of the BLE
+        // connection dropping partway through the 10-second capture.
         await _recorder.startRecorder(
           toFile: recordPath,
           codec: Codec.pcm16WAV,
           sampleRate: AudioAnalyzer.sampleRate,
           numChannels: 1,
+          // UNPROCESSED, not `microphone`: `microphone` is the standard
+          // capture path and on many Android devices (Samsung included) still
+          // runs automatic gain control and noise suppression. Both actively
+          // corrupt an acoustic measurement — AGC changes the level partway
+          // through the sweep, and noise suppression attenuates exactly the
+          // steady broadband content pink noise is made of. UNPROCESSED asks
+          // the platform for the raw microphone path with that chain
+          // disabled, which is the only capture mode whose frequency
+          // response means anything here.
+          audioSource: AudioSource.unprocessed,
         );
       },
       recorderIsReady: () => _recorder.isRecording,
       playSignalToCompletion: () async {
         _update(MeasurementStep.playing, '${prefix}Sref 재생 중...');
+        debugPrint(
+            '[AUDIO_PATH] ROOM_SCAN: play() START (+${playSw.elapsedMilliseconds}ms)');
         await _player.play();
+        debugPrint(
+            '[AUDIO_PATH] ROOM_SCAN: play() RETURNED (+${playSw.elapsedMilliseconds}ms)');
         if (_isCancelled) throw const _MeasurementCancelled();
       },
       stopRecorder: () async {
@@ -333,8 +406,10 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     final actualSampleRate = header.getUint32(24, Endian.little);
     final rawPcm = Uint8List.sublistView(pcmBytes, 44);
     final samples = AudioAnalyzer.pcmToFloat(rawPcm);
-    debugPrint('[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
-    final scapBins = AudioAnalyzer.performFFT(samples);
+    debugPrint(
+        '[MEASURE] pcmBytes=${pcmBytes.length}, samples=${samples.length}, rms=${_rms(samples).toStringAsFixed(4)}');
+    final capture = AudioAnalyzer.analyzeCapture(samples);
+    final scapBins = capture.bins;
 
     // MicCalibrationDb (1단계)
     // ignore: unnecessary_brace_in_string_interps
@@ -352,12 +427,69 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       micCorrectedBins = scapBins;
     }
 
-    // CCV (2단계)
+    // RAW captured level per band — deliberately measured on micCorrectedBins,
+    // BEFORE the pink-reference subtraction below, so it answers one question
+    // directly: was there any real signal in the band this analysis actually
+    // searches (20-300Hz)?
+    //
+    // Room-mode detection only looks at 20-300Hz. A phone's own speaker cannot
+    // physically reproduce that band, so when playback is not routed to the
+    // real speaker, those bins carry background noise only — and every peak
+    // found in them is noise, which is exactly what real-device runs showed
+    // (different "resonances" every capture, Q always pinned at the ceiling).
+    // The mid-band level is logged alongside as a reference the phone CAN
+    // reproduce: the gap between the two is the direct, quantitative signal of
+    // whether bass actually reached the microphone.
+    double meanLevel(double lowHz, double highHz) {
+      final band = micCorrectedBins
+          .where((b) => b.frequency >= lowHz && b.frequency < highHz);
+      if (band.isEmpty) return double.nan;
+      return band.map((b) => b.magnitude).reduce((a, b) => a + b) / band.length;
+    }
+
+    final analysisBandLevel = meanLevel(20, 300);
+    final midBandLevel = meanLevel(300, 2000);
+    debugPrint('[SIGNAL] raw mean level  20-300Hz(analysis)='
+        '${analysisBandLevel.toStringAsFixed(1)}dB  '
+        '300-2000Hz(reference)=${midBandLevel.toStringAsFixed(1)}dB  '
+        'gap=${(analysisBandLevel - midBandLevel).toStringAsFixed(1)}dB');
+
+    // CCV (2단계) — 디스플레이/EQ용 보정 스펙트럼
     final ccv = AudioAnalyzer.calculateCCV(micCorrectedBins);
     final scmsBins = AudioAnalyzer.applyCCV(micCorrectedBins, ccv);
 
-    // 피크 검출
-    final peaks = AudioAnalyzer.detectPeaks(scmsBins);
+    // 피크 검출: 룸 모드는 "레퍼런스 제거 편차(measured − pink sref)" 위에서
+    // 검출한다. applyCCV 결과(scmsBins)는 measured가 완전 상쇄돼 sref−mean(단조
+    // 감소 곡선)이 되므로 로컬 극대값이 없어 항상 0개가 나온다. 편차 스펙트럼은
+    // 핑크 기울기를 제거해 실제 룸 공진을 로컬 극대값으로 남긴다.
+    final deviationBins = micCorrectedBins
+        .map((b) => FrequencyBin(
+              frequency: b.frequency,
+              magnitude: b.magnitude - AudioAnalyzer.srefDb(b.frequency),
+            ))
+        .toList();
+    // Same deviationBins used both here (peak detection → TunePlan input)
+    // and as measure_screen.dart's `responseBins` (what the Room Balance
+    // graph actually plots) — logging the full range here lets a real-device
+    // "graph shows bumps but bands=0" report be checked against the exact
+    // numbers peak detection saw, not a second, possibly-different curve.
+    if (deviationBins.isNotEmpty) {
+      final in20to300 =
+          deviationBins.where((b) => b.frequency >= 20 && b.frequency <= 300);
+      final above300 = deviationBins.where((b) => b.frequency > 300);
+      String rangeStr(Iterable<FrequencyBin> bins) {
+        if (bins.isEmpty) return 'n/a';
+        final mags = bins.map((b) => b.magnitude);
+        return '${mags.reduce((a, b) => a < b ? a : b).toStringAsFixed(1)}..'
+            '${mags.reduce((a, b) => a > b ? a : b).toStringAsFixed(1)}dB';
+      }
+
+      debugPrint('[TUNE_TRACE] deviationBins total=${deviationBins.length} '
+          '20-300Hz(searched)=${in20to300.length} range=${rangeStr(in20to300)} '
+          '300-500Hz(NOT searched by detectPeaks)=${above300.length} '
+          'range=${rangeStr(above300)}');
+    }
+    final peaks = AudioAnalyzer.detectPeaks(deviationBins);
 
     // T/S 안전범위 적용
     List<ResonancePeak> safePeaks = peaks;
@@ -367,11 +499,14 @@ class MeasurementController extends StateNotifier<MeasurementState> {
         xmax: speakerProfile.xmax,
         sensitivity: speakerProfile.sensitivity,
       );
-      safePeaks = peaks.map((p) => ResonancePeak(
-        frequency: p.frequency,
-        gain: DspCompilerSafety.clampBassBoost(p.gain, p.frequency, safety.maxBassBoost),
-        q: p.q,
-      )).toList();
+      safePeaks = peaks
+          .map((p) => ResonancePeak(
+                frequency: p.frequency,
+                gain: DspCompilerSafety.clampBassBoost(
+                    p.gain, p.frequency, safety.maxBassBoost),
+                q: p.q,
+              ))
+          .toList();
     }
 
     final captureDuration = Duration(
@@ -408,6 +543,10 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     }
     final location = _ref.read(installLocationProvider);
     final mic = _ref.read(micCalibrationProfileProvider).valueOrNull;
+    final quality = RoomMeasurementValidator.classifyQuality(
+      timing: timing,
+      levels: levels,
+    );
     final measurement = RoomMeasurement(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       roomType: location?.labelEn ?? 'Living Room',
@@ -417,21 +556,34 @@ class MeasurementController extends StateNotifier<MeasurementState> {
       timing: timing,
       usableRangeMinHz: 20,
       usableRangeMaxHz: 500,
-      frequencyBins: List.unmodifiable(scmsBins),
+      // The DEVIATION spectrum, not `scmsBins`.
+      //
+      // `applyCCV` adds `srefDb(f) - measured(f) - mean` to `measured(f)`,
+      // which cancels the measurement exactly: inside the 20Hz-2kHz CCV band
+      // `scmsBins` reduces to `srefDb(f) - mean`, a fixed function of
+      // frequency carrying no information about this room at all. Persisting
+      // that as the measurement's spectrum meant every downstream consumer of
+      // `frequencyBins` — Sound Score, the AI context, and now broadband tone
+      // analysis — was reading a constant curve. `deviationBins`
+      // (`measured - srefDb`) is the same data with the pink-noise slope
+      // removed and the measurement itself retained.
+      frequencyBins: List.unmodifiable(deviationBins),
       peaks: List.unmodifiable(safePeaks),
-      consistencyMetric: scmsBins.isEmpty
-          ? 0
-          : scmsBins.where((bin) =>
-                bin.frequency.isFinite && bin.magnitude.isFinite).length /
-              scmsBins.length,
+      // A REAL repeatability measure (see CaptureAnalysis.agreement), not the
+      // old "fraction of finite bins" — which was 1.0 by construction for
+      // every capture that reached this point, and so reported perfect
+      // consistency even for a capture that was entirely noise.
+      consistencyMetric: capture.agreement,
       levels: levels,
-      quality: CaptureQualityStatus.valid,
+      quality: quality,
       warnings: [
         if (mic == null || mic.isGeneric)
           'No device-specific microphone calibration was available.',
+        if (quality == CaptureQualityStatus.degraded)
+          'The measurement signal was quieter or less stable than ideal.',
       ],
     );
-    return (scmsBins, safePeaks, measurement);
+    return (scmsBins, deviationBins, safePeaks, measurement);
   }
 
   Future<void> _stopCapture() async {
@@ -521,13 +673,15 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     if (kDebugMode) _verifyCcv();
 
     const dummyPeaks = [
-      ResonancePeak(frequency: 82.0,   gain: -6.5, q: 4.0),
-      ResonancePeak(frequency: 248.0,  gain: -4.2, q: 3.5),
+      ResonancePeak(frequency: 82.0, gain: -6.5, q: 4.0),
+      ResonancePeak(frequency: 248.0, gain: -4.2, q: 3.5),
       ResonancePeak(frequency: 1180.0, gain: -3.8, q: 5.0),
     ];
     final packets = DspCompiler.compileAll(dummyPeaks);
     debugPrint('[DUMMY] peaks=${dummyPeaks.length}, packets=${packets.length}');
-    for (final p in dummyPeaks) { debugPrint('[DUMMY] $p'); }
+    for (final p in dummyPeaks) {
+      debugPrint('[DUMMY] $p');
+    }
     state = state.copyWith(
       step: MeasurementStep.done,
       message: '[DEBUG] 더미 데이터 주입 완료 — ${dummyPeaks.length}개 공진',
@@ -542,28 +696,32 @@ class MeasurementController extends StateNotifier<MeasurementState> {
     // srefDb와 동일한 형태 → de-mean 후 CCV = 0 → applyCCV 후 변화 없어야 함
     final flatBins = <FrequencyBin>[];
     for (var freq = 20.0; freq <= 2000; freq *= 1.05) {
-      flatBins.add(FrequencyBin(
-          frequency: freq, magnitude: AudioAnalyzer.srefDb(freq)));
+      flatBins.add(
+          FrequencyBin(frequency: freq, magnitude: AudioAnalyzer.srefDb(freq)));
     }
     final ccvFlat = AudioAnalyzer.calculateCCV(flatBins);
     final maxCorrFlat = ccvFlat.values.isEmpty
-        ? 0.0 : ccvFlat.values.map((v) => v.abs()).reduce(max);
+        ? 0.0
+        : ccvFlat.values.map((v) => v.abs()).reduce(max);
     debugPrint('[CCV-VERIFY] 시나리오A(평탄) 최대 보정값: '
         '${maxCorrFlat.toStringAsFixed(3)}dB → 0에 가까워야 함');
 
     // ── 시나리오 B: 82Hz에 +8dB 인위적 피크 포함 ────────────────────────
     final peakBins = flatBins.map((b) {
       final bump = (b.frequency > 60 && b.frequency < 100) ? 8.0 : 0.0;
-      return FrequencyBin(frequency: b.frequency, magnitude: b.magnitude + bump);
+      return FrequencyBin(
+          frequency: b.frequency, magnitude: b.magnitude + bump);
     }).toList();
     final ccvPeak = AudioAnalyzer.calculateCCV(peakBins);
     final applied = AudioAnalyzer.applyCCV(peakBins, ccvPeak);
     final peakBefore = peakBins
         .where((b) => b.frequency > 60 && b.frequency < 100)
-        .map((b) => b.magnitude).reduce(max);
+        .map((b) => b.magnitude)
+        .reduce(max);
     final peakAfter = applied
         .where((b) => b.frequency > 60 && b.frequency < 100)
-        .map((b) => b.magnitude).reduce(max);
+        .map((b) => b.magnitude)
+        .reduce(max);
     debugPrint('[CCV-VERIFY] 시나리오B(피크) 82Hz 전: '
         '${peakBefore.toStringAsFixed(1)}dB → 후: ${peakAfter.toStringAsFixed(1)}dB '
         '(감소여부: ${peakAfter < peakBefore})');

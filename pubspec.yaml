@@ -14,6 +14,7 @@ dependencies:
     sdk: flutter
 
   just_audio: ^0.9.36
+  audio_session: ^0.1.25
   fftea: ^1.5.0+1
   flutter_blue_plus: ^1.31.15
   permission_handler: ^11.3.0
@@ -48,6 +49,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/audio/
+    - assets/images/
 flutter_launcher_icons:
   android: true
   ios: true

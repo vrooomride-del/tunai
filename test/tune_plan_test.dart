@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,7 @@ import 'package:tunai/core/audio_analyzer.dart';
 import 'package:tunai/core/consumer_sound_profile.dart';
 import 'package:tunai/core/room_measurement.dart';
 import 'package:tunai/core/tune_plan.dart';
+import 'package:tunai/core/tune_safety_validator.dart';
 
 RoomMeasurement _measurement({
   CaptureQualityStatus quality = CaptureQualityStatus.valid,
@@ -66,8 +68,7 @@ RoomMeasurement _measurement({
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('invalid, low-quality, unsupported, and missing-spectrum inputs fail',
-      () {
+  test('invalid/cancelled, unsupported, and missing-spectrum inputs fail', () {
     final planner = TunePlanner(now: () => DateTime.utc(2026, 7, 17));
     expect(
         () => planner
@@ -75,7 +76,7 @@ void main() {
         throwsStateError);
     expect(
         () => planner
-            .generate(_measurement(quality: CaptureQualityStatus.degraded)),
+            .generate(_measurement(quality: CaptureQualityStatus.cancelled)),
         throwsStateError);
     expect(() => planner.generate(_measurement(bins: const [])),
         throwsFormatException);
@@ -86,6 +87,16 @@ void main() {
               ResonancePeak(frequency: double.nan, gain: -2, q: 3),
             ])),
         throwsFormatException);
+  });
+
+  test(
+      'a degraded-quality (lower confidence, but usable) measurement still '
+      'produces a Tune — only invalid/cancelled are rejected', () {
+    final planner = TunePlanner(now: () => DateTime.utc(2026, 7, 17));
+    final plan =
+        planner.generate(_measurement(quality: CaptureQualityStatus.degraded));
+    expect(plan.bands, isNotEmpty);
+    expect(plan.measurementQuality, CaptureQualityStatus.degraded);
   });
 
   test('valid measurement creates deterministic bounded cuts', () {
@@ -121,7 +132,10 @@ void main() {
         ResonancePeak(frequency: 80, gain: -4, q: 4),
         ResonancePeak(frequency: 82, gain: -3, q: 4),
         ResonancePeak(frequency: 130, gain: 2, q: 4),
-        ResonancePeak(frequency: 160, gain: -2, q: 20),
+        // Physically meaningless Q — still rejected outright. A merely
+        // *sharper-than-bounds* Q (e.g. 20) is NOT rejected any more; it is
+        // clamped into bounds, covered by its own test below.
+        ResonancePeak(frequency: 160, gain: -2, q: 0),
         ResonancePeak(frequency: 220, gain: -2, q: 3),
         ResonancePeak(frequency: 300, gain: -2, q: 3),
         ResonancePeak(frequency: 400, gain: -2, q: 3),
@@ -133,6 +147,80 @@ void main() {
     expect(reasons, contains('not_supported_cut'));
     expect(reasons, contains('q_out_of_bounds'));
     expect(plan.bands.length, lessThanOrEqualTo(4));
+  });
+
+  test(
+      'sharp real room modes (Q saturated at the analyzer ceiling) still '
+      'produce deployable bands — real-hardware regression', () {
+    // Verbatim from a real Room Scan on a SM-G981N: every detected peak came
+    // back at AudioAnalyzer.maxEstimatedQ (16.0), because at Room Scan's FFT
+    // bin resolution a genuinely sharp room mode spans only 1-2 bins. The
+    // planner's Q bounds are [0.7, 8], so the candidate gate used to reject
+    // all four as `q_out_of_bounds` and emit a ZERO-band plan — which the UI
+    // correctly reported as "no adjustment needed", leaving no Apply path and
+    // therefore no Original/TUNAI comparison, from a perfectly valid capture.
+    const analyzerCeilingQ = AudioAnalyzer.maxEstimatedQ;
+    final plan = TunePlanner(now: () => DateTime.utc(2026)).generate(
+      _measurement(peaks: const [
+        ResonancePeak(frequency: 278.6, gain: -18.6, q: analyzerCeilingQ),
+        ResonancePeak(frequency: 233.5, gain: -12.5, q: analyzerCeilingQ),
+        ResonancePeak(frequency: 196.5, gain: -9.5, q: analyzerCeilingQ),
+        ResonancePeak(frequency: 70.7, gain: -8.3, q: analyzerCeilingQ),
+      ]),
+    );
+
+    expect(plan.bands, isNotEmpty,
+        reason: 'a valid measurement must not yield a zero-band plan');
+    expect(
+      plan.rejectedCandidates.map((entry) => entry.reason),
+      isNot(contains('q_out_of_bounds')),
+    );
+    // Safety is preserved by clamping, not by discarding: every emitted band
+    // still carries a Q inside the planner's own bounds.
+    for (final band in plan.bands) {
+      expect(band.q, greaterThanOrEqualTo(plan.safetyBounds.minimumQ));
+      expect(band.q, lessThanOrEqualTo(plan.safetyBounds.maximumQ));
+    }
+  });
+
+  test(
+      'a tonally unbalanced room produces broadband corrections across the '
+      'full range — not only room modes below 300Hz', () {
+    // A broad 8dB excess centred at 3kHz: nothing AudioAnalyzer.detectPeaks
+    // could ever act on (it stops at 300Hz), and exactly the kind of
+    // imbalance a listener hears most.
+    final bins = <FrequencyBin>[];
+    for (var f = 20.0; f <= 10000; f *= 1.002) {
+      final octaves = math.log(f / 3000) / math.ln2;
+      bins.add(FrequencyBin(
+        frequency: f,
+        magnitude: -70 + 8 * math.exp(-(octaves * octaves) / (2 * 0.25)),
+      ));
+    }
+
+    final plan = TunePlanner(now: () => DateTime.utc(2026))
+        .generate(_measurement(bins: bins, peaks: const []));
+
+    expect(plan.bands, isNotEmpty);
+    expect(
+      plan.bands.any((b) =>
+          b.source == TuneCorrectionSource.tonalBalance &&
+          b.frequencyHz > 1500),
+      isTrue,
+      reason: 'the 3kHz imbalance must be corrected',
+    );
+    // Everything still inside the bounds the deployment path enforces.
+    for (final band in plan.bands) {
+      expect(band.gainDb, greaterThanOrEqualTo(-plan.safetyBounds.maximumCutDb));
+      expect(band.gainDb, lessThanOrEqualTo(plan.safetyBounds.maximumBoostDb));
+      expect(band.q, greaterThanOrEqualTo(plan.safetyBounds.minimumQ));
+      expect(band.q, lessThanOrEqualTo(plan.safetyBounds.maximumQ));
+    }
+    // And still deployable on the real 3-band hardware.
+    expect(
+      const TuneSafetyValidator().validatePlan(plan).approvedBands,
+      isNotEmpty,
+    );
   });
 
   test('TunePlan persistence is versioned and corruption-safe', () async {
@@ -185,11 +273,20 @@ void main() {
     expect(recreated.state.single.isActive, isFalse);
   });
 
-  test('real TUNE flow contains no fixed delay or fabricated score source', () {
+  test(
+      'real TUNE flow contains no fixed delay, and Sound Score comes from '
+      'real computation, not a fabricated/hardcoded value', () {
     final source = File('lib/features/ai/ai_screen.dart').readAsStringSync();
     expect(source, isNot(contains('Duration(milliseconds: 2600)')));
-    expect(source, isNot(contains('soundScoreBefore:')));
-    expect(source, isNot(contains('soundScoreAfter:')));
+    // soundScoreBefore/After are legitimately wired now (Before/After Sound
+    // Experience) — the guard is that they trace back to a real calculator
+    // call on real curves, never a literal number.
+    expect(source, contains('soundScoreBefore: beforeScore?.total'));
+    expect(source, contains('soundScoreAfter: afterScore?.total'));
+    expect(source,
+        contains('SoundScoreCalculator.compute(measurement.frequencyBins)'));
+    expect(source, isNot(matches(RegExp(r'soundScoreBefore:\s*\d'))));
+    expect(source, isNot(matches(RegExp(r'soundScoreAfter:\s*\d'))));
     expect(source, contains('TunePlanner'));
     expect(source, contains('RoomMeasurementStore.load'));
     expect(source, contains('TuneDeploymentStatus.notDeployed'));

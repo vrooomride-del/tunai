@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'factory_access.dart';
 
@@ -73,51 +75,58 @@ class AboutTunaiScreen extends StatelessWidget {
                   ...slides.asMap().entries.map((e) {
                     final i = e.key;
                     final (title, body) = e.value;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 36),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${i + 1}',
-                                    style: const TextStyle(
-                                        color: Colors.white12,
-                                        fontSize: 11,
-                                        letterSpacing: 1),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(title,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w300,
-                                                height: 1.4,
-                                                letterSpacing: -0.2,
-                                              )),
-                                          const SizedBox(height: 14),
-                                          Text(body,
-                                              style: TextStyle(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.45),
-                                                fontSize: 14,
-                                                height: 1.75,
-                                              )),
-                                        ]),
-                                  ),
-                                ]),
-                            if (i < slides.length - 1) ...[
-                              const SizedBox(height: 28),
-                              Container(height: 0.5, color: Colors.white12),
-                            ],
-                          ]),
+                    return _BrandSlideIn(
+                      // Small stagger per slide — a quiet, premium reveal
+                      // rather than everything popping in at once. Purely
+                      // presentational; reuses standard implicit animation
+                      // widgets, no new dependency or splash-system overlap.
+                      delay: Duration(milliseconds: 90 * i),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 36),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${i + 1}',
+                                      style: const TextStyle(
+                                          color: Colors.white12,
+                                          fontSize: 11,
+                                          letterSpacing: 1),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(title,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w300,
+                                                  height: 1.4,
+                                                  letterSpacing: -0.2,
+                                                )),
+                                            const SizedBox(height: 14),
+                                            Text(body,
+                                                style: TextStyle(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.45),
+                                                  fontSize: 14,
+                                                  height: 1.75,
+                                                )),
+                                          ]),
+                                    ),
+                                  ]),
+                              if (i < slides.length - 1) ...[
+                                const SizedBox(height: 28),
+                                Container(height: 0.5, color: Colors.white12),
+                              ],
+                            ]),
+                      ),
                     );
                   }),
                 ],
@@ -125,6 +134,52 @@ class AboutTunaiScreen extends StatelessWidget {
             ),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+/// A quiet fade + rise entrance for one slide, staggered by [delay]. Pure
+/// presentation polish for the About/Brand experience — no state, no
+/// dependency on BLE/DSP/measurement flow.
+class _BrandSlideIn extends StatefulWidget {
+  final Duration delay;
+  final Widget child;
+  const _BrandSlideIn({required this.delay, required this.child});
+
+  @override
+  State<_BrandSlideIn> createState() => _BrandSlideInState();
+}
+
+class _BrandSlideInState extends State<_BrandSlideIn> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.delay, () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOut,
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(0, 0.04),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
