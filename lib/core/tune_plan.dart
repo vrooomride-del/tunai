@@ -593,7 +593,13 @@ class TunePlanner {
           !band.q.isFinite ||
           band.frequencyHz < plan.safetyBounds.minimumFrequencyHz ||
           band.frequencyHz > plan.safetyBounds.maximumFrequencyHz ||
-          band.gainDb >= 0 ||
+          // Boost is allowed up to `maximumBoostDb` (0 by default = cut-only,
+          // >0 for the full-range/broadband profile) — this integrity check
+          // must match the same bounds `_bandRejection` and TuneSafetyValidator
+          // already enforce, or a legitimately-generated boost band (broadband
+          // tonal fill, preference lift) would make generate() throw and fail
+          // Tune creation entirely.
+          band.gainDb > plan.safetyBounds.maximumBoostDb ||
           band.gainDb < -plan.safetyBounds.maximumCutDb ||
           band.q < plan.safetyBounds.minimumQ ||
           band.q > plan.safetyBounds.maximumQ ||
@@ -601,7 +607,10 @@ class TunePlanner {
         throw const FormatException(
             'A TunePlan band is outside safety bounds.');
       }
-      aggregate += band.gainDb.abs();
+      // Only CUTS accrue against the aggregate-cut budget — a boost does not
+      // hollow out the overall level, and counting it here would falsely trip
+      // the limit (same rule as TuneSafetyValidator).
+      if (band.gainDb < 0) aggregate += band.gainDb.abs();
     }
     if (aggregate > plan.safetyBounds.aggregateCutLimitDb) {
       throw const FormatException('The TunePlan aggregate cut is unsafe.');

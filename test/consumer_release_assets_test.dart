@@ -37,7 +37,9 @@ void main() {
     expect(source.existsSync(), isTrue);
     expect(
       sha256.convert(source.readAsBytesSync()).toString(),
-      'ba3568ac44246b8bf00ff35db9b428e93788f905af13ae71df82933581590ef9',
+      // OHNUM brand launcher icon (rebrand). Pinned so a wrong/PRO source can
+      // never slip in; update deliberately only on an approved brand change.
+      'dc84152d1c69f03d17410f85169a922b6337d7857f3f4beb0ec34f25a97cd35d',
     );
 
     final proSource = File('assets/images/pro_icon_source.png');

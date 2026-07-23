@@ -291,4 +291,30 @@ void main() {
     expect(source, contains('RoomMeasurementStore.load'));
     expect(source, contains('TuneDeploymentStatus.notDeployed'));
   });
+
+  test('a plan containing a BOOST band (broadband fill / preference lift) does '
+      'NOT throw on generate — regression for the cut-only validatePlan bug '
+      'that failed Tune creation and blocked Apply/comparison', () {
+    // A spectrum with a mid-region DIP → broadband produces a +dB fill (boost).
+    final bins = <FrequencyBin>[];
+    for (var f = 20.0; f <= 10000; f *= 1.01) {
+      final o = math.log(f / 700) / math.ln2;
+      bins.add(FrequencyBin(frequency: f, magnitude: -70 - 8 * math.exp(-(o * o) / 0.5)));
+    }
+    final plan = TunePlanner(now: () => DateTime.utc(2026))
+        .generate(_measurement(bins: bins, peaks: const []));
+    // The bug threw a FormatException here; now it must produce a real plan.
+    expect(plan.bands, isNotEmpty);
+    expect(plan.bands.any((b) => b.gainDb > 0), isTrue,
+        reason: 'this measurement must yield at least one boost band');
+    // Every band stays inside the deployable executor limits (gain -6..+3).
+    for (final b in plan.bands) {
+      expect(b.gainDb, greaterThanOrEqualTo(-6));
+      expect(b.gainDb, lessThanOrEqualTo(3));
+    }
+    // And the plan re-validates cleanly through the Safety Validator.
+    expect(const TuneSafetyValidator().validatePlan(plan).approvedBands,
+        isNotEmpty);
+  });
+
 }
